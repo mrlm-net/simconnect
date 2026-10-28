@@ -7,6 +7,15 @@ This project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 ---
 
+## [0.136.0] - 2026-10-28
+
+### Added
+
+- Staffed stations in network play (#1096 step 4): each player staffs their own. `PUT /api/stations/staffed?as=<player>` (or `X-ATC-Position`), or `World.SetStaffedBy(player, list)`, replaces only that player's stations, kept with `StaffedStation.By`. Without `as` the list replaces everything, as before.
+  - A player clears the aircraft on every station they staff, so a band-box works across positions: before, a client cleared only on its own position's frequency ("not on your frequency (tower)" for a ground aircraft of a tower player band-boxing ground).
+  - On a station a player staffs, only that player clears it; the position's own client is refused there.
+  - A single station staffed wins over its whole position staffed by another player.
+
 ## [0.135.0] - 2026-10-28
 
 ### Added

@@ -26,13 +26,27 @@ import (
 // StaffedStation is a station a player works: a whole position ("tower",
 // "ground", "approach", …) or one station of it by name ("Ruzyne Ground
 // North"); several make a band-box. Mode is what the AI does there in a
-// conflict: ModeAssist ("" too), ModeSilent or ModeSafetyNet.
+// conflict: ModeAssist ("" too), ModeSilent or ModeSafetyNet. By is the
+// player working it in network play (the ?as= they play as, SetStaffedBy):
+// they may clear the aircraft on it, whatever position they play as; ""
+// the host's.
 type StaffedStation struct {
 	ICAO        string `json:"icao"`
 	Position    string `json:"position,omitempty"`
 	Station     string `json:"station,omitempty"`
 	Mode        string `json:"mode,omitempty"`
 	AutoHandoff bool   `json:"autoHandoff,omitempty"`
+	By          string `json:"by,omitempty"`
+}
+
+// normalised is s as kept: the airport upper case, the position, mode and
+// player as compared.
+func (s StaffedStation) normalised() StaffedStation {
+	s.ICAO = strings.ToUpper(strings.TrimSpace(s.ICAO))
+	s.Position = strings.ToLower(strings.TrimSpace(s.Position))
+	s.Mode = stationMode(s.Mode)
+	s.By = strings.ToLower(strings.TrimSpace(s.By))
+	return s
 }
 
 // staffing is the stations staffed, by airport.
@@ -51,15 +65,31 @@ func (s *staffing) list() []StaffedStation {
 // aircraft on them are the player's from the next look; those on a
 // station no longer staffed go back to the AI from their current state.
 func (w *World) SetStaffed(list []StaffedStation) {
-	for i := range list {
-		list[i].ICAO = strings.ToUpper(strings.TrimSpace(list[i].ICAO))
-		list[i].Position = strings.ToLower(strings.TrimSpace(list[i].Position))
-		list[i].Mode = stationMode(list[i].Mode)
+	set := make([]StaffedStation, len(list))
+	for i, s := range list {
+		set[i] = s.normalised()
 	}
 	w.st.core.staff.mu.Lock()
-	w.st.core.staff.set = append([]StaffedStation(nil), list...)
+	w.st.core.staff.set = set
 	w.st.core.staff.mu.Unlock()
 	w.st.core.log.printf("staffed stations: %d", len(list))
+}
+
+// SetStaffedBy sets the stations player works (network play, #1096: the
+// position they play as, ?as=), leaving the other players' as they are;
+// none: player staffs nothing. Each is kept with By player.
+func (w *World) SetStaffedBy(player string, list []StaffedStation) {
+	player = strings.ToLower(strings.TrimSpace(player))
+	k := w.st.core
+	k.staff.mu.Lock()
+	set := slices.DeleteFunc(slices.Clone(k.staff.set), func(s StaffedStation) bool { return s.By == player })
+	for _, s := range list {
+		s.By = player
+		set = append(set, s.normalised())
+	}
+	k.staff.set = set
+	k.staff.mu.Unlock()
+	k.log.printf("staffed stations: %d by %s, %d in all", len(list), player, len(set))
 }
 
 // Staffed are the stations players work.
@@ -67,19 +97,35 @@ func (w *World) Staffed() []StaffedStation { return w.st.core.staff.list() }
 
 // staffedAt reports whether position pos (and its station name, as said)
 // at icao is staffed.
+// A single station staffed wins over its whole position staffed by another
+// player.
 func (k *core) staffedAt(icao string, pos traffic.Position, station string) (StaffedStation, bool) {
-	for _, s := range k.staff.list() {
-		if s.ICAO != icao {
-			continue
-		}
-		if s.Station != "" && strings.EqualFold(s.Station, station) {
+	list := k.staff.list()
+	for _, s := range list {
+		if s.ICAO == icao && s.Station != "" && strings.EqualFold(s.Station, station) {
 			return s, true
 		}
-		if s.Station == "" && s.Position != "" && s.Position == string(pos) {
+	}
+	for _, s := range list {
+		if s.ICAO == icao && s.Station == "" && s.Position != "" && s.Position == string(pos) {
 			return s, true
 		}
 	}
 	return StaffedStation{}, false
+}
+
+// staffer is the player staffing the station working it now (network
+// play, #1096); "" none, or the host.
+func (it *controlled) staffer() string {
+	it.mu.Lock()
+	pos := it.atc
+	it.mu.Unlock()
+	if pos == "" {
+		return ""
+	}
+	at, _ := it.station(pos)
+	s, _ := it.cc.core.staffedAt(it.ICAO, pos, at)
+	return s.By
 }
 
 // staffEvery: how often who is on a staffed station is looked at.
@@ -151,7 +197,8 @@ func (cc *controlCenter) checkStaffed(now time.Time) {
 }
 
 // registerStaffed serves GET /api/stations/staffed (the list) and PUT
-// /api/stations/staffed (a []StaffedStation, replacing it).
+// /api/stations/staffed (a []StaffedStation, replacing it; with ?as= a
+// player's own, SetStaffedBy).
 func registerStaffed(mux *http.ServeMux, w *World) {
 	mux.HandleFunc("GET /api/stations/staffed", func(rw http.ResponseWriter, r *http.Request) {
 		writeJSON(rw, w.Staffed())
@@ -162,7 +209,11 @@ func registerStaffed(mux *http.ServeMux, w *World) {
 			http.Error(rw, "a list of staffed stations: "+err.Error(), http.StatusBadRequest)
 			return
 		}
-		w.SetStaffed(list)
+		if as := positionOf(r); as != "" && as != "all" {
+			w.SetStaffedBy(as, list)
+		} else {
+			w.SetStaffed(list)
+		}
 		writeJSON(rw, w.Staffed())
 	})
 }

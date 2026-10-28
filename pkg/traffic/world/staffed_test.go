@@ -43,3 +43,22 @@ func TestStationMode(t *testing.T) {
 		t.Errorf("kept as %q, want %q", m, ModeSafetyNet)
 	}
 }
+
+// TestStaffedByPlayer: a player's stations replace only their own; one
+// station staffed by a player wins over its whole position staffed by
+// another (#1096).
+func TestStaffedByPlayer(t *testing.T) {
+	w := &World{st: &state{core: newCore(&trafficLog{})}}
+	w.SetStaffedBy("Ground", []StaffedStation{{ICAO: "LKPR", Position: "ground"}})
+	w.SetStaffedBy("alice", []StaffedStation{{ICAO: "LKPR", Station: "Ruzyne Ground North"}})
+	w.SetStaffedBy("ground", []StaffedStation{{ICAO: "LKPR", Position: "ground"}})
+	if n := len(w.Staffed()); n != 2 {
+		t.Fatalf("%d stations, want 2: %+v", n, w.Staffed())
+	}
+	if s, _ := w.st.core.staffedAt("LKPR", traffic.PosGround, "Ruzyne Ground North"); s.By != "alice" {
+		t.Errorf("Ground North by %q, want alice", s.By)
+	}
+	if s, _ := w.st.core.staffedAt("LKPR", traffic.PosGround, "Ruzyne Ground South"); s.By != "ground" {
+		t.Errorf("Ground South by %q, want ground", s.By)
+	}
+}
