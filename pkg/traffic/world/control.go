@@ -4019,8 +4019,20 @@ func (it *controlled) handoff(ev TaxiOrArrival) {
 		// Into another station's sector of the same position (Ground to
 		// Apron, #722): handed over, on the ground only, not mid-clearance.
 		if was != "" && freq != "" && was != freq && pos == traffic.PosGround && !it.gates.Load() {
-			it.say(traffic.Transmission{Position: pos, Frequency: was, Callsign: it.Tail, Intent: traffic.IntentContact,
-				Params: map[string]string{traffic.ParamPosition: string(pos), traffic.ParamStation: station, traffic.ParamFreq: freq}})
+			// Pushing back: it stays with the station that cleared the push
+			// until it is done, then calls the next when ready for taxi
+			// (#1268; a conditional transfer, Doc 4444 12.3.1.4 b), its
+			// own transmission after the push's readback (CAP 413 2.58).
+			if ev.dep != nil && ev.dep.State == traffic.TaxiPushback {
+				it.view.Frequency = was
+				return
+			}
+			tx := traffic.Transmission{Position: pos, Frequency: was, Callsign: it.Tail, Intent: traffic.IntentContact,
+				Params: map[string]string{traffic.ParamPosition: string(pos), traffic.ParamStation: station, traffic.ParamFreq: freq}}
+			if ev.dep != nil && ev.dep.State == traffic.TaxiAwaitingTaxi {
+				tx.Params[traffic.ParamWhen] = "when ready for taxi"
+			}
+			it.say(tx)
 		}
 		return
 	}
