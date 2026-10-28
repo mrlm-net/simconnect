@@ -42,6 +42,22 @@ The records are raw by default. Two options clean them up:
 
 `Area` finds the records through a 1° grid of the index, built on first use; boxes wider than 400 cells are checked on every query.
 
+### Without the tiles
+
+An app that does not ship the tiles can build the same store from records it has (#1260). The simulator's nearest search answers with the same fields as a tile, so its JSON decodes into `[]airspace.Airspace` the same way.
+
+```go
+s := airspace.NewStore(records, airspace.StorePreferNewerSet(), airspace.StoreSkipBroken())
+f := airspace.NewFetchStore(func(b airspace.Box) ([]*airspace.Airspace, error) {
+	return searchTheSim(b) // the records whose box overlaps b
+})
+```
+
+- `NewStore` keeps a record listed more than once (by ID) once, as a search may list it twice.
+- `NewFetchStore` calls the function for each box it is asked about, unless the box lies inside one it asked for before, and keeps what came back. A failed fetch is the query's error, and the box is asked for again next time.
+- `Area`, `At`, `Containing`, `ClassAt` and both options work as over the tiles. Records far outside the box are filtered out, so the wide boxes a live search returns do no harm.
+- The search's 500-result cap is the caller's to handle, for example by fetching smaller boxes.
+
 ## Shapes
 
 `a.Shape()` flattens the outline into rings:

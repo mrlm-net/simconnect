@@ -7,6 +7,12 @@ This project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 ---
 
+## [0.133.0] - 2026-10-28
+
+### Added
+
+- `airspace.NewStore(records, opts...)` and `airspace.NewFetchStore(fetch, opts...)`: a Store over records the caller has, such as the simulator's nearest search decoded into `[]Airspace`, or one asking a fetch function for each box not inside one asked for before (#1260). `Area`, `At`, `Containing`, `ClassAt`, `StorePreferNewerSet` and `StoreSkipBroken` work as over the tiles; a record listed twice is kept once.
+
 ## [0.132.0] - 2026-10-28
 
 ### Added
