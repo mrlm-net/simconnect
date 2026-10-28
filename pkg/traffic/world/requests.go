@@ -232,16 +232,17 @@ func (it *controlled) answer(req string) {
 		both := it.pushAndStart
 		it.mu.Unlock()
 		if both {
-			it.say(traffic.WithFacing(traffic.ClearedPushbackAndStartUp(it.Tail), it.dep.PushFacingSaid()))
-			it.actAfterReadback(traffic.PosGround, req, func() error {
-				if err := it.act("startup", -1); err != nil {
-					return err
-				}
-				return it.act(req, -1)
-			})
+			it.say(reportReadyForTaxi(traffic.WithFacing(traffic.ClearedPushbackAndStartUp(it.Tail), it.dep.PushFacingSaid()), it.dep))
+			// ONE CLEARANCE, NOT TWO ACTS. It was "startup" then "pushback",
+			// which is the same pair of calls ClearStartUp+ClearPushback —
+			// but act now refuses a clearance already in force (#1269), and
+			// at a stand the aircraft taxis out of, ClearStartUp approves
+			// the push itself: the second act would have been refused and
+			// the aeroplane would have sat on its stand for ever.
+			it.actAfterReadback(traffic.PosGround, req, func() error { return it.act("pushstart", -1) })
 			return
 		}
-		it.say(traffic.WithFacing(traffic.ClearedPushback(it.Tail), it.dep.PushFacingSaid()))
+		it.say(reportReadyForTaxi(traffic.WithFacing(traffic.ClearedPushback(it.Tail), it.dep.PushFacingSaid()), it.dep))
 		it.actAfterReadback(traffic.PosGround, req, func() error { return it.act(req, -1) })
 		return
 	case "start_up":

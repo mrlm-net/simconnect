@@ -415,6 +415,9 @@ func Readback(t Transmission) (Transmission, bool) {
 		if p[ParamFacing] != "" {
 			s += ", facing " + p[ParamFacing]
 		}
+		if p[ParamReport] != "" {
+			s += ", wilco" // a request to report: will comply (Doc 4444 12.2.4)
+		}
 	case IntentTaxi:
 		if p[ParamStand] != "" {
 			s = "Taxi to stand " + p[ParamStand]

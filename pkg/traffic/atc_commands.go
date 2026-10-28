@@ -24,6 +24,11 @@ var (
 	ErrTooLate = errors.New("traffic: too late for that")
 	// ErrNotApplicable: the command does not fit the aircraft's phase.
 	ErrNotApplicable = errors.New("traffic: not possible in this phase")
+	// ErrAlreadyCleared: this exact clearance is the one in force. A
+	// controller does not say a thing twice, and a host that offers it
+	// anyway gets a refusal rather than a second identical transmission
+	// with its own readback (#1269).
+	ErrAlreadyCleared = errors.New("traffic: already cleared for that")
 )
 
 // HoldPositionDecel (m/s²) is how firmly an aircraft stops on "hold
