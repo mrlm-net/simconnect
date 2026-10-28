@@ -7,6 +7,12 @@ This project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 ---
 
+## [0.131.0] - 2026-10-28
+
+### Added
+
+- After a pushback into another ground station's sector (an apron, then ground), the crew is told "when ready for taxi contact <station> <frequency>" once the push is done, then asks that station for taxi (#1268). During the push it stays with the station that cleared it; before, it was handed over with a bare "contact" as it left the sector.
+
 ## [0.130.1] - 2026-10-28
 
 ### Fixed

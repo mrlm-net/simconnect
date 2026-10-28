@@ -214,7 +214,7 @@ An airport may have several stations per position, and one controller may work s
 
 `DefaultStations` builds them from the scenery's frequencies. `StationsWith` adds an airport's own stations: a position the override gives replaces its defaults. `PickStation` picks the station that works an aircraft by its taxiways, runway and position.
 
-In the world, each aircraft talks to the station of its sector. Taxiing into another ground station's sector, it is handed over: "CSA1, contact Ruzyne Apron 121.8". An airport's own stations live in the local settings (`stations.json` beside the other overrides), set with `PUT /api/stations?icao=LKPR` and a list of stations. `DELETE` goes back to the defaults; `GET` shows the stations as worked. A night with ground and tower combined:
+In the world, each aircraft talks to the station of its sector. Taxiing into another ground station's sector, it is handed over: "CSA1, contact Ruzyne Apron 121.8". A pushback is worked by the station that cleared it to the end; pushed into another ground station's sector, the crew is told after the push "CSA1, when ready for taxi contact Ruzyne Ground 121.91" and asks that station for taxi. An airport's own stations live in the local settings (`stations.json` beside the other overrides), set with `PUT /api/stations?icao=LKPR` and a list of stations. `DELETE` goes back to the defaults; `GET` shows the stations as worked. A night with ground and tower combined:
 
 ```json
 [{"position":"ground","name":"Ruzyne Ground","freq":"121.91","controller":"LKPR night"},
