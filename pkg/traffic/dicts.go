@@ -102,6 +102,9 @@ func init() {
 			for _, i := range items {
 				m[strings.ToUpper(i.ICAO)] = telephonyEntry{tel: i.Telephony, name: i.Name}
 			}
+			for _, a := range ReservedAirlines { // over every table
+				m[a.ICAO] = telephonyEntry{tel: a.Telephony, name: a.Name}
+			}
 			telephonyNow.Store(m)
 		}).ForSet("airlines", map[string]string{"callsign": "telephony", "name": "name"})) // the MyCrew API's call signs over the shipped list
 	reg(dict.Keyed("traffic.initialisms", "word", "", "",
@@ -181,7 +184,7 @@ func init() {
 		}))
 	reg(dict.Keyed("traffic.airlines", "icao", "", "",
 		defaultAirlines, func(a Airline) string { return strings.ToUpper(a.ICAO) },
-		func(items []Airline) { airlinesNow.Store(items) }))
+		func(items []Airline) { airlinesNow.Store(withReserved(items)) }))
 	reg(dict.Keyed("traffic.gaTypes", "kind", "", "",
 		func() []GATypesItem {
 			var out []GATypesItem

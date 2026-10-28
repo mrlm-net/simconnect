@@ -27,12 +27,14 @@ func DefaultScheduleConfig() ScheduleConfig {
 			"E190": {MinNM: 100, MaxNM: 2000, RunwayM: 1800},
 			"BCS3": {MinNM: 100, MaxNM: 3000, RunwayM: 1900},
 			"A20N": {MinNM: 150, MaxNM: 3200, RunwayM: 2000},
+			"A319": {MinNM: 150, MaxNM: 3000, RunwayM: 1900}, // the reserved airlines'
 			"A320": {MinNM: 150, MaxNM: 3000, RunwayM: 2000},
 			"A321": {MinNM: 200, MaxNM: 3200, RunwayM: 2200},
 			"B738": {MinNM: 150, MaxNM: 3000, RunwayM: 2100},
 			"B38M": {MinNM: 150, MaxNM: 3500, RunwayM: 2100},
 			"B789": {MinNM: 1200, MaxNM: 7500, RunwayM: 2800},
 			"B77W": {MinNM: 1200, MaxNM: 7300, RunwayM: 3000},
+			"LJ25": {MinNM: 100, MaxNM: 1200, RunwayM: 1600}, // a reserved airline's (WTD)
 		},
 	}
 }

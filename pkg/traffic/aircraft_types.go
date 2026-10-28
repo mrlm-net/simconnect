@@ -123,6 +123,11 @@ var knownTypes = []typeSpec{
 		vapp: 115, pitch: 3, flarePitch: 5, flareFt: 20, tdFpm: -120, takeoff: toBizJet(110, 140, 3100), brake: 2.2, taxi: 14, flaps: flapsBiz},
 	{match: []string{"C25C", "CITATION CJ4"}, Type: "C25C", Category: CategoryJet, span: 15.77, length: 16.3, wheelbase: 6.45, cg: 1.5, tod: 1039,
 		vapp: 115, pitch: 3, flarePitch: 5, flareFt: 20, tdFpm: -120, takeoff: toBizJet(112, 145, 2700), brake: 2.2, taxi: 14, flaps: flapsBiz},
+	// Learjet 25D: span, length and stall speed published (Wikipedia,
+	// "Learjet 25", retrieved 2026-10-28); take-off distance and speeds
+	// estimates.
+	{match: []string{"LJ25", "LEARJET 25"}, Type: "LJ25", Category: CategoryJet, span: 10.85, length: 14.5, wheelbase: 6.09, cg: 1.4, tod: 1300,
+		vapp: 118, pitch: 3, flarePitch: 5, flareFt: 20, tdFpm: -130, takeoff: toBizJet(125, 160, 3000), brake: 2.2, taxi: 14, flaps: flapsBiz},
 	{match: []string{"C56X", "CITATION XLS", "CITATION EXCEL"}, Type: "C56X", Category: CategoryJet, span: 17.17, length: 16.0, wheelbase: 6.68, cg: 1.6, tod: 1085,
 		vapp: 112, pitch: 3, flarePitch: 5, flareFt: 20, tdFpm: -120, takeoff: toBizJet(110, 140, 2500), brake: 2.2, taxi: 14, flaps: flapsBiz},
 	{match: []string{"C68A", "CITATION LATITUDE"}, Type: "C68A", Category: CategoryJet, span: 22.05, length: 19.0, wheelbase: 8.23, cg: 1.8, tod: 1091,

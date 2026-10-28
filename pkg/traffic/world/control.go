@@ -3210,6 +3210,8 @@ func typeSaid(icao string) string {
 		return "Diamond " + icao[:2] + "-" + icao[2:] // "Diamond DA-62"
 	case icao == "E50P" || icao == "E55P":
 		return "Phenom"
+	case strings.HasPrefix(icao, "LJ"):
+		return "Learjet"
 	case icao == "E545" || icao == "E550":
 		return "Praetor"
 	case strings.HasPrefix(icao, "B7") && len(icao) >= 3:

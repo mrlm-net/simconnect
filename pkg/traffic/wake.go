@@ -97,7 +97,7 @@ var wakeTypes = map[string]Wake{
 	"AT45": {WakeMedium, RecatE}, "AT46": {WakeMedium, RecatE}, "AT72": {WakeMedium, RecatE}, "AT75": {WakeMedium, RecatE}, "AT76": {WakeMedium, RecatE},
 	"DH8A": {WakeMedium, RecatE}, "DH8C": {WakeMedium, RecatE}, "DH8D": {WakeMedium, RecatE}, "SF34": {WakeMedium, RecatE}, "SU95": {WakeMedium, RecatE},
 	"C208": {WakeLight, RecatF}, "C172": {WakeLight, RecatF}, "SR22": {WakeLight, RecatF}, "PC12": {WakeLight, RecatF}, "BE20": {WakeLight, RecatF},
-	"C25A": {WakeLight, RecatF}, "C25B": {WakeLight, RecatF}, "SF50": {WakeLight, RecatF}, "TBM9": {WakeLight, RecatF},
+	"C25A": {WakeLight, RecatF}, "C25B": {WakeLight, RecatF}, "LJ25": {WakeLight, RecatF}, "SF50": {WakeLight, RecatF}, "TBM9": {WakeLight, RecatF},
 	"C152": {WakeLight, RecatF}, "P28A": {WakeLight, RecatF}, "DA40": {WakeLight, RecatF},
 	// MTOW 7 t or less as well (live, OKFHP: a King Air 350 taken for a medium).
 	"B350": {WakeLight, RecatF}, "DA62": {WakeLight, RecatF}, "BE58": {WakeLight, RecatF}, "C510": {WakeLight, RecatF},
