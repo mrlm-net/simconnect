@@ -7,6 +7,12 @@ This project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 ---
 
+## [0.133.1] - 2026-10-28
+
+### Fixed
+
+- A vectored arrival flies its base straight and is turned to intercept within 1 NM of the turn, not 15–30 s after "for base" (#1279): the intercept heading, flown from where it is told, cut the base to about 0.5 NM and turned it in onto the final early, toward the traffic behind. A corner within 1.5 NM no longer counts as the intercept turn reached.
+
 ## [0.133.0] - 2026-10-28
 
 ### Added

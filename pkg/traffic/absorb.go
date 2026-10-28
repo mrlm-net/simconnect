@@ -755,18 +755,26 @@ func (c *ArrivalController) TurningFinal() bool {
 	// from its base heading with no call, the clearance due only at the
 	// final's last two points).
 	at := c.finalTurn()
-	if k > at {
-		return true
-	}
 	// Turning in off a downwind (more than a right angle), the clearance
-	// and its heading come at the turn, not interceptLeadNM before it on
+	// and its heading come at the turn, not interceptOnBaseNM before it on
 	// the downwind (live, OKZSU cleared 31 s after "fly heading 060, for
 	// spacing").
-	w, lead := c.corners[at], interceptLeadNM
+	w, lead := c.corners[at], interceptOnBaseNM
 	if at > 0 && math.Abs(headingDiff(c.legBearing(at-1), c.legBearing(at))) > 90 {
 		lead = interceptAtTurnNM
 	}
-	return k == at && calc.HaversineNM(c.last.Position.Lat, c.last.Position.Lon, w.Latitude, w.Longitude) <= lead && c.headingFor(k)
+	near := calc.HaversineNM(c.last.Position.Lat, c.last.Position.Lon, w.Latitude, w.Longitude) <= lead
+	if k > at {
+		// A corner within 1.5 NM counts passed (cornerAhead): the turn is
+		// not yet the intercept's until within lead of it or turning there,
+		// the base flown straight to its end.
+		if k > at+1 || at == 0 || near {
+			return true
+		}
+		p := c.corners[at-1]
+		return c.turnedPast(p, w, c.corners[at+1])
+	}
+	return k == at && near && c.headingFor(k)
 }
 
 // interceptAtTurnNM: turning in off a downwind, the approach clearance
@@ -796,9 +804,14 @@ func (c *ArrivalController) headingFor(k int) bool {
 // bearing to it.
 const headingForDeg = 70.0
 
-// interceptLeadNM: on vectors, the approach clearance with the heading to
-// intercept comes this far before the turn onto the final course.
-const interceptLeadNM = 3.0
+// interceptOnBaseNM: on vectors, the approach clearance with the heading to
+// intercept comes this far before the turn onto the intercept, about the
+// anticipation of that turn: the base is flown straight to there. Said 3 NM
+// before (once interceptLeadNM), it came 15–30 s after "for base" and the
+// heading flown from there (InterceptOnHeading) cut the base short, onto
+// the final ahead of the traffic behind (the user, live LKPR: KAL606,
+// RYR1865, RYR1754).
+const interceptOnBaseNM = 1.0
 
 // finalTurn is the index of the corner where the straight legs along the
 // final course begin (within finalAlignedDeg of it). c.mu held, corners 3+.
