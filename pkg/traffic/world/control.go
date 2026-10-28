@@ -78,7 +78,7 @@ type controlled struct {
 	// frame, which must not take it.mu (tugWaitsForJetway).
 	tugAfter atomic.Bool
 	// other is its other airport (SpawnRequest.Other), for a new stand.
-	other string
+	other    string
 	tugStand atomic.Int32
 	// Turnaround (arrival): the departure to start once parked, and
 	// departNow to start it before the dwell is over.
@@ -138,9 +138,9 @@ type controlled struct {
 	// approach; limitHeld: it holds at its clearance limit, the end of its
 	// STAR, for want of one (crewAtLimit, #1096).
 	approachCleared, limitHeld bool
-	higherAt            time.Time
-	landCleared         bool
-	defBase      uint32 // its ID block (cc.ids)
+	higherAt                   time.Time
+	landCleared                bool
+	defBase                    uint32 // its ID block (cc.ids)
 	// gates: the user gives every clearance ("hold at every clearance");
 	// otherwise the tower clears it onto and across runways (#393).
 	gates atomic.Bool
@@ -338,19 +338,28 @@ type ControlView struct {
 	// Rescue: the fire trucks or the ambulance out for it (rescue.go).
 	Rescue []tugView `json:"rescue,omitempty"`
 	// Vehicles: its ground vehicles with their object and state (#710).
-	Vehicles       []VehicleView `json:"vehicles,omitempty"`
-	Model          string        `json:"model"`
-	Stand          string        `json:"stand"`
-	Runway         string        `json:"runway"`
-	Procedure      string        `json:"procedure,omitempty"` // SID, or STAR → approach
-	OnGround       bool          `json:"onGround"`
-	PushbackHeld   bool          `json:"pushbackHeld,omitempty"` // the pushback waits for traffic behind
-	Rush           bool          `json:"rush,omitempty"`         // told to hurry (#510)
-	Manual         bool          `json:"manual,omitempty"`       // the user gives its clearances, no automation
-	Entry          string        `json:"entry,omitempty"`        // a departure's runway entry ("" full length)
-	Deicing        bool          `json:"deicing,omitempty"`      // being de-iced
-	State          string        `json:"state"`
-	HoldingShortOf string        `json:"holdingShortOf,omitempty"`
+	Vehicles     []VehicleView `json:"vehicles,omitempty"`
+	Model        string        `json:"model"`
+	Stand        string        `json:"stand"`
+	Runway       string        `json:"runway"`
+	Procedure    string        `json:"procedure,omitempty"` // SID, or STAR → approach
+	OnGround     bool          `json:"onGround"`
+	PushbackHeld bool          `json:"pushbackHeld,omitempty"` // the pushback waits for traffic behind
+	Rush         bool          `json:"rush,omitempty"`         // told to hurry (#510)
+	Manual       bool          `json:"manual,omitempty"`       // the user gives its clearances, no automation
+	Entry        string        `json:"entry,omitempty"`        // a departure's runway entry ("" full length)
+	Deicing      bool          `json:"deicing,omitempty"`      // being de-iced
+	State        string        `json:"state"`
+	// Request is what the crew is asking for right now, in the engine's own
+	// words: "pushback", "start_up", "taxi"; "" when they are waiting on
+	// nobody (TaxiEvent.Request, #462).
+	//
+	// IT IS WHAT THE OFFERED LIST CANNOT SAY. Actions names what a controller
+	// MAY give; a departure cleared to push and start is offered nothing at
+	// all, correctly, and a strip with no buttons and no reason reads as a
+	// stuck game. This is the other half: whose move it is.
+	Request        string `json:"request,omitempty"`
+	HoldingShortOf string `json:"holdingShortOf,omitempty"`
 	// TaxiRemainingM: a departure's taxi still to go to its runway (m).
 	TaxiRemainingM float64        `json:"taxiRemainingM,omitempty"`
 	AtLimit        bool           `json:"atLimit"`
@@ -1592,6 +1601,7 @@ func (it *controlled) update(ev TaxiOrArrival) {
 		if e.Err != nil {
 			v.Error = e.Err.Error()
 		}
+		v.Request = e.Request
 		v.Actions = departureActions(e.State, e.HoldingShortOf, it.dep)
 		if it.clearanceDue != nil {
 			v.Actions = append([]string{"clearance"}, v.Actions...)

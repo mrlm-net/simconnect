@@ -27,6 +27,8 @@ This project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 - `traffic.WithReportReady(t, what)` adds what the crew is to report next to a push approval: "CSA1, pushback and start up approved, report ready for taxi" (CAP 413 4.33, Doc 4444 12.3.4.4), read back "wilco". It composes with `WithFacing` either way round, and leaves a start-up approval and an empty report alone.
   - It is the other half of the gate above. Withholding the taxi clearance on the stand is right, and on its own leaves a strip that went quiet with no reason given; said, the next call stops being a guess. The `World` says it with a push approval whenever the taxi clearance is still to come, the player's and the automatic ground's alike.
 - `traffic.ErrAlreadyCleared`: this exact clearance is the one in force.
+- `world.ControlView.Request` (`request`): what the crew is asking for right now, in the engine's own words — "pushback", "start_up", "taxi", or "" when they are waiting on nobody (`TaxiEvent.Request`, #462).
+  - It is what the offered list cannot say. `Actions` names what a controller MAY give, and a departure cleared to push and start is now offered nothing at all — correctly, because ATC has had its say. A strip with no buttons and no reason reads as a stuck game; this is the other half, whose move it is.
 
 ## [0.129.1] - 2026-10-27
 
