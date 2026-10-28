@@ -2,6 +2,7 @@ package world
 
 import (
 	"encoding/json"
+	"errors"
 	"net/http"
 
 	"github.com/mrlm-net/simconnect/pkg/traffic"
@@ -54,22 +55,61 @@ func registerHold(mux *http.ServeMux, st *state) {
 	})
 }
 
-// hold is World.Hold on the scheduler.
+// ErrHeld: no traffic spawned while it is held for a replay (#1283).
+var ErrHeld = errors.New("world: traffic held for a replay")
+
+// ErrActuator: no traffic of its own spawned by a World linked as an
+// actuator; the director's is flown there (#1284).
+var ErrActuator = errors.New("world: an actuator flies its director's traffic")
+
+// actuating reports whether the World is an actuator (#710): the
+// director decides its traffic (#1284).
+func (s *scheduler) actuating() bool {
+	s.st.mu.Lock()
+	defer s.st.mu.Unlock()
+	return s.st.actLink != nil
+}
+
+// isHeld reports whether the traffic is held for a replay.
+func (s *scheduler) isHeld() bool {
+	s.st.mu.Lock()
+	defer s.st.mu.Unlock()
+	return s.st.held
+}
+
+// enable switches the schedule on or off; while held, only remembered
+// for when the hold ends (#1283: a schedule set, real traffic switched
+// on, or the settings replayed on a new connection started it beside a
+// replay's traffic).
+func (s *scheduler) enable(on bool) {
+	s.st.mu.Lock()
+	held := s.st.held
+	if held {
+		s.st.heldEnabled = on
+	}
+	s.st.mu.Unlock()
+	if !held {
+		s.mgr.SetEnabled(on)
+	}
+}
+
+// hold is World.Hold on the scheduler. Held again, whatever came in
+// meanwhile is removed too (#1283).
 func (s *scheduler) hold(on bool) HoldResult {
-	s.mu.Lock()
-	if s.held == on {
-		s.mu.Unlock()
-		return HoldResult{Held: on}
+	s.st.mu.Lock()
+	was := s.st.held
+	if on && !was {
+		s.st.heldEnabled = s.mgr.Enabled()
 	}
-	s.held = on
-	if on {
-		s.heldEnabled = s.mgr.Enabled()
-	}
-	was := s.heldEnabled
-	s.mu.Unlock()
+	s.st.held = on
+	enabled := s.st.heldEnabled
+	s.st.mu.Unlock()
 	if !on {
-		s.mgr.SetEnabled(was)
-		s.cc.log.printf("traffic held no more: the schedule %s", map[bool]string{true: "goes on", false: "stays off"}[was])
+		if !was {
+			return HoldResult{}
+		}
+		s.mgr.SetEnabled(enabled)
+		s.cc.log.printf("traffic held no more: the schedule %s", map[bool]string{true: "goes on", false: "stays off"}[enabled])
 		return HoldResult{}
 	}
 	s.mgr.SetEnabled(false)

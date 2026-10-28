@@ -72,8 +72,8 @@ func (s *scheduler) corridorTick(now time.Time) {
 		s.corridorAt = now
 	}
 	s.mu.Unlock()
-	if !due || !c.Enabled {
-		return
+	if !due || !c.Enabled || s.isHeld() {
+		return // held for a replay: none (#1283)
 	}
 	user := s.st.core.userAt()
 	if user.Lat == 0 && user.Lon == 0 {

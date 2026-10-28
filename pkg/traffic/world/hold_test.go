@@ -14,7 +14,8 @@ func (h *holdSpawner) Remove(f traffic.ManagedFlight) { h.removed = append(h.rem
 
 // TestHold: holding stops the schedule and removes the flights in the
 // simulator (those not yet there wait); letting go gives the schedule
-// back as it was; holding twice does nothing more.
+// back as it was; held again, only what came in meanwhile is removed
+// (none here).
 func TestHold(t *testing.T) {
 	w := New(Options{DataDir: t.TempDir()})
 	cc := &controlCenter{core: w.st.core, log: w.st.core.log, clock: traffic.NewSimClock(), items: map[int]*controlled{}}
@@ -28,7 +29,7 @@ func TestHold(t *testing.T) {
 		{Callsign: "CSA2", Type: "A320", Origin: "LKPR", Destination: "EDDF", STD: now.Add(5 * time.Hour)},
 	})
 	mgr.Tick(now)
-	s := &scheduler{cc: cc, mgr: mgr}
+	s := &scheduler{st: w.st, cc: cc, mgr: mgr}
 	res := s.hold(true)
 	if !res.Held || res.Removed != 1 || mgr.Enabled() || len(sp.removed) != 1 || sp.removed[0] != "CSA1" {
 		t.Fatalf("hold: %+v, enabled %v, removed %v", res, mgr.Enabled(), sp.removed)

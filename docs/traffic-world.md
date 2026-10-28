@@ -275,6 +275,8 @@ traffic-director -actuator simpc:7710 -token s3cret -addr :8080 \
 
 The link is JSON lines over TCP, and the director opens it with the token. If the director goes away, the actuator keeps flying, and the next director to connect takes over. In a program, `world.ServeActuator(ctx, w, addr, token)` and `world.DialDirector(ctx, w, addr, token)` do the same. `world.Loopback(ctx, actuator, director)` links the two parts in one process (the airport map's `-split`) to check the split against the World in one piece.
 
+An actuator flies its director's traffic only (#1284): while it is linked, its own schedule, corridors and real-world traffic spawn nothing, and a scenario's cast is refused with `world.ErrActuator`. Schedule settings made meanwhile stay, and apply once the link ends.
+
 The actuator sends the departures' tugs and fuel trucks (with their routes) for the director's map each second. It also sends each controller's state each second, and the director answers its plain reads (state, route, plan, hold) from that; a command to a controller drops its snapshot, and reads with arguments are still a call across the network.
 
 `ScheduleSettings.OffsetMin` (`"offsetMin"`) flies the airline timetable of that many minutes later now: `600` puts a morning wave into an evening. VFR flights keep the daylight of now.
@@ -291,7 +293,9 @@ In multiplayer each player's sim is an actuator; the director (on a server) deci
 
 ## Holding the traffic for a replay
 
-A replay shows the traffic recorded with the flight (`flight.GhostFleet`), so the World's live traffic must not be there at the same time. `World.Hold(true)` (`POST /api/hold {"on": true}`) stops the schedule and removes every aircraft of ours from the simulator, marking each flight done; flights not yet in the simulator stay in the timetable. `World.Hold(false)` gives the schedule back as it was (on or off), and it fills the scene from its timetable as at any start. The aircraft removed are not brought back where they were: a replay can last any time, and their flights have moved on meanwhile. It returns `HoldResult{Held, Removed}`. Holding again, or letting go when not held, does nothing.
+A replay shows the traffic recorded with the flight (`flight.GhostFleet`), so the World's live traffic must not be there at the same time. `World.Hold(true)` (`POST /api/hold {"on": true}`) stops the schedule and removes every aircraft of ours from the simulator, marking each flight done; flights not yet in the simulator stay in the timetable. `World.Hold(false)` gives the schedule back as it was (on or off), and it fills the scene from its timetable as at any start. The aircraft removed are not brought back where they were: a replay can last any time, and their flights have moved on meanwhile. It returns `HoldResult{Held, Removed}`. Letting go when not held does nothing; holding again removes whatever came in meanwhile.
+
+While held, nothing brings traffic in (#1283): a schedule set (`SetSchedule`, or the settings replayed on a new connection) or real-world traffic switched on is remembered for when the hold ends, not started; corridors spawn nothing; a scenario's cast is refused with `ErrHeld`. The hold is the World's, so a new connection keeps it. Aircraft spawned by hand (`POST /api/control`) are the host's choice and still come in.
 
 ## Real start: one snapshot placed at the start
 
