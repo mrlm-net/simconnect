@@ -376,25 +376,25 @@ func TestSequencerTacticalSwap(t *testing.T) {
 	s.Update(now, []ApproachAircraft{ac("TVS223", 20, 250), ac("OKYDV", 22, 250)})
 	// TVS223 slows on its downwind; OKYDV, behind it by the first look, now
 	// lands before it: first come, first served keeps TVS223 first.
-	seq := s.Update(now.Add(30*time.Second), []ApproachAircraft{ac("TVS223", 19, 200), ac("OKYDV", 20, 250)})
+	seq := s.Update(now.Add(30*time.Second), []ApproachAircraft{ac("TVS223", 19, 160), ac("OKYDV", 20, 250)})
 	if got := order(seq); got != "OKYDV TVS223 " {
 		t.Fatalf("order %s, want OKYDV first", got)
 	}
-	seq = s.Update(now.Add(time.Minute), []ApproachAircraft{ac("TVS223", 17.5, 200), ac("OKYDV", 18, 250)})
+	seq = s.Update(now.Add(time.Minute), []ApproachAircraft{ac("TVS223", 17.5, 160), ac("OKYDV", 18, 250)})
 	if got := order(seq); got != "OKYDV TVS223 " {
 		t.Errorf("next look %s: the swap did not hold", got)
 	}
 	// Swapping would cost the first more than TacticalSwapMaxCost: kept.
 	s = NewApproachSequencer("06", SequencerOptions{TacticalSwapMaxCost: time.Second})
 	s.Update(now, []ApproachAircraft{ac("TVS223", 20, 250), ac("OKYDV", 22, 250)})
-	seq = s.Update(now.Add(30*time.Second), []ApproachAircraft{ac("TVS223", 19, 200), ac("OKYDV", 20, 250)})
+	seq = s.Update(now.Add(30*time.Second), []ApproachAircraft{ac("TVS223", 19, 160), ac("OKYDV", 20, 250)})
 	if got := order(seq); got != "TVS223 OKYDV " {
 		t.Errorf("order %s with a 1 s cost limit, want kept", got)
 	}
 	// Off: never.
 	s = NewApproachSequencer("06", SequencerOptions{TacticalSwapGain: -1})
 	s.Update(now, []ApproachAircraft{ac("TVS223", 20, 250), ac("OKYDV", 22, 250)})
-	if got := order(s.Update(now.Add(30*time.Second), []ApproachAircraft{ac("TVS223", 19, 200), ac("OKYDV", 20, 250)})); got != "TVS223 OKYDV " {
+	if got := order(s.Update(now.Add(30*time.Second), []ApproachAircraft{ac("TVS223", 19, 160), ac("OKYDV", 20, 250)})); got != "TVS223 OKYDV " {
 		t.Errorf("order %s with swaps off", got)
 	}
 }
@@ -410,7 +410,7 @@ func TestSequencerSwapHolds(t *testing.T) {
 	first := func(seq []SequenceEntry) string { return seq[0].Callsign }
 	s := NewApproachSequencer("06", SequencerOptions{})
 	s.Update(now, []ApproachAircraft{ac("TVS223", 20, 250), ac("OKYDV", 22, 250)})
-	if got := first(s.Update(now.Add(30*time.Second), []ApproachAircraft{ac("TVS223", 19, 200), ac("OKYDV", 20, 250)})); got != "OKYDV" {
+	if got := first(s.Update(now.Add(30*time.Second), []ApproachAircraft{ac("TVS223", 19, 160), ac("OKYDV", 20, 250)})); got != "OKYDV" {
 		t.Fatalf("no swap: %s first", got)
 	}
 	// Now TVS223 would be the better first again: kept within the hold.

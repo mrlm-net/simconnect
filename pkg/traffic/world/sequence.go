@@ -322,6 +322,13 @@ func (q *sequences) absorb(now time.Time, icao string, seq []traffic.SequenceEnt
 			a, err = it.arr.AbsorbDelay(delay)
 			return err
 		})
+		// On the final not yet fixed, its delay is how much it is short: its
+		// final approach speed, and around at once when that cannot keep the
+		// minimum (closingUp), as when fixed; it was left alone (offline
+		// LKPR: a B738 direct to the final behind a TBM9, 5 min early).
+		if errors.Is(err, traffic.ErrNotOnProcedure) && !e.Fixed && e.Leader != "" && e.Delay > e.ShortBy {
+			e.ShortBy = e.Delay
+		}
 		if errors.Is(err, traffic.ErrNotOnProcedure) && e.ShortBy >= spacingActFrom {
 			lead, ok := dtg[e.Leader]
 			if !ok {
@@ -534,7 +541,13 @@ func (q *sequences) closingUp(now time.Time, it *controlled, e traffic.SequenceE
 			}
 			it.callIf(pos, prioLanding, still, nil, func() { it.say(tx) })
 		}
-		return
+		// The final speed takes it, or nearly: given its time. Far more short
+		// than it gains: decided now, while there is room, not breakOffAfter
+		// later and that much closer (offline LKPR: a B738 5 min short behind
+		// a TBM9 gained 9 s, sent around 20 s later 1.6 NM behind it).
+		if e.ShortBy < gain+breakOffFrom {
+			return
+		}
 	}
 	if broke || now.Sub(slowedAt) < breakOffAfter || e.ShortBy < breakOffFrom || e.DistanceToGoNM <= breakOffNM || gapNM >= e.SpacingNM {
 		return
