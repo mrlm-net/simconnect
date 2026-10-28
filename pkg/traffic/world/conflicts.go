@@ -257,14 +257,14 @@ func (w *conflictWatch) tick(now time.Time, aircraft []traffic.TrackedAircraft) 
 		}
 		r, ok := traffic.ResolveConflict(c, aircraft, only, opts)
 		if !ok {
-			return ""
+			return w.arrivalSuggestion(c, aircraft, cs) // ours on their STARs
 		}
 		for _, a := range aircraft {
 			if a.ObjectID == r.ObjectID {
 				it.mu.Lock()
 				pos := it.atc
 				it.mu.Unlock()
-				return traffic.Resolved(pos, r, a.AltFt, a.Heading, a.GroundKts, traffic.SaidWhere{TAFt: w.s.cc.taOf(it.ICAO), MagVar: w.s.cc.magVar(it.ICAO)}).Text
+				return w.worded(it.ICAO, traffic.Resolved(pos, r, a.AltFt, a.Heading, a.GroundKts, traffic.SaidWhere{TAFt: w.s.cc.taOf(it.ICAO), MagVar: w.s.cc.magVar(it.ICAO)}))
 			}
 		}
 		return ""
@@ -584,6 +584,34 @@ func (w *conflictWatch) view() ([]traffic.Conflict, []resolutionView) {
 	return append([]traffic.Conflict{}, w.now...), append([]resolutionView{}, w.done...)
 }
 
+// arrivalCand is an arrival of ours in a conflict with its sequence entry.
+type arrivalCand struct {
+	it *controlled
+	e  traffic.SequenceEntry
+}
+
+// trailerOf is the one of ours on its STAR in conflict c landing later
+// (nil none), with the sequences.
+func (w *conflictWatch) trailerOf(c traffic.Conflict) (*sequences, *arrivalCand) {
+	w.s.st.mu.Lock()
+	q := w.s.st.sequences
+	w.s.st.mu.Unlock()
+	if q == nil {
+		return nil, nil
+	}
+	var trailer *arrivalCand
+	for _, cs := range []string{c.A, c.B} {
+		it := w.s.cc.byTail(cs)
+		if it == nil || it.arr == nil || it.arr.State() != traffic.ArrivalApproaching {
+			continue
+		}
+		if _, e, ok := q.entryOf(it.ICAO, cs); ok && (trailer == nil || e.Landing.After(trailer.e.Landing)) {
+			trailer = &arrivalCand{it, e}
+		}
+	}
+	return q, trailer
+}
+
 // arrivalConflictRecheck is how long an arrival told to lose time for a
 // conflict flies it before the conflict is looked at again (#455).
 const arrivalConflictRecheck = 90 * time.Second
@@ -602,26 +630,7 @@ const arrivalConflictSoon = 3 * time.Minute
 // absorbed. Holds are the exception (live, AUA529 held five minutes for a
 // conflict at the merge with a delay of two).
 func (w *conflictWatch) resolveArrivals(now time.Time, c traffic.Conflict) {
-	w.s.st.mu.Lock()
-	q := w.s.st.sequences
-	w.s.st.mu.Unlock()
-	if q == nil {
-		return
-	}
-	type cand struct {
-		it *controlled
-		e  traffic.SequenceEntry
-	}
-	var trailer *cand
-	for _, cs := range []string{c.A, c.B} {
-		it := w.s.cc.byTail(cs)
-		if it == nil || it.arr == nil || it.arr.State() != traffic.ArrivalApproaching {
-			continue
-		}
-		if _, e, ok := q.entryOf(it.ICAO, cs); ok && (trailer == nil || e.Landing.After(trailer.e.Landing)) {
-			trailer = &cand{it, e}
-		}
-	}
+	q, trailer := w.trailerOf(c)
 	if trailer == nil || !w.mayAct(trailer.it) {
 		return // the player's (#1096): theirs to space, unless the safety net's due
 	}

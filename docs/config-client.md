@@ -54,6 +54,10 @@ Client options are available via the root `simconnect` package (with `Client` pr
 
 Keeps the last 1024 calls with their send IDs, so an exception is logged with the call it was raised for (`call="RequestDataOnSimObject(6306, 6306, 0, 1, …)"`: the call and its first arguments, the handle left out), and `Engine.CallFor(sendID)` names it. Each call costs one more `SimConnect_GetLastSentPacketID`; meant for tracking an exception down. With the manager: `manager.WithEngineOptions(engine.WithCallTrace())`.
 
+### WithDispatchEvent
+
+Opens the connection with a Win32 event that SimConnect sets when a message waits (`hEventHandle` of `SimConnect_Open`). The dispatcher waits on it, at most 50 ms at a time, instead of polling: a message is taken as it comes, and an idle connection costs a poll every 50 ms, not one every millisecond while messages flow. Off by default, where the queue is polled every millisecond while messages flow and backed off to 50 ms when idle. With the manager: `manager.WithEngineOptions(engine.WithDispatchEvent())`.
+
 ## Option Details
 
 ### WithBufferSize

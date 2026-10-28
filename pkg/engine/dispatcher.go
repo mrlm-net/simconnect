@@ -55,6 +55,13 @@ const (
 	activeWindow = 250 * time.Millisecond
 )
 
+// dispatchWaiter is a connection opened with a dispatch event
+// (WithDispatchEvent): WaitDispatch returns as a message waits.
+type dispatchWaiter interface {
+	HasDispatchEvent() bool
+	WaitDispatch(d time.Duration)
+}
+
 // ErrConnectionLost ends a stream: the simulator quit or restarted (its
 // pipe closed), or GetNextDispatch failed maxErrorsInRow times in a row.
 // The last Message carries it, then the stream closes.
@@ -132,8 +139,15 @@ func (e *Engine) dispatch() error {
 				errorsInRow = 0
 
 				if recv == nil {
-					// No message available: while they flow, poll again soon;
-					// idle, apply adaptive backoff to reduce CPU usage
+					// No message available. With a dispatch event (#855 E6):
+					// wait for SimConnect to set it, at most maxSleep, woken
+					// as the next message comes, neither late nor spinning.
+					if w, ok := e.api.(dispatchWaiter); ok && w.HasDispatchEvent() {
+						w.WaitDispatch(maxSleep)
+						continue
+					}
+					// Polled: while they flow, poll again soon; idle, apply
+					// adaptive backoff to reduce CPU usage
 					if time.Since(lastMessage) < activeWindow {
 						time.Sleep(minSleep)
 						continue

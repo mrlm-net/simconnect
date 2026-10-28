@@ -23,7 +23,9 @@ func TestReadyForTaxiContact(t *testing.T) {
 	if testing.Short() {
 		t.Skip("runs the World")
 	}
-	o := Options{DataDir: dataDir(t), ICAO: "LKPR", FrameRate: 10}
+	// The manual clock at midday: on the wall clock, at night the schedule
+	// had no departure in its first 10 minutes.
+	o := Options{DataDir: dataDir(t), ICAO: "LKPR", Manual: true, FrameRate: 10}
 	o.World.DataDir = t.TempDir() // the stations set here
 	if testing.Verbose() {
 		o.World.Output = os.Stderr

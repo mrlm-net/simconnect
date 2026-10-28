@@ -30,6 +30,12 @@ var surfaceNames = map[types.SIMCONNECT_FACILITY_RUNWAY_SURFACE_TYPE]string{
 	types.SIMCONNECT_FACILITY_RUNWAY_SURFACE_TYPE_TARMAC:             "tarmac",
 	types.SIMCONNECT_FACILITY_RUNWAY_SURFACE_TYPE_WRIGHT_FLYER_TRACK: "track",
 	types.SIMCONNECT_FACILITY_RUNWAY_SURFACE_TYPE_OCEAN:              "water",
+	// MSFS 2024 water kinds: seaplane runways, not land ones.
+	types.SIMCONNECT_FACILITY_RUNWAY_SURFACE_TYPE_WATER:       "water",
+	types.SIMCONNECT_FACILITY_RUNWAY_SURFACE_TYPE_POND:        "water",
+	types.SIMCONNECT_FACILITY_RUNWAY_SURFACE_TYPE_LAKE:        "water",
+	types.SIMCONNECT_FACILITY_RUNWAY_SURFACE_TYPE_RIVER:       "water",
+	types.SIMCONNECT_FACILITY_RUNWAY_SURFACE_TYPE_WASTE_WATER: "water",
 }
 
 // surfaceName is a raw SURFACE's name; "" when not read or not known.

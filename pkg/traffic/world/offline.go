@@ -196,9 +196,11 @@ func (st *state) dumpAirports(list []traffic.AirportRef) {
 
 // LoadAirportsFile serves the worldwide airport list from a dump (as
 // Options.AirportDumpDir writes airports.json) instead of the simulator:
-// where diversions go and en-route traffic comes from. It returns how many
-// airports it holds.
-func (w *World) LoadAirportsFile(path string) (int, error) {
+// where diversions go and en-route traffic comes from. With kinds, only
+// the airports of those kinds (traffic.AirportKindTowered, …; an entry
+// without a kind counts as one of every kind) are held. It returns how
+// many airports it holds.
+func (w *World) LoadAirportsFile(path string, kinds ...string) (int, error) {
 	b, err := os.ReadFile(path)
 	if err != nil {
 		return 0, err
@@ -209,7 +211,7 @@ func (w *World) LoadAirportsFile(path string) (int, error) {
 	}
 	refs := make(map[string]traffic.AirportRef, len(list))
 	for _, a := range list {
-		if a.ICAO != "" {
+		if a.ICAO != "" && (len(kinds) == 0 || a.Kind == "" || slices.Contains(kinds, a.Kind)) {
 			refs[strings.ToUpper(a.ICAO)] = a
 		}
 	}
@@ -220,6 +222,22 @@ func (w *World) LoadAirportsFile(path string) (int, error) {
 	w.st.airportRefs = refs
 	w.st.mu.Unlock()
 	return len(refs), nil
+}
+
+// AirportDataDir is where an airport's offline data (LoadAirportDir) is
+// in simconnect-data at root: <root>/<ICAO> for a towered airport with an
+// ICAO code (four letters), <root>/fields/<kind>/<ident> for the others
+// (kind "" as towered; 06FA, CEN5 in fields/towered).
+func AirportDataDir(root string, a traffic.AirportRef) string {
+	ident, kind := strings.ToUpper(a.ICAO), a.Kind
+	if kind == "" {
+		kind = traffic.AirportKindTowered
+	}
+	icao := len(ident) == 4 && strings.Trim(ident, "ABCDEFGHIJKLMNOPQRSTUVWXYZ") == ""
+	if kind == traffic.AirportKindTowered && icao {
+		return filepath.Join(root, ident)
+	}
+	return filepath.Join(root, "fields", kind, ident)
 }
 
 // offlineBubbleNM: with no simulator (SimlessAI), the airports this close

@@ -311,8 +311,12 @@ func (p *GroundPicture) giveWayTo(id uint32, path *GroundPath, from, look, half 
 // corridor (points the pushing aircraft sweeps, with half its span): its
 // fuselage within half+PushClearMarginMeters of the corridor, or its path
 // ahead within both half-spans plus GiveWayMarginMeters — traffic taxiing
-// behind the stand. Parked neighbours are a stand spacing away and do not
-// count. It returns the first such aircraft's ID.
+// behind the stand. A neighbour parked on its stand counts only with its
+// fuselage inside the corridor itself, a wing sweeping it: it stays there
+// until its own push, so a push held off its margin waited for that, and
+// the neighbour's tug and fuel truck for the push (live, LKPR C26 and C27:
+// DLH1560 held "for TVS1517 behind the stand" 40 minutes and more). It
+// returns the first such aircraft's ID.
 func (p *GroundPicture) corridorBlocked(id uint32, corridor []airport.LatLon, half float64, withPaths bool, now time.Time) (uint32, bool) {
 	p.mu.Lock()
 	type other struct {
@@ -350,6 +354,9 @@ func (p *GroundPicture) corridorBlocked(id uint32, corridor []airport.LatLon, ha
 		reach := half + PushClearMarginMeters
 		if withPaths && len(o.e.ahead) > 0 {
 			reach += oh
+		}
+		if o.e.parked && len(o.e.ahead) == 0 && !o.e.pushing {
+			reach = half
 		}
 		for d := -o.e.tail; d <= o.e.nose+0.01; d += trafficBodyStep {
 			if near(offsetHeading(o.e.pos, o.e.hdg, d), reach) {

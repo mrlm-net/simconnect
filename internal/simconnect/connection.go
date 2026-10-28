@@ -16,6 +16,11 @@ func (sc *SimConnect) Connect() error {
 
 	procedure := sc.library.LoadProcedure("SimConnect_Open")
 
+	var event uintptr
+	if sc.wantEvent {
+		event = newDispatchEvent()
+	}
+
 	// The DLL writes the handle into a local, stored under the lock after:
 	// writing it straight into sc.connection raced with readers.
 	var handle uintptr
@@ -24,22 +29,26 @@ func (sc *SimConnect) Connect() error {
 		uintptr(unsafe.Pointer(szName)),  // szName
 		0,                                // hWnd (NULL)
 		0,                                // UserEventWin32
-		0,                                // hEventHandle
+		event,                            // hEventHandle (0 none: polled)
 		uintptr(0),                       // ConfigIndex
 	)
 
 	if !isHRESULTSuccess(hresult) {
+		closeEvent(event)
 		// This needs to be handled properly, maybe with a custom error type.
 		return fmt.Errorf("SimConnect_Open failed with HRESULT: 0x%08X", hresult)
 	}
 
 	// Verify handle was set or return an error
 	if handle == 0 {
+		closeEvent(event)
 		return fmt.Errorf("SimConnect_Open succeeded but handle is null")
 	}
 
 	sc.sync.Lock()
 	sc.connection = handle
+	closeEvent(sc.event) // a connection opened again: the last one's
+	sc.event = event
 	sc.sync.Unlock()
 
 	return nil
@@ -65,6 +74,8 @@ func (sc *SimConnect) Disconnect() error {
 
 		sc.connection = 0
 	}
+	closeEvent(sc.event)
+	sc.event = 0
 
 	return nil
 }

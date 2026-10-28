@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"io"
 	"log/slog"
+	"sync"
 	"sync/atomic"
 	"testing"
 	"time"
@@ -135,5 +136,84 @@ func TestDispatchDropsEmptyMessage(t *testing.T) {
 	got, closed := drain(e, 2*time.Second)
 	if !closed || len(got) != 1 || types.SIMCONNECT_RECV_ID(got[0].DwID) != types.SIMCONNECT_RECV_ID_QUIT {
 		t.Fatalf("closed %v, %d messages", closed, len(got))
+	}
+}
+
+// eventAPI is a connection with a dispatch event: WaitDispatch returns as
+// soon as a message is sent (or after d), GetNextDispatch hands the sent
+// ones over.
+type eventAPI struct {
+	simconnect.API
+	mu      sync.Mutex
+	pending [][]byte
+	signal  chan struct{}
+	waits   atomic.Int64
+	polls   atomic.Int64
+}
+
+func (a *eventAPI) SubscribeToSystemEvent(uint32, string) error { return nil }
+func (a *eventAPI) HasDispatchEvent() bool                      { return true }
+func (a *eventAPI) WaitDispatch(d time.Duration) {
+	a.waits.Add(1)
+	select {
+	case <-a.signal:
+	case <-time.After(d):
+	}
+}
+func (a *eventAPI) GetNextDispatch() (*types.SIMCONNECT_RECV, uint32, error) {
+	a.polls.Add(1)
+	a.mu.Lock()
+	defer a.mu.Unlock()
+	if len(a.pending) == 0 {
+		return nil, 0, nil
+	}
+	m := a.pending[0]
+	a.pending = a.pending[1:]
+	return (*types.SIMCONNECT_RECV)(unsafe.Pointer(&m[0])), uint32(len(m)), nil
+}
+
+// send queues m and sets the event, as SimConnect does.
+func (a *eventAPI) send(m []byte) {
+	a.mu.Lock()
+	a.pending = append(a.pending, m)
+	a.mu.Unlock()
+	select {
+	case a.signal <- struct{}{}:
+	default:
+	}
+}
+
+// With a dispatch event (#855 E6) the dispatcher waits on it: an idle
+// connection is looked at only as the wait times out, and a message is
+// taken as it is sent, not after a backed-off sleep of up to 50 ms.
+func TestDispatchWaitsOnTheEvent(t *testing.T) {
+	api := &eventAPI{signal: make(chan struct{}, 1)}
+	ctx, cancel := context.WithCancel(context.Background())
+	e := &Engine{api: api, ctx: ctx, cancel: cancel, config: &Config{Heartbeat: HEARTBEAT_6HZ},
+		logger: slog.New(slog.NewTextHandler(io.Discard, nil)), queue: make(chan Message, 16)}
+	e.dispatch()
+	defer func() { e.cancel(); e.sync.Wait() }()
+	time.Sleep(500 * time.Millisecond) // idle, backed off
+	if api.waits.Load() == 0 {
+		t.Fatalf("never waited on the event (%d polls)", api.polls.Load())
+	}
+	if n := api.polls.Load(); n > 500/int64(maxSleep/time.Millisecond)+2 {
+		t.Errorf("%d polls in 500 ms idle", n)
+	}
+	var worst time.Duration
+	for range 5 {
+		at := time.Now()
+		api.send(recvBytes(types.SIMCONNECT_RECV_ID_OPEN))
+		select {
+		case m := <-e.queue:
+			m.Release()
+			worst = max(worst, time.Since(at))
+		case <-time.After(time.Second):
+			t.Fatal("a message sent was not taken in a second")
+		}
+		time.Sleep(300 * time.Millisecond) // idle again between
+	}
+	if worst > 10*time.Millisecond {
+		t.Errorf("a message taken %s after it was sent", worst)
 	}
 }
