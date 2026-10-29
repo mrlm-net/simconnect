@@ -84,6 +84,26 @@ An airport's frequencies come with its layout. `Layout.Frequencies` holds each o
 - approach to centre;
 - tower to the common traffic frequency.
 
+### Fields without a tower
+
+Most airports have no tower: about 35,000 in the simulator's data. There nobody clears anyone; pilots announce what they do on the field's common frequency (#1296). `FrequencyFor` still falls back to that frequency, so a client that asks for the tower there gets it.
+
+- `Layout.Controlled()` tells whether the field has a tower.
+- `SelfAnnounceFrequency()` is the common frequency to announce on: the CTAF, else the UNICOM, else the MULTICOM (`Frequency.Service`). A frequency named only for the runway lights is not one (AYBK's MULTICOM "ACTIVATE LIGHT ONLY").
+- `ControlledFrequency(kind)` is a controller's frequency only, never the common one or flight information. At a field without a tower there is no tower; ground and clearance count only on a frequency of the field's own (KVUO: clearance by Portland). Approach, departure and centre fall back as in `FrequencyFor`.
+
+The calls go to "<Field> Traffic" (`TrafficStation`, `PosTraffic`, `IntentSelfAnnounce`). Each ends with the field's name, and nobody answers:
+
+| Call | Said |
+|---|---|
+| `SelfTaxiing` | "Henderson Traffic, OKABC, taxiing to runway 24, Henderson" |
+| `SelfDeparting` | "…, departing runway 24, to the north, Henderson"; `PatternStay`: "remaining in the pattern" |
+| `SelfInbound` | "…, 10 miles south, inbound for landing, Henderson" |
+| `SelfPattern` | "…, left downwind runway 24, Henderson" (a leg as said: "right base", "final") |
+| `SelfClear` | "…, clear of runway 24, Henderson" |
+
+An IFR flight at such a field gets its clearance and release from approach or centre. The release is `ReleasedForDeparture` ("OKABC, released for departure, report airborne"), the cancellation `CancelIFR` ("Portland Approach, OKABC, cancel IFR"), answered with `IFRCancelled` ("OKABC, IFR cancellation received").
+
 Who works an aircraft follows its state:
 
 | | Positions |

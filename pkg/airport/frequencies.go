@@ -30,7 +30,18 @@ type Frequency struct {
 	Kind string  `json:"kind"`
 	MHz  float64 `json:"mhz"`
 	Name string  `json:"name"` // as the scenery names it ("PRAHA TOWER"), may be empty
+	// Service is which common frequency a FreqCTAF one is: ServiceCTAF,
+	// ServiceUNICOM or ServiceMULTICOM; "" for the other kinds.
+	Service string `json:"service,omitempty"`
 }
+
+// The common frequencies' services (Frequency.Service), where pilots
+// announce themselves at a field without a tower (#1296).
+const (
+	ServiceCTAF     = "ctaf"
+	ServiceUNICOM   = "unicom"
+	ServiceMULTICOM = "multicom"
+)
 
 // String is the frequency as said: "118.105".
 func (f Frequency) String() string {
@@ -53,7 +64,7 @@ func frequenciesOf(raw []RawFrequency) []Frequency {
 		if r.Hz <= 0 {
 			continue
 		}
-		kind := FreqOther
+		kind, service := FreqOther, ""
 		switch types.SIMCONNECT_FACILITY_FREQUENCY_TYPE(r.Type) {
 		case types.SIMCONNECT_FACILITY_FREQUENCY_TYPE_ATIS, types.SIMCONNECT_FACILITY_FREQUENCY_TYPE_AWOS, types.SIMCONNECT_FACILITY_FREQUENCY_TYPE_ASOS:
 			kind = FreqATIS
@@ -69,10 +80,14 @@ func frequenciesOf(raw []RawFrequency) []Frequency {
 			kind = FreqDeparture
 		case types.SIMCONNECT_FACILITY_FREQUENCY_TYPE_CENTER:
 			kind = FreqCenter
-		case types.SIMCONNECT_FACILITY_FREQUENCY_TYPE_CTAF, types.SIMCONNECT_FACILITY_FREQUENCY_TYPE_UNICOM, types.SIMCONNECT_FACILITY_FREQUENCY_TYPE_MULTICOM:
-			kind = FreqCTAF
+		case types.SIMCONNECT_FACILITY_FREQUENCY_TYPE_CTAF:
+			kind, service = FreqCTAF, ServiceCTAF
+		case types.SIMCONNECT_FACILITY_FREQUENCY_TYPE_UNICOM:
+			kind, service = FreqCTAF, ServiceUNICOM
+		case types.SIMCONNECT_FACILITY_FREQUENCY_TYPE_MULTICOM:
+			kind, service = FreqCTAF, ServiceMULTICOM
 		}
-		out = append(out, Frequency{Kind: kind, MHz: math.Round(float64(r.Hz)/1000) / 1000, Name: r.Name})
+		out = append(out, Frequency{Kind: kind, MHz: math.Round(float64(r.Hz)/1000) / 1000, Name: r.Name, Service: service})
 	}
 	return out
 }
@@ -109,4 +124,71 @@ func (l *Layout) FrequencyFor(kind string) (Frequency, bool) {
 		}
 	}
 	return Frequency{}, false
+}
+
+// Controlled reports whether the airport has a tower: a frequency of
+// kind FreqTower. Without one, pilots announce themselves on its common
+// frequency (SelfAnnounceFrequency) and nobody clears them (#1296).
+func (l *Layout) Controlled() bool {
+	for _, f := range l.Frequencies {
+		if f.Kind == FreqTower {
+			return true
+		}
+	}
+	return false
+}
+
+// SelfAnnounceFrequency is the common frequency pilots announce themselves
+// on: the CTAF, else the UNICOM, else the MULTICOM. One named only for the
+// runway lights (AYBK's MULTICOM "ACTIVATE LIGHT ONLY") is not a
+// frequency to talk on. ok is false when there is none.
+func (l *Layout) SelfAnnounceFrequency() (Frequency, bool) {
+	for _, service := range []string{ServiceCTAF, ServiceUNICOM, ServiceMULTICOM, ""} {
+		for _, f := range l.Frequencies {
+			if f.Kind == FreqCTAF && f.Service == service && !lightsOnly(f.Name) {
+				return f, true
+			}
+		}
+	}
+	return Frequency{}, false
+}
+
+// lightsOnly reports a frequency named for pilot-controlled lighting
+// alone: "LIGHT" in its name and no traffic service ("CTAF", "UNICOM",
+// "MULTICOM", "TRAFFIC", "ADVISORY").
+func lightsOnly(name string) bool {
+	n := strings.ToUpper(name)
+	if !strings.Contains(n, "LIGHT") {
+		return false
+	}
+	for _, w := range []string{"CTAF", "UNICOM", "MULTICOM", "TRAFFIC", "ADVISORY"} {
+		if strings.Contains(n, w) {
+			return false
+		}
+	}
+	return true
+}
+
+// ControlledFrequency is FrequencyFor for a controller's position only,
+// never the common frequency or flight information: at an airport without
+// a tower (Controlled false) there is no tower, and ground or clearance
+// only on a frequency of its own (KVUO: clearance by Portland), not
+// falling back; approach, departure and center fall back as in
+// FrequencyFor (an IFR flight's release comes from there).
+func (l *Layout) ControlledFrequency(kind string) (Frequency, bool) {
+	switch kind {
+	case FreqCTAF, FreqFIS:
+		return Frequency{}, false
+	case FreqTower, FreqGround, FreqClearance:
+		if l.Controlled() {
+			break
+		}
+		for _, f := range l.Frequencies {
+			if f.Kind == kind && kind != FreqTower {
+				return f, true
+			}
+		}
+		return Frequency{}, false
+	}
+	return l.FrequencyFor(kind)
 }
