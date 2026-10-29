@@ -18,9 +18,11 @@ import (
 //  3. the type in any livery, airline liveries before house and white ones.
 //
 // Titles are matched as MSFS lists them ("FSLTL_FAIB_B738_TVS-Smartwings",
-// "FSLTL A320 DLH Lufthansa", "A321 :: 01 Lufthansa"); FSLTL stubs, VIP,
-// business-jet and freighter versions are left out. The type of a title is
-// what ProfileFor makes of it. At most max titles (0: all).
+// "FSLTL A320 DLH Lufthansa", "A321 :: 01 Lufthansa"); FSLTL stubs, VIP
+// and business-jet versions are left out. A cargo airline (Airline.Cargo)
+// flies freighters only ("FSLTL_B738F_FDX"), any other airline none. The
+// type of a title is what ProfileFor makes of it. At most max titles (0:
+// all).
 func ModelsFor(models []string, airline, name, typ string, max int) []string {
 	return pickTitles(preferRanked(rankModels(models, airline, name, typ), airline), "", max)
 }
@@ -100,10 +102,11 @@ func pickTitles(out []rankedModel, key string, max int) []string {
 func rankModels(models []string, airline, name, typ string) []rankedModel {
 	want := ProfileFor(typ)
 	size := want.ICAOCode
+	cargo := cargoAirline(airline)
 	type cand = rankedModel
 	var out []cand
 	for _, t := range models {
-		if skipModel(t) {
+		if skipModel(t) || freighter(t) != cargo {
 			continue
 		}
 		p := ProfileFor(t)
@@ -182,16 +185,32 @@ func skipModel(t string) bool {
 		return true // the model rules (#1024)
 	}
 	for _, w := range modelTokens(t) {
-		// Freighter designators: B738F, A332F.
-		if len(w) == 5 && w[4] == 'F' && ProfileFor(w[:4]).Type == w[:4] {
-			return true
-		}
 		switch w {
-		case "STUB", "VIP", "BBJ", "CARGO", "FREIGHTER", "BELUGAXL", "MILITARY":
+		case "STUB", "VIP", "BBJ", "BELUGAXL", "MILITARY":
 			return true
 		}
 	}
 	return strings.Contains(strings.ToUpper(t), "AIR FORCE") || strings.Contains(strings.ToUpper(t), "AIRFORCE")
+}
+
+// freighter reports whether title t is a freighter: a designator with an
+// F (B738F, A332F, B77LF) or CARGO or FREIGHTER among its words.
+func freighter(t string) bool {
+	for _, w := range modelTokens(t) {
+		if len(w) == 5 && w[4] == 'F' && ProfileFor(w[:4]).Type == w[:4] {
+			return true
+		}
+		if w == "CARGO" || w == "FREIGHTER" {
+			return true
+		}
+	}
+	return false
+}
+
+// cargoAirline reports whether code is a cargo airline's (Airline.Cargo
+// in the airline table).
+func cargoAirline(code string) bool {
+	return code != "" && slices.ContainsFunc(airlinesNow.Load(), func(a Airline) bool { return a.Cargo && strings.EqualFold(a.ICAO, code) })
 }
 
 func genericLivery(t string) bool {

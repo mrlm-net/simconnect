@@ -7,6 +7,12 @@ This project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 ---
 
+## [0.141.0] - 2026-10-29
+
+### Added
+
+- Cargo traffic (#1300). The schedule had no cargo airline, so the cargo stands (#833) stayed empty. It now has six, from their hubs: European Air Transport (DHL, Leipzig), AeroLogic, Lufthansa Cargo, UPS, FedEx and ASL Airlines Ireland, with telephonies from the airline-codes table. They make a few flights a day at Prague, on cargo stands first. A cargo airline flies freighters only (`FSLTL_B748F_UPS`); the others never one, as before (`ModelsFor`).
+
 ## [0.140.0] - 2026-10-29
 
 ### Added
