@@ -21,6 +21,8 @@ func (m *TrafficManager) start(f *ManagedFlight, now time.Time) (time.Time, stri
 		return now, ""
 	}
 	switch {
+	case f.Departure() && f.NightStop:
+		return now, "" // on its stand through the night (#1294)
 	case f.Departure():
 		return f.STD.Add(-o.DepartureLead), ""
 	case f.Overflight():

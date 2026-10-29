@@ -80,6 +80,10 @@ type ManagedFlight struct {
 	// in the line just short of the holding point — in the
 	// runway queue, off the taxiways (CheckGroundCongestion leaves it out).
 	AtRunway bool `json:"atRunway,omitempty"`
+	// NightStop: a morning departure on its stand through the night,
+	// spawned in the night parked; its crew calls DepartureLead before its
+	// STD, as any other's does (#1294).
+	NightStop bool `json:"nightStop,omitempty"`
 	// Stage "enroute": the spawn is the enroute part of an arrival (MSFS AI
 	// on its flight plan, handed to the arrival controller at the STAR
 	// entry) or an overflight (#369).
@@ -169,6 +173,16 @@ type ManagerOptions struct {
 	// and type from its airport between MinTurn (default 40 min) and
 	// MaxTurn (default 3 h) after its STA. Negative MinTurn: none.
 	MinTurn, MaxTurn time.Duration
+	// Night gives an airport's night (#1294): ok when t falls in it, and
+	// when its morning wave begins. nil: no night stops. In the night (and
+	// from Horizon before it) the Source is asked for the morning wave too,
+	// MorningWave long (default 2 h): an arrival whose next turn falls in
+	// the night turns into a departure of that wave, parked overnight, and
+	// up to NightStops (default half MaxPerAirport; negative none) of the
+	// wave's other departures stand on their stands from the night on.
+	Night       func(icao string, t time.Time) (morning time.Time, ok bool)
+	MorningWave time.Duration
+	NightStops  int
 	// Keep: done and cancelled flights stay on the boards this long
 	// (default 1 h).
 	Keep time.Duration
@@ -234,6 +248,7 @@ func (o *ManagerOptions) defaults() {
 	def(&o.RemoveParkedAfter, 20*time.Minute)
 	def(&o.MinTurn, 40*time.Minute)
 	def(&o.MaxTurn, 3*time.Hour)
+	def(&o.MorningWave, 2*time.Hour)
 	def(&o.Keep, time.Hour)
 	if o.MaxAircraft == 0 {
 		o.MaxAircraft = 24
@@ -313,6 +328,7 @@ type TrafficManager struct {
 	airports  map[string]bool
 	flights   map[string]*ManagedFlight
 	until     map[string]time.Time // the Source was asked up to here, by airport
+	asked     map[string]bool      // hours asked ahead of until (a morning wave), by airport and hour
 	overUntil time.Time            // the Overflights source too
 	last      map[string]time.Time // last spawn by kind and airport
 	enabled   bool
@@ -466,7 +482,7 @@ func (m *TrafficManager) pair() {
 			// rotation as the rotation has it, not by airline and type.
 		case f.Kind == "arrival" && f.TurnTo == "" && f.Status <= FlightParked:
 			arrs = append(arrs, f)
-		case f.Kind == "departure" && f.TurnFrom == "" && f.Status == FlightScheduled:
+		case f.Kind == "departure" && f.TurnFrom == "" && f.Status == FlightScheduled && !f.NightStop:
 			deps = append(deps, f)
 		}
 	}
@@ -491,6 +507,51 @@ func (m *TrafficManager) pair() {
 			}
 		}
 	}
+	m.pairNight(arrs, deps)
+}
+
+// pairNight: an arrival left unpaired whose next turn falls in its
+// airport's night turns into a departure of its airline and type in the
+// morning wave after: parked overnight (#1294).
+func (m *TrafficManager) pairNight(arrs, deps []*ManagedFlight) {
+	if m.opts.Night == nil {
+		return
+	}
+	for _, a := range arrs {
+		if a.TurnTo != "" {
+			continue
+		}
+		morning, ok := m.opts.Night(a.Airport, a.STA.Add(m.opts.MinTurn))
+		if !ok {
+			continue
+		}
+		for _, d := range deps {
+			if d.TurnFrom != "" || d.NightStop || d.Airport != a.Airport || d.Airline != a.Airline || d.Type != a.Type ||
+				d.STD.Before(morning) || !d.STD.Before(morning.Add(m.opts.MorningWave)) {
+				continue
+			}
+			if a.Airline == "" && d.Callsign != a.Callsign && m.flights["departure "+a.Callsign] == nil {
+				delete(m.flights, d.key())
+				d.Callsign = a.Callsign
+				m.flights[d.key()] = d
+			}
+			a.TurnTo, d.TurnFrom = d.Callsign, a.Callsign
+			m.emit(EventTurnaround, d, time.Time{}, a.Callsign+" → "+d.Callsign+", overnight")
+			break
+		}
+	}
+}
+
+// morningOf is the morning wave an airport's night ahead brings: ok in the
+// night or within Horizon before it.
+func (m *TrafficManager) morningOf(icao string, now time.Time) (time.Time, bool) {
+	if m.opts.Night == nil {
+		return time.Time{}, false
+	}
+	if morning, ok := m.opts.Night(icao, now); ok {
+		return morning, true
+	}
+	return m.opts.Night(icao, now.Add(m.opts.Horizon))
 }
 
 func lessFlight(t1 time.Time, c1 string, t2 time.Time, c2 string) bool {
@@ -543,16 +604,35 @@ func (m *TrafficManager) extend(now time.Time) {
 	for from := now.Truncate(time.Hour); from.Before(now.Add(m.opts.Horizon)); from = from.Add(time.Hour) {
 		var ask []string
 		for _, a := range airports {
-			if !m.until[a].After(from) {
+			if !m.until[a].After(from) && !m.asked[a+" "+from.Format(time.RFC3339)] {
 				ask = append(ask, a)
 			}
 		}
-		if len(ask) == 0 {
+		for _, a := range airports {
+			if !m.until[a].After(from) {
+				m.until[a] = from.Add(time.Hour)
+			}
+		}
+		if len(ask) > 0 {
+			m.addAt(m.opts.Source(from, from.Add(time.Hour), ask), now)
+		}
+	}
+	// The morning wave after the night, asked ahead (#1294).
+	for _, a := range airports {
+		morning, ok := m.morningOf(a, now)
+		if !ok {
 			continue
 		}
-		m.addAt(m.opts.Source(from, from.Add(time.Hour), ask), now)
-		for _, a := range ask {
-			m.until[a] = from.Add(time.Hour)
+		for from := morning.Truncate(time.Hour); from.Before(morning.Add(m.opts.MorningWave)); from = from.Add(time.Hour) {
+			k := a + " " + from.Format(time.RFC3339)
+			if m.until[a].After(from) || m.asked[k] {
+				continue
+			}
+			if m.asked == nil {
+				m.asked = map[string]bool{}
+			}
+			m.asked[k] = true
+			m.addAt(m.opts.Source(from, from.Add(time.Hour), []string{a}), now)
 		}
 	}
 }
@@ -630,6 +710,7 @@ func (m *TrafficManager) unpair(f *ManagedFlight) {
 // limits and spacing.
 func (m *TrafficManager) due(now time.Time, spawn *[]ManagedFlight) {
 	o := m.opts
+	m.nightStops(now)
 	total, at := 0, map[string]int{}
 	var ready []*ManagedFlight
 	for _, f := range m.flights {
@@ -699,6 +780,45 @@ func (m *TrafficManager) due(now time.Time, spawn *[]ManagedFlight) {
 		_, f.Stage = m.start(f, now)
 		m.set(f, FlightSpawning, now)
 		*spawn = append(*spawn, *f)
+	}
+}
+
+// nightStops picks, in an airport's night, the morning wave's departures
+// on their stands through it (NightStop), earliest first, up to
+// NightStops an airport (#1294).
+func (m *TrafficManager) nightStops(now time.Time) {
+	o := m.opts
+	if o.Night == nil || o.NightStops < 0 {
+		return
+	}
+	limit := o.NightStops
+	if limit == 0 {
+		limit = o.MaxPerAirport / 2
+	}
+	have := map[string]int{}
+	var cands []*ManagedFlight
+	for _, f := range m.flights {
+		if !f.Departure() {
+			continue
+		}
+		if f.NightStop && f.Status != FlightDone && f.Status != FlightCancelled {
+			have[f.Airport]++
+			continue
+		}
+		if f.Status == FlightScheduled && f.TurnFrom == "" && f.Observed == nil && f.Rules != "VFR" {
+			cands = append(cands, f)
+		}
+	}
+	sort.Slice(cands, func(i, j int) bool {
+		return lessFlight(cands[i].STD, cands[i].Callsign, cands[j].STD, cands[j].Callsign)
+	})
+	for _, f := range cands {
+		morning, ok := o.Night(f.Airport, now)
+		if !ok || have[f.Airport] >= limit || f.STD.Before(morning) || !f.STD.Before(morning.Add(o.MorningWave)) {
+			continue
+		}
+		f.NightStop = true
+		have[f.Airport]++
 	}
 }
 

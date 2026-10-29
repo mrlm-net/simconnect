@@ -36,6 +36,14 @@ for now := range time.Tick(time.Second) {
 | Departure airborne | Flies on along its plan and is removed once it leaves the area (see [Leaving](#enroute-traffic-and-overflights)), at the latest `RemoveDepartedAfter` (30 min) after it leaves the controllers. |
 | Too late | A departure is cancelled 15 min (`DepartureLate`) after its STD without an aircraft. An arrival is cancelled 10 min (`ArrivalLate`) after it should have appeared. A departure waits as long as its inbound aircraft is still on its way. |
 
+### Overnight
+
+With `Night` (the World gives it from the schedule's waves: an hour with at most a tenth of the peak's movements is night, 23–04 local by default), the airport keeps aircraft overnight (#1294):
+
+- From `Horizon` before the night, the Source is also asked for the **morning wave** after it (`MorningWave`, 2 h from the first busy hour).
+- An arrival whose next turn (`MinTurn` after its STA) falls in the night pairs with a morning-wave departure of its airline and type: it **stays on its stand overnight** and leaves in the morning.
+- In the night, the morning wave's other departures are spawned at once, **parked on their stands** (`ManagedFlight.NightStop`), up to `NightStops` an airport (default half `MaxPerAirport`, negative none), earliest first. Each stays quiet and calls delivery `DepartureLead` before its STD, as any other departure does; its boarding counts from its STD for `CheckStuck`.
+
 The limits are `MaxAircraft` in total (default 24) and `MaxPerAirport` (default 16). Spawns are spaced: arrivals `ArrivalSpacing` (3 min) apart, departures `DepartureSpacing` (1 min). The Source is asked `Horizon` (2 h) ahead, an hour at a time. Flights already too late when they are added are left out, so a schedule started mid-day does not show the morning as cancelled. A failed spawn is tried again after `RetryAfter` (30 s), up to `MaxAttempts` (3); one unanswered for `SpawnTimeout` (2 min) counts as failed. Done and cancelled flights stay on the boards for `Keep` (1 h).
 
 `Add(flights)` adds flights beside the Source's (flights at chosen times); a flight already known by kind and call sign keeps its state. `SetAirports`, `SetEnabled` and `SetLimits` change the managed airports, spawning and the limits while it runs; `Replan` asks the Source again for the hours ahead.

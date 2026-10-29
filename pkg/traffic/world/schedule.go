@@ -105,9 +105,39 @@ func newScheduler(st *state, cc *controlCenter) *scheduler {
 	s.mgr = traffic.NewTrafficManager(s, traffic.ManagerOptions{Source: s.source, MaxAircraft: 12, MaxPerAirport: 12, OnEvent: s.event,
 		Horizon: t.Horizon, DepartureLead: t.DepartureLead, ArrivalLead: t.ArrivalLead, VFRLead: t.VFRLead,
 		DepartureLate: t.DepartureLate, ArrivalLate: t.ArrivalLate,
-		Picture: cc.world, Overflights: s.overflights, OverflightsReady: s.areaKnown, Conditions: s.conditions, RunwayQueue: cc.runwayQueue}) // other traffic respected by default
+		Picture: cc.world, Overflights: s.overflights, OverflightsReady: s.areaKnown, Conditions: s.conditions, RunwayQueue: cc.runwayQueue,
+		Night: s.night}) // other traffic respected by default
 	s.mgr.SetEnabled(false)
 	return s
+}
+
+// nightWave: an hour with at most this many movements against the peak
+// (ScheduleConfig.Waves) is night at an airport (by default 23–04 local).
+const nightWave = 0.1
+
+// night is an airport's night (ManagerOptions.Night, #1294): ok when t
+// falls in it, on the timetable's clock (offset), with when its morning
+// wave begins.
+func (s *scheduler) night(icao string, t time.Time) (time.Time, bool) {
+	l, ok := s.st.cache.Layout(icao)
+	if !ok {
+		return time.Time{}, false
+	}
+	s.mu.Lock()
+	off := s.offset
+	s.mu.Unlock()
+	p := airport.LatLon{Lat: l.Latitude, Lon: l.Longitude}
+	quiet := func(at time.Time) bool { return s.cfg.Waves[traffic.LocalHour(icao, p, at.Add(off))] <= nightWave }
+	if !quiet(t) {
+		return time.Time{}, false
+	}
+	for h, i := t.Truncate(time.Hour), 0; i < 24; i++ {
+		h = h.Add(time.Hour)
+		if !quiet(h) {
+			return h, true
+		}
+	}
+	return time.Time{}, false // night all day: no morning
 }
 
 // conditions are the weather on final of an airport's arrival runway: the
@@ -377,6 +407,10 @@ func (s *scheduler) spawnWith(f traffic.ManagedFlight, pre *planned, model strin
 		req.pushAt = f.STD
 		// A real aircraft parked with no departure seen (#841).
 		req.parked = f.Observed != nil && !f.Observed.Seeded && f.STD.Sub(s.cc.clock.Now()) > s.mgr.Options().DepartureLead
+		if f.NightStop {
+			// On its stand through the night: it calls when the others do (#1294).
+			req.parked, req.callAt = true, f.STD.Add(-s.mgr.Options().DepartureLead)
+		}
 	} else if f.TurnTo != "" {
 		// Its stand away from neighbours due off when its turnaround is.
 		for _, d := range s.mgr.Flights() {
