@@ -61,6 +61,14 @@ func defaultAirlines() []Airline {
 		{ICAO: "UAE", Name: "Emirates", Telephony: "EMIRATES", Fleet: map[string]float64{"B77W": 1}, Bases: []string{"OMDB"}, Regions: []string{"*"}, Weight: 0.5},
 		{ICAO: "QTR", Name: "Qatar", Telephony: "QATARI", Fleet: map[string]float64{"B789": 1, "B77W": 1}, Bases: []string{"OTHH"}, Regions: []string{"*"}, Weight: 0.5},
 		{ICAO: "KAL", Name: "Korean Air", Telephony: "KOREANAIR", Fleet: map[string]float64{"B77W": 1, "B789": 1}, Bases: []string{"RKSI"}, Regions: []string{"*"}, Weight: 0.2},
+		// Cargo airlines (#833): freighters, on cargo stands first; their
+		// hubs as bases. Telephony from telephony.tsv.
+		{ICAO: "BCS", Name: "European Air Transport", Telephony: "POSTMAN", Cargo: true, Fleet: map[string]float64{"A332": 1, "A333": 1}, Bases: []string{"EDDP"}, Regions: eu, Weight: 0.3},
+		{ICAO: "BOX", Name: "AeroLogic", Telephony: "GERMAN CARGO", Cargo: true, Fleet: map[string]float64{"B77L": 1}, Bases: []string{"EDDP"}, Regions: []string{"*"}, Weight: 0.15},
+		{ICAO: "GEC", Name: "Lufthansa Cargo", Telephony: "LUFTHANSA CARGO", Cargo: true, Fleet: map[string]float64{"B77L": 1}, Bases: []string{"EDDF"}, Regions: []string{"*"}, Weight: 0.15},
+		{ICAO: "UPS", Name: "UPS", Telephony: "UPS", Cargo: true, Fleet: map[string]float64{"B744": 1, "B748": 1}, Bases: []string{"EDDK"}, Regions: []string{"*"}, Weight: 0.15},
+		{ICAO: "FDX", Name: "FedEx", Telephony: "FEDEX", Cargo: true, Fleet: map[string]float64{"B738": 1, "B77L": 1}, Bases: []string{"LFPG"}, Regions: []string{"*"}, Weight: 0.15},
+		{ICAO: "ABR", Name: "ASL Airlines Ireland", Telephony: "CONTRACT", Cargo: true, Fleet: map[string]float64{"B738": 1}, Bases: []string{"EIDW"}, Regions: eu, Weight: 0.1},
 		{ICAO: "ENT", Name: "Enter Air", Telephony: "ENTER", Fleet: map[string]float64{"B738": 1}, Bases: []string{"EPWA", "EPKT"}, Regions: append([]string{"HE", "GC"}, central...), Weight: 0.5},
 	}
 }

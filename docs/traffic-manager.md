@@ -69,7 +69,7 @@ type Spawner interface {
 2. Another type of the same size in the airline's livery, same maker first.
 3. The type in any livery.
 
-Within each of the first two, titles with the airline's ICAO code come before those that only carry its name, which may be a sister airline's ("TVP-Smartwings Poland" for Smartwings, TVS). Stubs, VIP, business-jet, freighter and military versions are left out.
+Within each of the first two, titles with the airline's ICAO code come before those that only carry its name, which may be a sister airline's ("TVP-Smartwings Poland" for Smartwings, TVS). Stubs, VIP, business-jet and military versions are left out. A cargo airline (`Airline.Cargo`) flies freighters only (`FSLTL_B77LF_FDX`: a designator with an F, or CARGO or FREIGHTER in the title); every other airline never gets one.
 
 `ModelsForFlight(models, airline, name, type, callsign, max)` ranks the same way, but takes the equally good best titles in turn by call sign. Each flight always gets the same one, and a fleet with several liveries or versions installed shows them all instead of one aircraft. The map spawns with it.
 
