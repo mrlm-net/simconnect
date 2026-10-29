@@ -109,8 +109,10 @@ type controlled struct {
 	// observed: a real aircraft's sighting (#841), nil one of the schedule.
 	observed *traffic.Sighting
 	// deliver: a parked real aircraft's call to delivery, made when its
-	// departure is seen (nil: made already).
-	deliver func()
+	// departure is seen (nil: made already); a night stop's at deliverAt
+	// (#1294).
+	deliver   func()
+	deliverAt time.Time
 	// clearanceDue: its departure clearance, asked for on a staffed
 	// delivery and not given yet (action "clearance"; given by the World
 	// once delivery is no longer staffed; amended by the player first,
@@ -685,6 +687,7 @@ func (cc *controlCenter) tick() {
 		cc.gameAt = now
 		cc.timed("game", func() { cc.gameTick(now) })
 		cc.timed("rescue", func() { cc.rescueTick(now) })
+		cc.timed("calls due", func() { cc.callsDue(now) })
 	}
 	// The stand allocators are fed by the traffic picture (Allocate): no
 	// scans of their own.
@@ -695,6 +698,28 @@ func (cc *controlCenter) tick() {
 	}
 	cc.timed("keep clear", cc.keepClear)
 	cc.timed("jetways", func() { cc.jetwayTick(cc.clock.Now()) })
+}
+
+// callsDue makes the first call of the parked aircraft whose time came:
+// night stops calling delivery DepartureLead before their STD (#1294).
+func (cc *controlCenter) callsDue(now time.Time) {
+	cc.mu.Lock()
+	items := make([]*controlled, 0, len(cc.items))
+	for _, it := range cc.items {
+		items = append(items, it)
+	}
+	cc.mu.Unlock()
+	for _, it := range items {
+		it.mu.Lock()
+		deliver := it.deliver
+		if deliver == nil || it.deliverAt.IsZero() || now.Before(it.deliverAt) {
+			it.mu.Unlock()
+			continue
+		}
+		it.deliver, it.deliverAt = nil, time.Time{}
+		it.mu.Unlock()
+		deliver()
+	}
 }
 
 // timed runs f, logging it when it takes longer than slowStep: the tick
@@ -932,8 +957,10 @@ type SpawnRequest struct {
 	adopt  uint32    // departure: the aircraft already on the stand (turnaround)
 	pushAt time.Time // departure: stay on the stand until then (its STD)
 	// parked: a real aircraft standing with no departure yet (#841): it
-	// calls delivery only when one comes (controlled.deliver).
+	// calls delivery only when one comes (controlled.deliver); a night
+	// stop (#1294) at callAt.
 	parked bool
+	callAt time.Time
 	// offBlock: an arrival's turnaround departure time, for its stand
 	// (StandRequirements.OffBlock).
 	offBlock time.Time
@@ -1303,7 +1330,7 @@ func (cc *controlCenter) spawn(g *airport.Graph, r SpawnRequest) (*controlled, e
 				it.clearance(clr)
 			}
 			if r.parked {
-				it.deliver = deliver // a real aircraft parked: it calls once its departure is seen (#841)
+				it.deliver, it.deliverAt = deliver, r.callAt // a real aircraft parked: it calls once its departure is seen (#841); a night stop at callAt (#1294)
 			} else {
 				deliver()
 			}

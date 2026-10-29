@@ -7,6 +7,12 @@ This project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 ---
 
+## [0.138.0] - 2026-10-29
+
+### Added
+
+- Aircraft parked overnight (#1294). In the night (from the schedule's waves: 23–04 local by default) the morning wave's departures stand on their stands, quiet, up to half the per-airport limit, and each calls delivery 10 minutes before its STD as the others do. An arrival landing late turns into a morning departure of its airline and type and stays on its stand through the night. Before, an arrival with no turn within 3 hours was removed 20 minutes after parking and departures appeared 10 minutes before their STD: live at LKPR after 23:00 three aircraft stood on the stands. `traffic.ManagerOptions.Night`, `MorningWave`, `NightStops`; `ManagedFlight.NightStop`.
+
 ## [0.137.0] - 2026-10-29
 
 ### Fixed
