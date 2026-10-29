@@ -673,6 +673,21 @@ func (h *Helpers) HasJetway(icao string, stand int) bool {
 	return h.jetways[strings.ToUpper(icao)][stand]
 }
 
+// Jetways are icao's stands with a jetway, in order (from the jetway
+// list, once Prepare has had it).
+func (h *Helpers) Jetways(icao string) []int {
+	h.mu.Lock()
+	defer h.mu.Unlock()
+	var out []int
+	for stand, ok := range h.jetways[strings.ToUpper(icao)] {
+		if ok {
+			out = append(out, stand)
+		}
+	}
+	slices.Sort(out)
+	return out
+}
+
 func (h *Helpers) helperTitle(model string) string {
 	m := strings.ToUpper(model)
 	for _, t := range h.opt.Types {

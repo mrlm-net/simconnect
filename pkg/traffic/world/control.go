@@ -79,6 +79,10 @@ type controlled struct {
 	tugAfter atomic.Bool
 	// other is its other airport (SpawnRequest.Other), for a new stand.
 	other string
+	// overnight: on its stand through the night (#1294): remote stands
+	// first (StandRequirements.Overnight).
+	overnight bool
+
 	tugStand atomic.Int32
 	// Turnaround (arrival): the departure to start once parked, and
 	// departNow to start it before the dwell is over.
@@ -787,7 +791,7 @@ func (cc *controlCenter) recheckArrivalStands() {
 		}
 		it.stands.Release(old)
 		l := it.graph.Layout
-		newStand, err := it.stands.Assign(traffic.StandRequirements{Owner: tail, Airline: airlineOf(tail), HalfSpan: half, Runway: rwy, NoJetway: traffic.NoJetway(model), Prefer: cc.jetwayGates(it.graph.Layout.ICAO), Other: it.other})
+		newStand, err := it.stands.Assign(traffic.StandRequirements{Owner: tail, Airline: airlineOf(tail), HalfSpan: half, Runway: rwy, NoJetway: traffic.NoJetway(model), Overnight: it.overnight, Bridged: cc.jetwayStands(it.graph.Layout.ICAO), Prefer: cc.jetwayGates(it.graph.Layout.ICAO), Other: it.other})
 		if err == nil {
 			err = it.arr.ChangeStand(newStand)
 			if err != nil {
@@ -961,6 +965,9 @@ type SpawnRequest struct {
 	// stop (#1294) at callAt.
 	parked bool
 	callAt time.Time
+	// overnight: on its stand through the night (#1294): remote stands
+	// first (#1298).
+	overnight bool
 	// offBlock: an arrival's turnaround departure time, for its stand
 	// (StandRequirements.OffBlock).
 	offBlock time.Time
@@ -1031,7 +1038,7 @@ func (cc *controlCenter) spawn(g *airport.Graph, r SpawnRequest) (*controlled, e
 	// The stand: assigned (-1) or the one asked for, if nobody holds it.
 	alloc := cc.allocator(g)
 	if r.Stand < 0 {
-		req := traffic.StandRequirements{Owner: r.Tail, Airline: airlineOf(r.Tail), HalfSpan: prof.SpanMeters / 2, OffBlock: r.pushAt, NoJetway: traffic.NoJetway(r.Model), Prefer: cc.jetwayGates(g.Layout.ICAO), Other: r.Other}
+		req := traffic.StandRequirements{Owner: r.Tail, Airline: airlineOf(r.Tail), HalfSpan: prof.SpanMeters / 2, OffBlock: r.pushAt, NoJetway: traffic.NoJetway(r.Model), Overnight: r.overnight, Bridged: cc.jetwayStands(g.Layout.ICAO), Prefer: cc.jetwayGates(g.Layout.ICAO), Other: r.Other}
 		if r.Kind == "arrival" {
 			req.Runway, req.OffBlock = r.Runway, r.offBlock
 		}
@@ -1160,7 +1167,7 @@ func (cc *controlCenter) spawn(g *airport.Graph, r SpawnRequest) (*controlled, e
 			fixes = append(fixes, airFix{Ident: p.Ident, LatLon: p.Position})
 		}
 	}
-	it := &controlled{approach: approach, fixes: fixes, defBase: defBase, ID: n, Kind: r.Kind, Tail: r.Tail, ICAO: g.Layout.ICAO, graph: g, stands: alloc, stand: r.Stand, other: r.Other, spoken: map[string]bool{}, removed: make(chan struct{}), cc: cc}
+	it := &controlled{approach: approach, fixes: fixes, defBase: defBase, ID: n, Kind: r.Kind, Tail: r.Tail, ICAO: g.Layout.ICAO, graph: g, stands: alloc, stand: r.Stand, other: r.Other, overnight: r.overnight, spoken: map[string]bool{}, removed: make(chan struct{}), cc: cc}
 	it.tugAfter.Store(rand.Float64() < TugAfterJetwayShare)
 	it.tugStand.Store(int32(r.Stand))
 	it.gates.Store(r.Gates)
