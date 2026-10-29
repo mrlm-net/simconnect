@@ -7,6 +7,18 @@ This project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 ---
 
+## [0.139.0] - 2026-10-29
+
+### Added
+
+- Fields without a tower (#1296), most of the simulator's airports. There pilots announce themselves on the common frequency and nobody clears them; `FrequencyFor(tower)` there gives that frequency, so clients ran a controlled dialogue.
+  - `airport.Layout.Controlled()`: whether the field has a tower.
+  - `SelfAnnounceFrequency()`: the CTAF, else the UNICOM, else the MULTICOM; not one named for the lights only (AYBK's "ACTIVATE LIGHT ONLY").
+  - `ControlledFrequency(kind)`: a controller's frequency only. No tower, and ground or clearance only on the field's own frequency (KVUO: clearance by Portland), never the common frequency.
+  - `Frequency.Service`: `ctaf`, `unicom` or `multicom`.
+  - Self-announce calls to "<Field> Traffic" (`traffic.PosTraffic`, `IntentSelfAnnounce`): `SelfTaxiing`, `SelfDeparting` (a direction, or `PatternStay`), `SelfInbound`, `SelfPattern`, `SelfClear`.
+  - For IFR there: `ReleasedForDeparture` ("released for departure, report airborne"), `CancelIFR` and `IFRCancelled`.
+
 ## [0.138.0] - 2026-10-29
 
 ### Added
