@@ -7,6 +7,12 @@ This project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 ---
 
+## [0.140.0] - 2026-10-29
+
+### Added
+
+- Aircraft parked overnight take remote stands (#1298). Night stops and arrivals staying the night take an airliner stand without a jetway first, then a GA or cargo one, and a jetway's stand last, which leaves the gates to the day's turnarounds. The jetways come from the simulator's jetway list: `traffic.StandRequirements.Overnight` and `Bridged`, `jetway.Helpers.Jetways`. Most airports type every airliner stand GATE, jetway or not (LKPR: all of them), so without the list nothing changes. With it, types boarding by their own airstairs (`NoJetway`) now also take an airliner stand without a jetway before the GA apron.
+
 ## [0.139.0] - 2026-10-29
 
 ### Added

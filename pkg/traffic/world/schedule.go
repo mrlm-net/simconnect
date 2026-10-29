@@ -409,13 +409,15 @@ func (s *scheduler) spawnWith(f traffic.ManagedFlight, pre *planned, model strin
 		req.parked = f.Observed != nil && !f.Observed.Seeded && f.STD.Sub(s.cc.clock.Now()) > s.mgr.Options().DepartureLead
 		if f.NightStop {
 			// On its stand through the night: it calls when the others do (#1294).
-			req.parked, req.callAt = true, f.STD.Add(-s.mgr.Options().DepartureLead)
+			req.parked, req.callAt, req.overnight = true, f.STD.Add(-s.mgr.Options().DepartureLead), true
 		}
 	} else if f.TurnTo != "" {
 		// Its stand away from neighbours due off when its turnaround is.
 		for _, d := range s.mgr.Flights() {
 			if d.Callsign == f.TurnTo && d.Departure() {
 				req.offBlock = d.STD
+				// Turning around overnight (#1294): longer than any day's turn.
+				req.overnight = d.STD.Sub(f.STA) > s.mgr.Options().MaxTurn
 			}
 		}
 	}
@@ -457,7 +459,7 @@ func (s *scheduler) spawnWith(f traffic.ManagedFlight, pre *planned, model strin
 	assigned := false
 	if f.Departure() && req.Stand < 0 {
 		m, _, _ := strings.Cut(req.Model, liverySep)
-		sr := traffic.StandRequirements{Owner: f.Callsign, Airline: airlineOf(f.Callsign), HalfSpan: traffic.ProfileFor(m).Motion.SpanMeters / 2, OffBlock: f.STD, NoJetway: traffic.NoJetway(m), Prefer: cc.jetwayGates(g.Layout.ICAO), Other: f.Destination}
+		sr := traffic.StandRequirements{Owner: f.Callsign, Airline: airlineOf(f.Callsign), HalfSpan: traffic.ProfileFor(m).Motion.SpanMeters / 2, OffBlock: f.STD, NoJetway: traffic.NoJetway(m), Overnight: f.NightStop, Bridged: cc.jetwayStands(g.Layout.ICAO), Prefer: cc.jetwayGates(g.Layout.ICAO), Other: f.Destination}
 		// A real aircraft on the stand where it is seen (#841).
 		s, err := -1, traffic.ErrNoStand
 		if o := f.Observed; o != nil && o.OnGround {
