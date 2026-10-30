@@ -26,6 +26,8 @@ type ShotRequest struct {
 	Sec   float64 `json:"sec"`
 	Back  float64 `json:"back"`
 	Fov   float64 `json:"fov"`
+	// Long: Sec is exact and may run past camera.MaxShot (camera.Stretch).
+	Long bool `json:"long,omitempty"`
 	// At holds the move still at that point of it (0 its start, 1 its
 	// end): a composition to look at.
 	At *float64 `json:"at"`
@@ -67,7 +69,7 @@ func (m *cameraMan) playShot(req ShotRequest) (string, error) {
 	if req.From != "" && req.Sec == 0 {
 		req.Sec = camera.MaxShot.Seconds() // the longest: slow
 	}
-	shots := castShots(g, map[string]*controlled{"it": it}, []SceneShot{{Move: req.Move, From: req.From, To: req.To, Who: "it", Side: req.Side, Sec: req.Sec}}, "shot")
+	shots := castShots(g, map[string]*controlled{"it": it}, []SceneShot{{Move: req.Move, From: req.From, To: req.To, Who: "it", Side: req.Side, Sec: req.Sec, Long: req.Long}}, "shot")
 	if len(shots) == 0 {
 		return "", fmt.Errorf("no shot %q on %s (moves: %s)", req.Move, it.Tail, strings.Join(sceneMoveNames(), ", "))
 	}

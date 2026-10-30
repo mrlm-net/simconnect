@@ -19,6 +19,7 @@ import (
 	"path/filepath"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	"github.com/mrlm-net/simconnect/pkg/airport"
@@ -133,6 +134,8 @@ type World struct {
 	q     chan engine.Message
 	hOnce sync.Once
 	h     http.Handler
+	// sceneEvents: who hears the scenes' events (OnSceneEvent).
+	sceneEvents atomic.Pointer[func(SceneEvent)]
 }
 
 // New makes a World; it connects with Run.

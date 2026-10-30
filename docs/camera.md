@@ -60,6 +60,10 @@ Each move is a `MoveFunc(object, size, side, duration)`, scaled to the aircraft'
 | Wide | `RevealRise`, `Flyover`, `SpiralDescend`, `LeadChase`, `ParallaxTrack`, `HeroLowPushIn`, `PullBackReveal`, `TopDown`, `TopOrbit`, `SideDolly`, `HeadOnPass`, `ChaseRise` |
 | Detail | `EngineDetail`, `NoseGearDetail`, `MainGearDetail`, `CockpitDetail`, `TailDetail`, `WingtipAlong`, `LightsDetail` |
 
+## Long shots
+
+`MaxShot` (10 s) caps every shot unless it opts out. `camera.Stretch(shot, d)` plays any shot over `d`, up to `MaxStretch` (5 minutes), its move slowed to fit, for a camera that stays with one aircraft through an event. In a scene or a `ShotRequest`, `"long": true` makes `sec` exact (no pacing, no cap).
+
 ## Director
 
 ```go
@@ -109,6 +113,8 @@ The camera button in the status strip opens the director:
   - When our camera is released, the simulator's camera is set back to what it was before (live, it otherwise drops into chase).
 - **Simulator camera** gives the camera back to the simulator and sets its own: `CAMERA STATE` cockpit (2), chase (3), drone (4), fixed on plane (5), free (6, environment), written as INT32 like `examples/set-variables`. Measured live in MSFS 2024: the numbering on the 2024 SDK page (drone 8, showcase 7, follow traffic 23) was refused. ◀ ▶ step through the camera's views (`CAMERA VIEW TYPE AND INDEX:1`) from the one it is on. API: `POST /api/camera {"mode":"sim","sim":"drone"}` or `{"mode":"sim","step":1}`.
 - **🎬 Scene** plays a scripted film. A scene spawns its cast, listens to one of them on the radio, and plays **beats**: each waits for its cue, then cuts to its shots. If a beat's shots end before the next cue, more shots of the same aircraft fill the gap.
+
+A host can play a scene it holds: `World.PlayScene(icao, scene)` (`POST /api/camera/scene?icao=` with the scene in the body), validated first, and `World.StopScene()`. `World.OnSceneEvent` hears what it reaches, in order and off the camera's goroutine: `start`, `cue`, `beat`, `shot`, `end`. `GET /api/camera` has the same as `scene`: name, beat, beats, cue and elapsed seconds.
 
 Scenes are JSON files in `-scenes` (default `scenes/`), read on every play, so a scene can be edited and played again without a restart. The built-in scenes come after them; a file with a built-in scene's name wins.
 

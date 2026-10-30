@@ -38,7 +38,7 @@ import (
 // opened, "say" expectDelay or holdPosition) and once it ends (EndActions).
 //
 //	GET  /api/camera/scenes             — the scenes
-//	POST /api/camera/scene?name=&icao=  — play one
+//	POST /api/camera/scene?name=&icao=  — play one; no name: the Scene in the body
 
 //go:embed scenes/*.json
 var builtinScenes embed.FS
@@ -140,6 +140,10 @@ type SceneShot struct {
 	Up    float64 `json:"up"`
 	Fov   float64 `json:"fov"`
 	FovTo float64 `json:"fovTo"`
+	// Long: Sec is exact and may run past camera.MaxShot, the move slowed to
+	// fill it (camera.Stretch), for a shot that stays with an aircraft
+	// through an event. Otherwise a shot is paced and capped.
+	Long bool `json:"long,omitempty"`
 }
 
 var sceneMoves = map[string]camera.MoveFunc{
@@ -228,6 +232,14 @@ func (m *cameraMan) playScene(g *airport.Graph, key string) error {
 	if !ok {
 		return fmt.Errorf("no scene %q", key)
 	}
+	return m.startScene(g, sc)
+}
+
+// startScene starts sc at g's airport, unless one is playing.
+func (m *cameraMan) startScene(g *airport.Graph, sc Scene) error {
+	if m.dir == nil {
+		return errors.New("no camera on this connection")
+	}
 	m.mu.Lock()
 	running := m.mode == "scene" || m.sceneStarting
 	m.sceneStarting = !running || m.sceneStarting
@@ -253,6 +265,11 @@ type sceneRun struct {
 	// its greatest height above the runway.
 	seen map[string]map[string]bool
 	top  map[string]float64
+	// beat, cue: what it has reached; events to the host until ended.
+	beat   int
+	cue    string
+	events chan SceneEvent
+	ended  bool
 }
 
 // watch records what the cast reaches.
@@ -305,6 +322,7 @@ func (r *sceneRun) watch() {
 func (m *cameraMan) runScene(g *airport.Graph, sc Scene) {
 	cc := m.cc
 	r := &sceneRun{m: m, sc: sc, start: time.Now(), cast: map[string]*controlled{}, heard: map[string]bool{}, listening: sc.Listen, seen: map[string]map[string]bool{}, top: map[string]float64{}}
+	r.listenEvents()
 	logf := func(f string, a ...any) { tlog.printf("scene  "+sc.Name+": "+f, a...) }
 	limit := time.Duration(sc.LimitSec * float64(time.Second))
 	if limit <= 0 {
@@ -316,10 +334,12 @@ func (m *cameraMan) runScene(g *airport.Graph, sc Scene) {
 	m.mu.Unlock()
 	if err != nil {
 		logf("camera: %v", err)
+		r.finish(err.Error())
 		return
 	}
 	m.mu.Lock()
 	m.scene, m.subject, m.shot = r, "", sc.Name
+	r.emit(SceneEvent{Kind: "start"})
 	m.mu.Unlock()
 	defer func() {
 		m.mu.Lock()
@@ -331,6 +351,7 @@ func (m *cameraMan) runScene(g *airport.Graph, sc Scene) {
 		}
 		r.act(g, sc.EndActions, logf)
 		logf("ended after %s", time.Since(r.start).Round(time.Second))
+		r.finish("")
 	}()
 	// The airport set up: jetways, the scheduled traffic around the cast.
 	if m.w != nil && sc.Jetways {
@@ -421,6 +442,7 @@ func (m *cameraMan) runScene(g *airport.Graph, sc Scene) {
 		for {
 			if cuedAt.IsZero() && r.cued(b.Cue) && r.ready(b) {
 				cuedAt = time.Now()
+				r.event(SceneEvent{Kind: "cue", Beat: i + 1, Cue: b.Cue})
 			}
 			if !cuedAt.IsZero() && time.Since(cuedAt) >= time.Duration(b.DelaySec*float64(time.Second)) {
 				break
@@ -454,6 +476,8 @@ func (m *cameraMan) runScene(g *airport.Graph, sc Scene) {
 		if len(b.Shots) > 0 && r.cast[b.Shots[0].Who] != nil {
 			m.subject = r.cast[b.Shots[0].Who].Tail
 		}
+		r.beat, r.cue = i+1, b.Cue
+		r.emit(SceneEvent{Kind: "beat", Beat: i + 1, Cue: b.Cue, Subject: m.subject})
 		m.mu.Unlock()
 		if len(shots) > 0 {
 			m.mu.Lock()
@@ -462,12 +486,20 @@ func (m *cameraMan) runScene(g *airport.Graph, sc Scene) {
 			m.lockAirport(subject)
 			m.dir.Play(shots...)
 		}
-		if b.End {
+		if b.End || i == len(sc.Beats)-1 { // the last beat plays out, End or not
 			var total time.Duration
 			for _, s := range shots {
 				total += s.Length()
 			}
-			time.Sleep(total)
+			// A long shot can run for minutes: stopped, it ends now.
+			for end := time.Now().Add(total); time.Now().Before(end); time.Sleep(100 * time.Millisecond) {
+				m.mu.Lock()
+				stopped := m.mode != "scene"
+				m.mu.Unlock()
+				if stopped {
+					break
+				}
+			}
 			return
 		}
 	}
@@ -582,6 +614,10 @@ func castShots(g *airport.Graph, cast map[string]*controlled, list []SceneShot, 
 		// Slower than written: the moves read better unhurried (at most
 		// camera.MaxShot).
 		d := min(time.Duration(s.Sec*scenePace*float64(time.Second)), camera.MaxShot)
+		long := time.Duration(s.Sec * float64(time.Second))
+		if !s.Long {
+			long = 0
+		}
 		if d <= 0 {
 			d = wideShot
 		}
@@ -632,6 +668,9 @@ func castShots(g *airport.Graph, cast map[string]*controlled, list []SceneShot, 
 		if shot == nil {
 			tlog.printf("scene  %s: no move %q", name, s.Move)
 			continue
+		}
+		if long > 0 {
+			shot = camera.Stretch(shot, long)
 		}
 		out = append(out, named{shot, label})
 	}

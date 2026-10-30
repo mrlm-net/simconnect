@@ -67,6 +67,7 @@ type Loopback struct {
 	mu sync.Mutex
 	// cameraOwned, cameraSets: the add-on camera (camera.go).
 	cameraOwned bool
+	cameraPose  types.SIMCONNECT_DATA_CAMERA
 	events      map[uint32]string // client event ID → its simulator event (lights.go)
 	cameraSets  int
 	out         chan engine.Message
