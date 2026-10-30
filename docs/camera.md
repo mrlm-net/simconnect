@@ -64,6 +64,23 @@ Each move is a `MoveFunc(object, size, side, duration)`, scaled to the aircraft'
 
 `MaxShot` (10 s) caps every shot unless it opts out. `camera.Stretch(shot, d)` plays any shot over `d`, up to `MaxStretch` (5 minutes), its move slowed to fit, for a camera that stays with one aircraft through an event. In a scene or a `ShotRequest`, `"long": true` makes `sec` exact (no pacing, no cap).
 
+## Spots
+
+A `camera.Spot` is a camera standing in the world: fixed, or on a straight rail (`RailEnd`, at most `RailSpeed`, 4 m/s by default) going abeam its subject. Its lens (`FovMin`, `FovMax`) is chosen to keep the aircraft at `Share` of the frame's width, the change smoothed. `Spot.Track(object, size, d, feed, clock)` plays it for up to `MaxStretch`.
+
+The aim is a world point from a filter on the subject's samples, which may come only once a second: it runs on with the velocity found between them and takes corrections out slowly, so a long lens does not show a step and a subject flying straight is not lagged. `LockAim` aims at the object itself instead, the simulator keeping it dead centre.
+
+`World.Spots(icao)` (`GET /api/camera/spots?icao=`) lists an airport's spots, generated from its data: `threshold:<end>`, `touchdown:<end>` (on a rail), `approach:<end>`, `holding:<end>` and `apron:<lowest stand>`. A low one keeps clear of the runways, taxiways and stands, and a spot with no clear place is left out. `World.PlaySpot` (`POST /api/camera/spot`) plays one on any aircraft: `id` (-1 the player) or `tail`, with `sec`, `share` and `lock`. In a scene, `"spot": "touchdown:24"` on a shot, or `"touchdown"` for the aircraft's own runway.
+
+`spots.json` in `DataDir` changes them by airport, local winning per value; a name not generated adds a spot:
+
+```json
+{"LKPR": {"touchdown:24": {"up": 12}, "threshold:06": {"off": true},
+          "mine": {"lat": 50.1, "lon": 14.26, "up": 4}}}
+```
+
+Heights are above the runway's elevation, or the airport's off a runway. SimConnect has no call for the ground at a point, and no building data, so where the ground falls or rises under a spot (an approach, most of all) the table sets `up` or `altM`.
+
 ## Director
 
 ```go

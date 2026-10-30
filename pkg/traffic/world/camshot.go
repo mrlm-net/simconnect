@@ -84,8 +84,14 @@ func (m *cameraMan) playShot(req ShotRequest) (string, error) {
 		at := time.Duration(max(0, min(1, *req.At)) * float64(shot.Length()))
 		shot = camera.Hold(shot.Name(), shot.PoseAt(at), 4*time.Second)
 	}
+	m.playAlone(it.Tail, shot)
+	return fmt.Sprintf("%s, %.0f s", shot.Name(), shot.Length().Seconds()), nil
+}
+
+// playAlone plays shot on subject in mode shot.
+func (m *cameraMan) playAlone(subject string, shot camera.Shot) {
 	m.mu.Lock()
-	m.subject, m.shot = it.Tail, shot.Name()
+	m.subject, m.shot = subject, shot.Name()
 	m.mu.Unlock()
 	m.dir.Play(shot)
 	// The shot over, the camera goes back to the simulator (unless another
@@ -99,7 +105,6 @@ func (m *cameraMan) playShot(req ShotRequest) (string, error) {
 			m.setMode("off", 0)
 		}
 	})
-	return fmt.Sprintf("%s, %.0f s", shot.Name(), shot.Length().Seconds()), nil
 }
 
 // shotPlays counts the shots played, so only the last one gives the camera

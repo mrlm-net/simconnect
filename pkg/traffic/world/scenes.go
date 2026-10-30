@@ -144,6 +144,13 @@ type SceneShot struct {
 	// fill it (camera.Stretch), for a shot that stays with an aircraft
 	// through an event. Otherwise a shot is paced and capped.
 	Long bool `json:"long,omitempty"`
+	// Spot: in place of Move, the camera at a spot of the airport (spots.go),
+	// following the aircraft for Sec exactly (0: DefaultSpotSec): "touchdown:24",
+	// or with no runway the aircraft's ("touchdown"). Share and Lock change
+	// the spot's share of the frame and aim at the object itself.
+	Spot  string  `json:"spot,omitempty"`
+	Share float64 `json:"share,omitempty"`
+	Lock  bool    `json:"lock,omitempty"`
 }
 
 var sceneMoves = map[string]camera.MoveFunc{
@@ -633,6 +640,17 @@ func castShots(g *airport.Graph, cast map[string]*controlled, list []SceneShot, 
 		label := it.Tail + " " + s.Move
 		var shot camera.Shot
 		switch {
+		case s.Spot != "":
+			spot := s.Spot
+			if !strings.Contains(spot, ":") {
+				spot += ":" + v.Runway
+			}
+			sh, err := it.cc.spotShot(g, spot, obj, false, size.Length, s.Sec, spotOptions{s.Share, s.Lock})
+			if err != nil {
+				tlog.printf("scene  %s: %v", name, err)
+				continue
+			}
+			shot, label = sh, it.Tail+" "+spot
 		case s.From != "":
 			if gl, ok := glideShot(g, it, s.From, s.To, side, d); ok {
 				shot, label = gl, it.Tail+" "+gl.Name()
