@@ -239,3 +239,14 @@ func TestAskedFor(t *testing.T) {
 		}
 	}
 }
+
+// The offer says which actions cannot be given on their own (#1308).
+func TestActionParams(t *testing.T) {
+	got := actionParams([]string{"taxi", "upto", "climb"})
+	if len(got) != 2 || got["upto"] != "node" || got["climb"] != "level" {
+		t.Errorf("params: %v", got)
+	}
+	if got := actionParams([]string{"taxi"}); got != nil {
+		t.Errorf("none needed: %v", got)
+	}
+}

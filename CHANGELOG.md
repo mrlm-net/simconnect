@@ -7,6 +7,19 @@ This project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 ---
 
+## [0.149.0] - 2026-10-30
+
+### Added
+
+- `ControlView.ActionParams` names the offered actions that need a query parameter: `upto` needs `node`, `climb` needs `level` (#1308).
+- `ControlView.SayingUntil`: a clearance on a busy frequency is taken at once and said when it clears; until this time it is queued, so a host can show that instead of what looks like a swallowed command (#1312). `Radio.AircraftClearAt` is the same for an aircraft.
+
+### Fixed
+
+- `Radio.Recent` and `GET /api/radio` are in order of when transmissions go out, not of when they were booked (#1312).
+- A duplicate ATC call dropped within 2 s is now logged (#1312).
+- `upto` without `?node=` answers 400 and says the limit is required, instead of 422 "clearance limit is not ahead on the taxi route" (#1308).
+
 ## [0.147.1] - 2026-10-30
 
 ### Fixed
