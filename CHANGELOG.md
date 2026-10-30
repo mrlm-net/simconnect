@@ -7,6 +7,12 @@ This project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 ---
 
+## [0.144.0] - 2026-10-30
+
+### Added
+
+- At a field without a tower, the World's traffic now also announces itself inbound ("10 miles south, inbound for landing") and reports the downwind and base with side and runway ("left base runway 24"). Approach releases IFR departures ("released for departure, report airborne"), and IFR arrivals cancel with approach in good visibility (visibility of 8 km or more, no ceiling below 3000 ft, not in cloud) before the advisory handoff. Both stay silent when a player works approach. Towered fields do not change (#1305).
+
 ## [0.143.0] - 2026-10-30
 
 ### Added

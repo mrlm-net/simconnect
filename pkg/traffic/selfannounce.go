@@ -79,7 +79,17 @@ func SelfInbound(field, cs string, miles int, from string) Transmission {
 	if from != "" {
 		where += " " + from
 	}
-	return selfTx(field, cs, "inbound", nil, where+", inbound for landing")
+	return selfInboundAt(field, cs, where)
+}
+
+// selfInboundAt is SelfInbound with its position as said ("over Vlasim",
+// "" none).
+func selfInboundAt(field, cs, where string) Transmission {
+	what := "inbound for landing"
+	if where != "" {
+		what = where + ", " + what
+	}
+	return selfTx(field, cs, "inbound", nil, what)
 }
 
 // SelfPattern: a leg of the pattern, as said ("left downwind", "right
@@ -145,6 +155,9 @@ func AdvisoryFrequency(from Position, cs string) Transmission {
 //   - the take-off clearance: SelfDeparting;
 //   - the landing clearance: SelfPattern, final;
 //   - runway vacated: SelfClear;
+//   - a VFR arrival's first call, and a check-in to the tower with its
+//     position (ParamCircuit): SelfInbound;
+//   - a report in the circuit, with its runway: SelfPattern;
 //   - approach's or center's handoff to the tower or ground:
 //     AdvisoryFrequency.
 //
@@ -163,6 +176,17 @@ func SelfAnnounceFor(field string, t Transmission) (Transmission, bool) {
 		return SelfClear(field, t.Callsign, rwy), true
 	case t.Pilot && t.Intent == IntentCheckIn && vacatedRunway(t.Params[ParamState]) != "":
 		return SelfClear(field, t.Callsign, vacatedRunway(t.Params[ParamState])), true
+	case t.Pilot && t.Intent == IntentVFRForLanding:
+		return selfInboundAt(field, t.Callsign, t.Params[ParamCircuit]), true
+	case t.Pilot && t.Intent == IntentCheckIn && t.Params[ParamCircuit] != "":
+		return selfInboundAt(field, t.Callsign, t.Params[ParamCircuit]), true
+	case t.Pilot && t.Intent == IntentCircuitReport && rwy != "":
+		leg, then, _ := strings.Cut(t.Params[ParamCircuit], ", ")
+		said := SelfPattern(field, t.Callsign, leg, rwy)
+		if then != "" {
+			said = selfTx(field, t.Callsign, "pattern", map[string]string{ParamCircuit: leg, ParamRunway: rwy}, leg+" runway "+rwy+", "+then)
+		}
+		return said, true
 	case t.Pilot:
 		return Transmission{}, false
 	case t.Intent == IntentTaxi && rwy != "" && t.Params[ParamStand] == "":
