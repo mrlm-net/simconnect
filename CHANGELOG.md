@@ -7,6 +7,19 @@ This project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 ---
 
+## [0.151.0] - 2026-10-30
+
+### Added
+
+- A host plays a scene it holds: `World.PlayScene(icao, Scene)` or `POST /api/camera/scene` with the scene in the body, validated first, and `World.StopScene()`. `World.OnSceneEvent` hears start, cue, beat, shot and end; `GET /api/camera` has the progress as `scene` (#1324).
+- `camera.Stretch(shot, d)` plays a shot past `MaxShot`, up to `MaxStretch` (5 minutes), its move slowed to fit. `"long": true` on a `SceneShot` or `ShotRequest` makes `sec` exact. The 10 s cap stays for everything else (#1325).
+- `worldtest.Loopback` reports the camera as the simulator does (acquired, released) and `CameraPose` gives the last pose, so scenes and shots can be tested offline (#1324).
+
+### Fixed
+
+- A scene whose last beat is not marked `end` stopped at once, without playing that beat's shots. It now plays them (#1324).
+- A scene stopped during its last beat kept running until that beat's shots would have ended (#1324).
+
 ## [0.150.0] - 2026-10-30
 
 ### Added

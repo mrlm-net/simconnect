@@ -110,6 +110,9 @@ func newCameraMan(cc *controlCenter, client engine.Client) *cameraMan {
 		m.dir.OnShot(func(s camera.Shot) {
 			m.mu.Lock()
 			m.shot = s.Name()
+			if r := m.scene; r != nil {
+				r.emit(SceneEvent{Kind: "shot", Beat: r.beat, Shot: s.Name(), Subject: m.subject})
+			}
 			m.mu.Unlock()
 		})
 	}
@@ -648,12 +651,17 @@ type cameraView struct {
 	// Look: where the tower camera looks now while it looks round (for the
 	// angle shown on the map): bearing and tilt in degrees, field of view.
 	Look *lookView `json:"look,omitempty"`
+	// Scene: the scene playing and what it has reached.
+	Scene *SceneProgress `json:"scene,omitempty"`
 }
 
 func (m *cameraMan) view() cameraView {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 	v := cameraView{Mode: m.mode, Subject: m.subject, Shot: m.shot, Error: m.err}
+	if m.scene != nil {
+		v.Scene = m.scene.progress()
+	}
 	if m.dir != nil {
 		v.Acquired = m.dir.Acquired()
 	}
@@ -793,7 +801,24 @@ func registerCamera(mux *http.ServeMux, st *state) {
 			http.Error(w, err.Error(), http.StatusBadRequest)
 			return
 		}
-		if err := m.playScene(g, r.URL.Query().Get("name")); err != nil {
+		// By name, or the scene itself in the body (World.PlayScene).
+		name := r.URL.Query().Get("name")
+		var play func() error
+		if name != "" {
+			play = func() error { return m.playScene(g, name) }
+		} else {
+			var sc Scene
+			if err := json.NewDecoder(r.Body).Decode(&sc); err != nil {
+				http.Error(w, err.Error(), http.StatusBadRequest)
+				return
+			}
+			if err := sc.validate(); err != nil {
+				http.Error(w, err.Error(), http.StatusBadRequest)
+				return
+			}
+			play = func() error { return m.startScene(g, sc) }
+		}
+		if err := play(); err != nil {
 			http.Error(w, err.Error(), http.StatusUnprocessableEntity)
 			return
 		}

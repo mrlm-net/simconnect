@@ -19,6 +19,32 @@ type Shot interface {
 // the viewer (and the Director cuts there).
 const MaxShot = 10 * time.Second
 
+// MaxStretch is the longest Stretch plays a shot.
+const MaxStretch = 5 * time.Minute
+
+type stretched struct {
+	Shot
+	d time.Duration
+}
+
+// Stretch plays s over d, the whole of its move slowed to fit: the one way
+// past MaxShot, for a camera that stays with one aircraft through an event
+// (down the final to the rollout). d at most MaxStretch; at or under s's
+// length, s as it is. The slower the move the less it hides: s should keep
+// moving, as a still loses the viewer.
+func Stretch(s Shot, d time.Duration) Shot {
+	d = min(d, MaxStretch)
+	if d <= s.Length() {
+		return s
+	}
+	return stretched{s, d}
+}
+
+func (s stretched) Length() time.Duration { return s.d }
+func (s stretched) PoseAt(t time.Duration) Pose {
+	return s.Shot.PoseAt(time.Duration(float64(t) / float64(s.d) * float64(s.Shot.Length())))
+}
+
 // Ease shapes a move's progress: f(0) = 0, f(1) = 1.
 type Ease func(f float64) float64
 
