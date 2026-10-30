@@ -1950,11 +1950,17 @@ func (c *TaxiController) ClearStartUp() {
 // answering from the state offered "pushback" to an aircraft already cleared
 // for push-and-start, and "start up" to one already cleared to start.
 //
-// ONLY THE ONCE-ONLY CLEARANCES ANSWER TRUE. Taxi, a progressive limit, hold
-// position and a runway crossing all mean something said again — a new limit,
-// a new hold — so they are not "already given" and are never withheld. Aborting
-// a take-off clears the line-up and take-off flags, so those come back on offer
-// by themselves.
+// A CLEARANCE THAT SAYS SOMETHING NEW IS NEVER WITHHELD. A progressive limit
+// and a runway crossing move the limit each time, and hold position is always
+// sayable, so they are not "already given". Aborting a take-off clears the
+// line-up and take-off flags, so those come back on offer by themselves.
+//
+// TAXI ANSWERS TRUE ONLY WHILE AN UNLIMITED CLEARANCE IS IN FORCE. "Taxi to
+// holding point runway 24" said to an aircraft already taxiing there says
+// nothing — and it was being said, the identical clearance read back three
+// times over (#1269). With a limit in force (ClearUpTo, hold position) it says
+// a great deal: the limit is lifted, carry on. So the flag alone is not the
+// answer; the flag with no limit left is.
 func (c *TaxiController) Cleared(action string) bool {
 	c.mu.Lock()
 	defer c.mu.Unlock()
@@ -1963,6 +1969,8 @@ func (c *TaxiController) Cleared(action string) bool {
 		return c.pushCleared
 	case "startup":
 		return c.startUpCleared
+	case "taxi":
+		return c.taxiCleared && !c.hasLimit && !c.hasPendingLimit
 	case "lineup", "lineupbehind":
 		return c.lineUpCleared
 	case "takeoff":
@@ -2249,6 +2257,13 @@ func (c *TaxiController) ClearUpTo(node airport.NodeID) error {
 	}
 	if !slices.Contains(c.route.Nodes[1:], node) {
 		return ErrNotOnRoute
+	}
+	// The limit it is already holding to: "taxi up to C4" to an aircraft
+	// whose limit IS C4 is the same clearance again, and a controller does
+	// not say a thing twice (#1269). A DIFFERENT node is a new limit, nearer
+	// or further on, and always goes through.
+	if c.hasPendingLimit && c.pendingLimit == node || c.hasLimit && c.limitNode == node {
+		return ErrAlreadyCleared
 	}
 	switch c.state {
 	case TaxiAwaitingPushback, TaxiPushback, TaxiAwaitingTaxi:

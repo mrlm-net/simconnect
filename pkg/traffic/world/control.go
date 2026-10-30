@@ -144,9 +144,9 @@ type controlled struct {
 	// approach; limitHeld: it holds at its clearance limit, the end of its
 	// STAR, for want of one (crewAtLimit, #1096).
 	approachCleared, limitHeld bool
-	higherAt            time.Time
-	landCleared         bool
-	defBase      uint32 // its ID block (cc.ids)
+	higherAt                   time.Time
+	landCleared                bool
+	defBase                    uint32 // its ID block (cc.ids)
 	// gates: the user gives every clearance ("hold at every clearance");
 	// otherwise the tower clears it onto and across runways (#393).
 	gates atomic.Bool
@@ -355,19 +355,28 @@ type ControlView struct {
 	// Rescue: the fire trucks or the ambulance out for it (rescue.go).
 	Rescue []tugView `json:"rescue,omitempty"`
 	// Vehicles: its ground vehicles with their object and state (#710).
-	Vehicles       []VehicleView `json:"vehicles,omitempty"`
-	Model          string        `json:"model"`
-	Stand          string        `json:"stand"`
-	Runway         string        `json:"runway"`
-	Procedure      string        `json:"procedure,omitempty"` // SID, or STAR → approach
-	OnGround       bool          `json:"onGround"`
-	PushbackHeld   bool          `json:"pushbackHeld,omitempty"` // the pushback waits for traffic behind
-	Rush           bool          `json:"rush,omitempty"`         // told to hurry (#510)
-	Manual         bool          `json:"manual,omitempty"`       // the user gives its clearances, no automation
-	Entry          string        `json:"entry,omitempty"`        // a departure's runway entry ("" full length)
-	Deicing        bool          `json:"deicing,omitempty"`      // being de-iced
-	State          string        `json:"state"`
-	HoldingShortOf string        `json:"holdingShortOf,omitempty"`
+	Vehicles     []VehicleView `json:"vehicles,omitempty"`
+	Model        string        `json:"model"`
+	Stand        string        `json:"stand"`
+	Runway       string        `json:"runway"`
+	Procedure    string        `json:"procedure,omitempty"` // SID, or STAR → approach
+	OnGround     bool          `json:"onGround"`
+	PushbackHeld bool          `json:"pushbackHeld,omitempty"` // the pushback waits for traffic behind
+	Rush         bool          `json:"rush,omitempty"`         // told to hurry (#510)
+	Manual       bool          `json:"manual,omitempty"`       // the user gives its clearances, no automation
+	Entry        string        `json:"entry,omitempty"`        // a departure's runway entry ("" full length)
+	Deicing      bool          `json:"deicing,omitempty"`      // being de-iced
+	State        string        `json:"state"`
+	// Request is what the crew is asking for right now, in the engine's own
+	// words: "pushback", "start_up", "taxi"; "" when they are waiting on
+	// nobody (TaxiEvent.Request, #462).
+	//
+	// IT IS WHAT THE OFFERED LIST CANNOT SAY. Actions names what a controller
+	// MAY give; a departure cleared to push and start is offered nothing at
+	// all, correctly, and a strip with no buttons and no reason reads as a
+	// stuck game. This is the other half: whose move it is.
+	Request        string `json:"request,omitempty"`
+	HoldingShortOf string `json:"holdingShortOf,omitempty"`
 	// TaxiRemainingM: a departure's taxi still to go to its runway (m).
 	TaxiRemainingM float64        `json:"taxiRemainingM,omitempty"`
 	AtLimit        bool           `json:"atLimit"`
@@ -1636,6 +1645,7 @@ func (it *controlled) update(ev TaxiOrArrival) {
 		if e.Err != nil {
 			v.Error = e.Err.Error()
 		}
+		v.Request = e.Request
 		v.Actions = departureActions(e.State, e.HoldingShortOf, it.dep)
 		if it.clearanceDue != nil {
 			v.Actions = append([]string{"clearance"}, v.Actions...)
@@ -1735,13 +1745,36 @@ func departureActions(s traffic.TaxiState, holdingShortOf string, ctl departureC
 	switch s {
 	case traffic.TaxiAwaitingPushback:
 		if ctl != nil && ctl.FacesOut() {
+			// No push to ask for: the crew's one call is "request start up
+			// and taxi", and both are given together.
 			return notAgain(ctl, []string{"startup", "taxi", "upto"}) // taxis straight out
 		}
-		return notAgain(ctl, []string{"pushback", "pushstart", "taxi", "upto"})
-	case traffic.TaxiPushback, traffic.TaxiAwaitingTaxi:
-		return notAgain(ctl, []string{"startup", "taxi", "upto", "takeoff"})
+		// NO TAXI CLEARANCE ON THE STAND. The crew has asked for a push, with
+		// a tug about to connect; it has not asked to taxi and could not go
+		// if it were told to. A taxi clearance here is a clearance for a
+		// conversation that has not happened — the player's complaint was
+		// exactly that, "the sequence of commands … cannot give taxi when it
+		// hasn't called ground". It comes on offer at TaxiAwaitingTaxi, when
+		// the tug is clear and the crew calls ready (TaxiEvent.Request
+		// "taxi").
+		return notAgain(ctl, []string{"pushback", "pushstart"})
+	case traffic.TaxiPushback:
+		// Being pushed, tug attached: start-up is the only thing left to say.
+		// (Nothing at all, once that is given — which is correct: the next
+		// word on the frequency is the crew's, asking to taxi.)
+		return notAgain(ctl, []string{"startup"})
+	case traffic.TaxiAwaitingTaxi:
+		// The push is done and the crew is asking: this is where the taxi
+		// clearance belongs. NO "takeoff" HERE — a take-off clearance to an
+		// aircraft standing on the apron is not a thing anyone says, and
+		// offering it taught an order of the job that does not exist (#1231).
+		return notAgain(ctl, []string{"startup", "taxi", "upto"})
 	case traffic.TaxiTaxiing:
-		return notAgain(ctl, []string{"hold", "taxi", "upto", "takeoff"})
+		// Nor here: a departure taxiing is minutes and a mile from the
+		// runway, and the runway is not even known to be free yet. `upto` is
+		// the clearance that means something while it taxis, and `hold` is
+		// the one that stops it.
+		return notAgain(ctl, []string{"hold", "taxi", "upto"})
 	case traffic.TaxiHoldingShort:
 		if r := ctl.Route(); r != nil && holdingShortOf != r.Runway {
 			return notAgain(ctl, []string{"cross", "upto", "taxi"})
@@ -1802,6 +1835,15 @@ func (it *controlled) act(action string, node airport.NodeID) error {
 		}
 		it.handoffGiven = true
 		return nil
+	// Already given, to the word: refused rather than transmitted a second
+	// time. The offered list drops it too (notAgain), but the offer is
+	// advice and this is the gate — a host that clears by name, a stale
+	// strip or a double click all arrive here (#1269). `upto` is absent on
+	// purpose: whether it repeats depends on the node, which only
+	// ClearUpTo can judge. So is `taxi`: a changed route or runway still
+	// goes out, and the same words stop earlier (taxiInForce).
+	case d != nil && action != "upto" && action != "taxi" && d.Cleared(action):
+		return fmt.Errorf("%s: %w", action, traffic.ErrAlreadyCleared)
 	case d != nil && action == "pushback":
 		d.ClearPushback()
 	case d != nil && action == "pushstart":
@@ -3832,12 +3874,12 @@ func (it *controlled) phraseView(v ControlView, r *airport.Route, action string,
 		return traffic.Transmission{}
 	case "pushback":
 		if it.dep != nil {
-			return traffic.WithFacing(traffic.ClearedPushback(call), it.dep.PushFacingSaid())
+			return reportReadyForTaxi(traffic.WithFacing(traffic.ClearedPushback(call), it.dep.PushFacingSaid()), it.dep)
 		}
 		return traffic.ClearedPushback(call)
 	case "pushstart":
 		if it.dep != nil {
-			return traffic.WithFacing(traffic.ClearedPushbackAndStartUp(call), it.dep.PushFacingSaid())
+			return reportReadyForTaxi(traffic.WithFacing(traffic.ClearedPushbackAndStartUp(call), it.dep.PushFacingSaid()), it.dep)
 		}
 		return traffic.ClearedPushbackAndStartUp(call)
 	case "startup":
@@ -3895,6 +3937,25 @@ func (it *controlled) phraseView(v ControlView, r *airport.Route, action string,
 		return traffic.CancelTakeoff(call)
 	}
 	return traffic.Say(traffic.Transmission{Position: traffic.PosGround, Callsign: call, Intent: traffic.Intent(action)})
+}
+
+// reportReadyForTaxi adds "report ready for taxi" to a push approval, when
+// the taxi clearance is still to come.
+//
+// IT IS THE OTHER HALF OF THE GATE. departureActions stops offering taxi to
+// an aircraft on its stand, which is right — and on its own leaves the
+// player with a strip that went quiet and no reason given. The approval now
+// says what the next call will be, and the crew makes it (TaxiEvent.Request
+// "taxi" → "request taxi"), so the exchange reads as the exchange it is.
+//
+// Not said when the aircraft is cleared to taxi already — a push given after
+// a taxi clearance (the engine allows it, and a scripted scenario does it)
+// has nothing left to report.
+func reportReadyForTaxi(t traffic.Transmission, ctl departureCtl) traffic.Transmission {
+	if ctl == nil || ctl.Cleared("taxi") {
+		return t
+	}
+	return traffic.WithReportReady(t, "ready for taxi")
 }
 
 // towerHandoffMeters: a taxiing departure is handed to tower this far

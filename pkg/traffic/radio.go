@@ -384,6 +384,12 @@ func phrase(cs string, in Intent, p map[string]string) string {
 		if p[ParamFacing] != "" {
 			s += ", facing " + p[ParamFacing]
 		}
+		if p[ParamReport] != "" {
+			// What the crew is to call next, said with the approval: the push
+			// is not a taxi clearance, and the crew asks again once the tug
+			// has gone.
+			s += ", report " + p[ParamReport]
+		}
 		return s
 	case IntentTaxi:
 		if p[ParamStand] != "" {
@@ -856,6 +862,26 @@ func WithFacing(t Transmission, facing string) Transmission {
 		return t
 	}
 	p := map[string]string{ParamFacing: facing}
+	for k, v := range t.Params {
+		p[k] = v
+	}
+	t.Params, t.Text = p, ""
+	return Say(t)
+}
+
+// WithReportReady adds what the crew is to report next to a pushback
+// approval: "CSA1, pushback and start up approved, report ready for taxi".
+//
+// A PUSH APPROVAL IS NOT A TAXI CLEARANCE, and the gap between them is where
+// a player learns the job: the taxi clearance comes after the crew calls
+// ready, not with the push. Said, the next call stops being a guess —
+// without it the taxi clearance simply is not offered yet and nothing
+// explains why.
+func WithReportReady(t Transmission, what string) Transmission {
+	if what == "" || t.Intent != IntentPushback {
+		return t
+	}
+	p := map[string]string{ParamReport: what}
 	for k, v := range t.Params {
 		p[k] = v
 	}

@@ -7,6 +7,28 @@ This project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 ---
 
+## [0.146.0] - 2026-10-30
+
+### Fixed
+
+- A clearance already in force was offered, and said, again (#1269). The user, live: the identical taxi clearance transmitted three times over, read back each time.
+  - `TaxiController.Cleared("taxi")` now answers true while an **unlimited** taxi clearance is in force. With a limit in force (`ClearUpTo`, hold position) it stays false — there the clearance lifts the limit, which is a new instruction, not a repeat.
+  - `ClearUpTo` refuses the node that is already the limit in force with `ErrAlreadyCleared`. A different node is a new limit, nearer or further on, and always goes through.
+  - `World`'s clearance action refuses any once-only clearance `Cleared` reports as given (a taxi clearance in other words, a changed route or runway, still goes out; the same words answer 204 without being said, #1275), rather than transmitting a second identical instruction with its own readback. The offered list dropped it already; that was advice, this is the gate (a host clearing by name, a stale strip and a double click all arrive the same way).
+- A taxi clearance was offered to an aircraft standing on its stand (#1268). The user: "the sequence of commands … cannot give taxi when it hasn't called ground".
+  - `taxi` and `upto` are gone from `TaxiAwaitingPushback` and `TaxiPushback`. The crew has asked for a push, a tug is attached, and it could not go if it were told to. They come on offer at `TaxiAwaitingTaxi`, where the tug is clear and the crew calls ready (`TaxiEvent.Request` "taxi").
+  - A stand the aircraft taxis straight out of is unchanged: no push to ask for, so start-up and taxi are one call and one answer.
+  - An aircraft cleared to push and start is now offered nothing at all, which is correct — ATC has had its say, and the next word on the frequency is the crew's.
+- `takeoff` is offered at the runway, not on the stand (#1231). It was on offer from the push onwards, which is not a thing anyone says, and it taught an order of the job that does not exist. It stays at the holding point, lining up and lined up.
+- The automatic ground answer to a push-and-start request is one `pushstart` clearance instead of `startup` then `pushback`. The pair are the same two calls, but a clearance already in force is now refused — and at a face-out stand approving the start-up approves the push, so the second would have been refused and the aeroplane would have waited for ever.
+
+### Added
+
+- `traffic.WithReportReady(t, what)` adds what the crew is to report next to a push approval: "CSA1, pushback and start up approved, report ready for taxi", read back "wilco". It composes with `WithFacing` either way round, and leaves a start-up approval and an empty report alone.
+  - It is the other half of the gate above. Withholding the taxi clearance on the stand is right, and on its own leaves a strip that went quiet with no reason given; said, the next call stops being a guess. The `World` says it with a push approval whenever the taxi clearance is still to come, the player's and the automatic ground's alike.
+- `traffic.ErrAlreadyCleared`: this exact clearance is the one in force.
+- `world.ControlView.Request` (`request`): what the crew is asking for right now, in the engine's own words — "pushback", "start_up", "taxi", or "" when they are waiting on nobody (`TaxiEvent.Request`, #462).
+  - It is what the offered list cannot say. `Actions` names what a controller MAY give, and a departure cleared to push and start is now offered nothing at all — correctly, because ATC has had its say. A strip with no buttons and no reason reads as a stuck game; this is the other half, whose move it is.
 ## [0.145.1] - 2026-10-30
 
 ### Fixed

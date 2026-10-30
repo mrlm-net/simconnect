@@ -1,6 +1,7 @@
 package world
 
 import (
+	"errors"
 	"slices"
 	"testing"
 
@@ -15,6 +16,7 @@ type standDep struct {
 	facesOut bool
 	started  bool
 	pushed   bool
+	taxied   bool
 }
 
 func (f *standDep) FacesOut() bool        { return f.facesOut }
@@ -27,6 +29,8 @@ func (f *standDep) Cleared(action string) bool {
 		return f.pushed
 	case "startup":
 		return f.started
+	case "taxi":
+		return f.taxied
 	}
 	return false
 }
@@ -52,12 +56,6 @@ func TestDepartureActionsStartUpNotOfferedTwice(t *testing.T) {
 			if slices.Contains(given, "startup") {
 				t.Errorf("start-up already cleared: must not be offered again, got %v", given)
 			}
-			// The rest of the strip is untouched.
-			for _, want := range []string{"taxi", "upto", "takeoff"} {
-				if !slices.Contains(given, want) {
-					t.Errorf("want %q still offered, got %v", want, given)
-				}
-			}
 		})
 	}
 }
@@ -68,6 +66,11 @@ func TestDepartureActionsFacesOut(t *testing.T) {
 	notYet := departureActions(traffic.TaxiAwaitingPushback, "", &standDep{facesOut: true})
 	if !slices.Contains(notYet, "startup") || slices.Contains(notYet, "pushback") {
 		t.Fatalf("faces out: want start-up and no pushback, got %v", notYet)
+	}
+	// Nothing to push away from: "start up and taxi" is one call and one
+	// answer, so the taxi clearance IS due here.
+	if !slices.Contains(notYet, "taxi") {
+		t.Errorf("faces out: want taxi offered (it taxis straight out), got %v", notYet)
 	}
 	given := departureActions(traffic.TaxiAwaitingPushback, "", &standDep{facesOut: true, started: true})
 	if slices.Contains(given, "startup") {
@@ -103,16 +106,68 @@ func TestDepartureActionsPushNotOfferedAfterPushAndStart(t *testing.T) {
 			t.Errorf("already cleared to push and start: %q must not be offered, got %v", gone, given)
 		}
 	}
-	// What is still to come stays.
+	// And nothing else either. An aeroplane cleared to push and start, with
+	// the tug on its way, has had every word ATC has for it; the next one on
+	// the frequency is the crew's, asking to taxi.
+	if len(given) != 0 {
+		t.Errorf("cleared to push and start: want nothing left to say, got %v", given)
+	}
+}
+
+// NO TAXI CLEARANCE BEFORE THE AIRCRAFT HAS ASKED (#1268). The player's
+// complaint: "the sequence of commands … cannot give taxi when it hasn't
+// called ground". On the stand the crew has asked for a push; it has not
+// asked to taxi, and a tug is attached, so it could not go if it were told
+// to. The clearance is due at TaxiAwaitingTaxi, where the crew calls ready.
+func TestDepartureActionsNoTaxiOnTheStand(t *testing.T) {
+	for _, tc := range []struct {
+		name  string
+		state traffic.TaxiState
+		ctl   *standDep
+	}{
+		{"on the stand, nothing given", traffic.TaxiAwaitingPushback, &standDep{}},
+		{"on the stand, push approved", traffic.TaxiAwaitingPushback, &standDep{pushed: true}},
+		{"being pushed", traffic.TaxiPushback, &standDep{pushed: true}},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			got := departureActions(tc.state, "", tc.ctl)
+			for _, gone := range []string{"taxi", "upto"} {
+				if slices.Contains(got, gone) {
+					t.Errorf("%s: %q must not be offered, got %v", tc.name, gone, got)
+				}
+			}
+		})
+	}
+	// Pushed, tug clearing, the crew asking: now it is due.
+	due := departureActions(traffic.TaxiAwaitingTaxi, "", &standDep{pushed: true, started: true})
 	for _, want := range []string{"taxi", "upto"} {
-		if !slices.Contains(given, want) {
-			t.Errorf("want %q still offered, got %v", want, given)
+		if !slices.Contains(due, want) {
+			t.Errorf("awaiting taxi: want %q offered, got %v", want, due)
 		}
 	}
 }
 
+// A TAKE-OFF CLEARANCE IS OFFERED AT THE RUNWAY, NOT ON THE STAND (#1231).
+// It was on offer from the push onwards, which is not a thing anyone says.
+func TestDepartureActionsTakeoffOnlyAtTheRunway(t *testing.T) {
+	ctl := &standDep{pushed: true, started: true}
+	for _, s := range []traffic.TaxiState{traffic.TaxiAwaitingPushback, traffic.TaxiPushback, traffic.TaxiAwaitingTaxi, traffic.TaxiTaxiing} {
+		if got := departureActions(s, "", ctl); slices.Contains(got, "takeoff") {
+			t.Errorf("%v: take-off must not be offered away from the runway, got %v", s, got)
+		}
+	}
+	// At its own holding point it is exactly what the tower says next.
+	if got := departureActions(traffic.TaxiHoldingShort, "", ctl); !slices.Contains(got, "takeoff") {
+		t.Errorf("holding short of its runway: want take-off offered, got %v", got)
+	}
+	if got := departureActions(traffic.TaxiLinedUp, "", ctl); !slices.Contains(got, "takeoff") {
+		t.Errorf("lined up: want take-off offered, got %v", got)
+	}
+}
+
 // A clearance that means something when it is said again is never withheld: a
-// taxi clearance re-issued is a new limit, not a repeat.
+// taxi clearance with a limit in force lifts the limit, and hold position is
+// always sayable. The IDENTICAL one is not (#1269) — see TaxiController.Cleared.
 func TestDepartureActionsRepeatableClearancesSurvive(t *testing.T) {
 	ctl := &standDep{pushed: true, started: true}
 	for _, tc := range []struct {
@@ -129,4 +184,30 @@ func TestDepartureActionsRepeatableClearancesSurvive(t *testing.T) {
 			}
 		}
 	}
+	// With it in force and no limit left, it is the clearance already given:
+	// "taxi to holding point runway 24" to an aircraft taxiing there says
+	// nothing, and it was being said three times over.
+	taxiing := departureActions(traffic.TaxiTaxiing, "", &standDep{pushed: true, started: true, taxied: true})
+	if slices.Contains(taxiing, "taxi") {
+		t.Errorf("already taxiing on an unlimited clearance: taxi must not be offered again, got %v", taxiing)
+	}
+	// `upto` stays: a limit is a new clearance whatever came before it.
+	if !slices.Contains(taxiing, "upto") {
+		t.Errorf("want upto still offered (a new limit is a new clearance), got %v", taxiing)
+	}
 }
+
+// A taxi clearance in other words, a changed route or runway, still goes out;
+// the once-only ones are refused (#1270 over #1275, which stops the same words
+// before act).
+func TestActTaxiInForceNotRefused(t *testing.T) {
+	it := &controlled{dep: &standDep{pushed: true, started: true, taxied: true}}
+	if err := it.act("taxi", -1); err != nil {
+		t.Errorf("taxi in other words: %v", err)
+	}
+	if err := it.act("pushback", -1); !errors.Is(err, traffic.ErrAlreadyCleared) {
+		t.Errorf("pushback again: want ErrAlreadyCleared, got %v", err)
+	}
+}
+
+func (f *standDep) ClearToTaxi() {}
