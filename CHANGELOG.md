@@ -7,6 +7,15 @@ This project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 ---
 
+## [0.147.1] - 2026-10-30
+
+### Fixed
+
+- A circuit arrival reports its base wherever it turns in. `OnBase` went by the corner of its extended downwind, which is not where it turns once sent in early, so the call was missed (#1314).
+- A circuit's downwind is no longer extended once the aircraft has started its turn in. It turned back and came onto the final the long way round, with no base at all (#1314).
+- The conflict log no longer reports lost separation between VFR traffic not separated where it is, unless they nearly meet (within 1 NM and 500 ft) (#1314).
+- A VFR departure leaving a field without a tower no longer calls "Departure" and gets "identified" (#1314).
+
 ## [0.147.0] - 2026-10-30
 
 ### Added

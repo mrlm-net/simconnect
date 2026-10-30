@@ -6,6 +6,7 @@ import (
 	"time"
 
 	"github.com/mrlm-net/simconnect/pkg/airport"
+	"github.com/mrlm-net/simconnect/pkg/calc"
 	"github.com/mrlm-net/simconnect/pkg/types"
 )
 
@@ -100,16 +101,21 @@ func (c *ArrivalController) absorbInCircuit(delay time.Duration) (Absorption, er
 	// joining from beyond the base turn is not on base yet (live, OKKKQ
 	// from N63 told to orbit before it reached its downwind).
 	var join []types.SIMCONNECT_DATA_WAYPOINT
-	if along <= baseAlong+300 && c.proc != nil {
+	// Extended in its rounded turn in, it turned back and came onto the final
+	// the long way round, no base at all (#1314).
+	turnIn := c.circuitTurnIn(baseAlong) + 300
+	if along <= turnIn && c.proc != nil {
 		for _, w := range c.proc.Waypoints[min(c.procWaypoint(c.proc.Waypoints), len(c.proc.Waypoints)):] {
 			p := airport.LatLon{Lat: w.Latitude, Lon: w.Longitude}
-			if alongHeading(thr.Position, ci.heading, p) <= baseAlong+300 {
+			// The point on the final is no join (#1314): within 1.5 NM all the
+			// points before it count as passed (procWaypoint).
+			if alongHeading(thr.Position, ci.heading, p) <= turnIn || math.Abs(alongHeading(thr.Position, ci.heading+90, p)) < 0.3*1852 {
 				break
 			}
 			join = append(join, w)
 		}
 	}
-	if along <= baseAlong+300 && len(join) == 0 {
+	if along <= turnIn && len(join) == 0 {
 		return Absorption{}, ErrNotOnProcedure // turning base, or on the final
 	}
 	kts := CircuitKts(*c.aircraft())
@@ -149,6 +155,29 @@ func (c *ArrivalController) absorbInCircuit(delay time.Duration) (Absorption, er
 	c.note(fmt.Sprintf("circuit: downwind extended %.1f NM, %s left", x, a.Left.Round(time.Second)), nil)
 	return a, nil
 }
+
+// circuitTurnIn is the distance along the runway (as baseAlong, the corner)
+// where its rounded turn in starts: the end of the route's last straight along
+// the downwind, which is further from the corner than a turn radius. c.mu held.
+func (c *ArrivalController) circuitTurnIn(baseAlong float64) float64 {
+	ci := c.req.Circuit
+	thr, _ := ci.Point(LegRunway)
+	at := baseAlong
+	if c.proc == nil {
+		return at
+	}
+	wps := c.proc.Waypoints
+	for i := 0; i+1 < len(wps); i++ {
+		leg := calc.BearingDegrees(wps[i].Latitude, wps[i].Longitude, wps[i+1].Latitude, wps[i+1].Longitude)
+		if math.Abs(headingDiff(leg, ci.heading+180)) < circuitStraightDeg {
+			at = alongHeading(thr.Position, ci.heading, airport.LatLon{Lat: wps[i+1].Latitude, Lon: wps[i+1].Longitude})
+		}
+	}
+	return math.Max(at, baseAlong)
+}
+
+// circuitStraightDeg: a leg within this of the downwind's heading is on it.
+const circuitStraightDeg = 5.0
 
 // BaseCallLeadM: the controller calls the base turn this far before the
 // aircraft reaches it, so the crew turns there.

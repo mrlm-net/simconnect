@@ -282,8 +282,9 @@ func (w *conflictWatch) tick(now time.Time, aircraft []traffic.TrackedAircraft) 
 		pair := c.A + "/" + c.B
 		pairs[pair] = true
 		w.mu.Lock()
-		first := !w.seen[pair]
-		w.seen[pair] = true
+		lost := separationLost(needed(c.A, c.B), c)
+		first := lost && !w.seen[pair]
+		w.seen[pair] = w.seen[pair] || lost
 		busy := now.Before(w.busy[c.A]) || now.Before(w.busy[c.B])
 		if busy && c.In <= conflictRecheckIn && w.changedBefore(now, c.A, c.B) {
 			busy = false // its change is not working: another
@@ -964,6 +965,13 @@ const (
 	vfrAvoidNM = 1.0
 	vfrAvoidFt = 500.0
 )
+
+// separationLost: c is one to report as lost separation. Not separated where
+// they are (VFR in D, E, G) there is none to lose, unless they nearly meet
+// (live, LKTC: two VFR logged at 3.0 NM, 1001 ft, #1314).
+func separationLost(needed bool, c traffic.Conflict) bool {
+	return needed || vfrNearMiss(c)
+}
 
 // vfrNearMiss reports whether c would bring two aircraft within
 // vfrAvoidNM and vfrAvoidFt.

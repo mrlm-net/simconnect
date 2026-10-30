@@ -603,9 +603,11 @@ func (c *ArrivalController) OnDownwind() bool {
 // arrival flies its downwind.
 const onDownwindDeg = 45.0
 
-// OnBase reports whether a VFR circuit arrival has turned onto its base,
-// wherever an extended downwind has moved that turn to. Round on its base it
-// may no longer fly the procedure (the approach takes it over there).
+// OnBase reports whether a VFR circuit arrival has turned onto its base: short
+// of the threshold, inside its downwind's line, heading for the runway's line.
+// By where it is, not by the corner: an extended downwind's turn is not where
+// tromboneNM says once it is turned in early (#1314). Round on its base it may no
+// longer fly the procedure (the approach takes it over there).
 func (c *ArrivalController) OnBase() bool {
 	c.mu.Lock()
 	defer c.mu.Unlock()
@@ -614,18 +616,18 @@ func (c *ArrivalController) OnBase() bool {
 		return false
 	}
 	thr, _ := ci.Point(LegRunway)
-	base, _ := ci.Point(LegBase)
-	baseAlong := alongHeading(thr.Position, ci.heading, base.Position) - c.tromboneNM*1852
 	want := ci.heading + 90
 	if ci.Side == CircuitRight {
 		want = ci.heading - 90
 	}
-	return alongHeading(thr.Position, ci.heading, c.last.Position) <= baseAlong+onBaseMarginM &&
+	out := alongHeading(thr.Position, want+180, c.last.Position)
+	return alongHeading(thr.Position, ci.heading, c.last.Position) < 0 &&
+		out > 0 && out <= ci.DownwindNM*1852+onBaseMarginM &&
 		math.Abs(headingDiff(c.last.Heading, want)) < onDownwindDeg
 }
 
-// onBaseMarginM: this short of its base turn's corner a circuit arrival can
-// be halfway round the turn.
+// onBaseMarginM: this far outside its downwind's line a circuit arrival can be
+// halfway round the base turn.
 const onBaseMarginM = 300.0
 
 // OnCrosswind reports whether a VFR circuit arrival has left the runway's
