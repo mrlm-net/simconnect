@@ -254,7 +254,7 @@ func TestUncontrolledTouchAndGo(t *testing.T) {
 
 // wakeBed is a medium airliner and a light VFR arrival appearing as the
 // airliner lands, on data's LKPR, flown until the light one is off the runway.
-func wakeBed(t *testing.T, data string) *Harness {
+func wakeBed(t *testing.T, data string, staffed ...world.StaffedStation) *Harness {
 	t.Helper()
 	if testing.Short() {
 		t.Skip("runs the World")
@@ -269,6 +269,9 @@ func wakeBed(t *testing.T, data string) *Harness {
 	yes, no := true, false
 	if err := h.World.SetSchedule(world.ScheduleSettings{Enabled: true, Airports: []string{"LKPR"}, Density: 3, MaxAircraft: 10, IFR: &yes, VFR: &yes, Generator: &no}); err != nil {
 		t.Fatal(err)
+	}
+	if len(staffed) > 0 {
+		h.World.SetStaffed(staffed)
 	}
 	sta := start.Add(35 * time.Minute)
 	flights := []traffic.Flight{{Callsign: "CSA100", Origin: "LKKB", Destination: "LKPR", Type: "A320", STD: sta.Add(-time.Hour), STA: sta}}
@@ -323,6 +326,20 @@ func TestWakeCautionVFR(t *testing.T) {
 	for cs, n := range each {
 		if n != 1 {
 			t.Errorf("%s cautioned %d times", cs, n)
+		}
+	}
+}
+
+// TestWakeCautionStaffedTower: the caution is the player's at a tower they
+// work (#1310).
+func TestWakeCautionStaffedTower(t *testing.T) {
+	for _, mode := range []string{"assist", "silent"} {
+		h := wakeBed(t, dataDir(t), world.StaffedStation{ICAO: "LKPR", Position: "tower", Mode: mode})
+		if heardCall(h, "wake turbulence") {
+			t.Errorf("%s: the World gave the caution for the player", mode)
+		}
+		if !heardCall(h, "for landing") {
+			t.Errorf("%s: the light aircraft never called", mode)
 		}
 	}
 }

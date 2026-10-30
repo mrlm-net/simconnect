@@ -69,10 +69,11 @@ func (cc *controlCenter) noteLanded(icao, rwy, model string) {
 
 // wakeCaution tells a VFR arrival in the circuit of a heavier aircraft ahead,
 // in the sequence or just landed on its runway, once a circuit (#1307). An
-// IFR arrival stays wake separated by the sequence, so gets none.
+// IFR arrival stays wake separated by the sequence, so gets none. Not for a
+// player's tower.
 func (it *controlled) wakeCaution() {
-	if it.circuit == nil || it.wakeCautioned.Load() {
-		return
+	if it.circuit == nil || it.wakeCautioned.Load() || it.gates.Load() || it.staffedNow(traffic.PosTower) {
+		return // a player's tower says it or not
 	}
 	it.mu.Lock()
 	model, rwy := it.view.Model, it.view.Runway
