@@ -195,6 +195,8 @@ type controlled struct {
 	// reported downwind.
 	circuit      *traffic.Circuit
 	downwindSaid bool
+	baseSaid     bool // the base leg reported, at a field without a tower (#1305)
+	ifrCancelled bool // cancelled IFR with approach, at a field without a tower (#1305)
 	// tngRolling: on the runway for a touch-and-go; once in the circuit
 	// again its calls start afresh (#569).
 	tngRolling bool
@@ -1352,14 +1354,7 @@ func (cc *controlCenter) spawn(g *airport.Graph, r SpawnRequest) (*controlled, e
 			p := it.arr.Plan()
 			pos, level := "", ""
 			if p != nil {
-				at := airport.LatLon{Lat: p.Spawn.Latitude, Lon: p.Spawn.Longitude}
-				nm := calc.HaversineNM(g.Layout.Latitude, g.Layout.Longitude, at.Lat, at.Lon)
-				miles := math.Max(1, math.Round(nm))
-				unit := "miles"
-				if miles == 1 {
-					unit = "mile"
-				}
-				pos = fmt.Sprintf("%.0f %s %s", miles, unit, traffic.CompassName(calc.BearingDegrees(g.Layout.Latitude, g.Layout.Longitude, at.Lat, at.Lon)))
+				pos = positionSaid(g.Layout, airport.LatLon{Lat: p.Spawn.Latitude, Lon: p.Spawn.Longitude})
 				level = fmt.Sprintf("%.0f feet", math.Round(p.Spawn.Altitude/100)*100)
 			}
 			if it.vfrPoint != nil {
@@ -1765,6 +1760,16 @@ func arrivalActions(s traffic.ArrivalState) []string {
 		return []string{"cross", "upto", "taxi"}
 	}
 	return nil
+}
+
+// positionSaid is at as said from l's airport: "10 miles south".
+func positionSaid(l *airport.Layout, at airport.LatLon) string {
+	miles := math.Max(1, math.Round(calc.HaversineNM(l.Latitude, l.Longitude, at.Lat, at.Lon)))
+	unit := "miles"
+	if miles == 1 {
+		unit = "mile"
+	}
+	return fmt.Sprintf("%.0f %s %s", miles, unit, traffic.CompassName(calc.BearingDegrees(l.Latitude, l.Longitude, at.Lat, at.Lon)))
 }
 
 // flightRules: a circuit arrival flies VFR (#568), everything else IFR on
@@ -3966,7 +3971,7 @@ func (it *controlled) handoff(ev TaxiOrArrival) {
 		it.tngRolling = true
 	}
 	if ev.arr != nil && it.tngRolling && !ev.arr.TouchAndGo && ev.arr.State == traffic.ArrivalApproaching {
-		it.tngRolling, it.downwindSaid = false, false
+		it.tngRolling, it.downwindSaid, it.baseSaid = false, false, false
 		it.vacateSaid.Store(false)
 		if it.cc.rejoin != nil {
 			go it.cc.rejoin(it.ICAO, it.Tail)
@@ -3983,7 +3988,7 @@ func (it *controlled) handoff(ev TaxiOrArrival) {
 					report = "downwind, stop and go"
 				}
 			}
-			it.say(traffic.CircuitReport(it.Tail, report))
+			it.say(it.circuitReport(report))
 			// The tower gives its place in the landing sequence (#569).
 			it.call(traffic.PosTower, prioApproach, func() {
 				// Told with an extended downwind already: not again.
@@ -3997,6 +4002,16 @@ func (it *controlled) handoff(ev TaxiOrArrival) {
 					}
 				}
 			})
+		}
+	}
+	// Nobody to ask them at a field without a tower: base is reported too
+	// (#1305).
+	if ev.arr != nil && it.circuit != nil && !it.baseSaid && ev.arr.State == traffic.ArrivalApproaching {
+		if b, ok := it.circuit.Point(traffic.LegBase); ok && calc.HaversineMeters(ev.arr.Position.Lat, ev.arr.Position.Lon, b.Position.Lat, b.Position.Lon) < 500 {
+			it.baseSaid = true
+			if _, ok := it.cc.uncontrolled(it.ICAO); ok {
+				it.say(it.circuitReport("base"))
+			}
 		}
 	}
 	// On the landing roll the tower tells the crew to call ground when
@@ -4137,6 +4152,13 @@ func (it *controlled) handoff(ev TaxiOrArrival) {
 			it.say(traffic.EstablishedReport(it.Tail, it.view.Runway))
 		}
 		it.approachSaid = false // a go-around is cleared again
+		// At a field without a tower, the field in sight: the crew cancels
+		// IFR with approach before going to the advisory frequency (#1305).
+		if !it.ifrCancelled && it.unworked() && it.goodVisibility() {
+			it.ifrCancelled = true
+			it.say(traffic.CancelIFR(station, it.Tail))
+			it.say(traffic.IFRCancelled(it.Tail))
+		}
 	}
 	// Gone around: tower says "go around" and hears "going around" first,
 	// then hands it to approach once climbing away, and the crew calls in
@@ -4176,7 +4198,19 @@ func (it *controlled) handoff(ev TaxiOrArrival) {
 	if !it.atisSaid && it.cc.atisLetter != nil {
 		info, it.atisSaid = it.cc.atisLetter(it.ICAO), true
 	}
-	it.say(it.initial(traffic.CheckIn(pos, station, it.Tail, it.checkInReport(pos), info)))
+	checkIn := traffic.CheckIn(pos, station, it.Tail, it.checkInReport(pos), info)
+	// At a field without a tower that is its announcement inbound (#1305).
+	if ev.arr != nil && pos == traffic.PosTower && it.view.Rules != "VFR" {
+		if _, ok := it.cc.uncontrolled(it.ICAO); ok {
+			checkIn = withParams(checkIn, map[string]string{traffic.ParamCircuit: positionSaid(it.graph.Layout, ev.arr.Position)})
+		}
+	}
+	it.say(it.initial(checkIn))
+	// Nobody at the field to clear an IFR departure: approach releases it
+	// (#1305).
+	if ev.dep != nil && pos == traffic.PosTower && it.unworked() {
+		it.say(traffic.ReleasedForDeparture(it.Tail))
+	}
 	switch {
 	case ev.dep != nil && pos == traffic.PosDeparture && (it.gates.Load() || it.staffedNow(pos)):
 		// Staffed: no "identified, climb to"; it levels at the level of its
@@ -4568,15 +4602,39 @@ func powerOut(st airport.Parking, spanM float64) bool {
 	return false
 }
 
-// wantsVisual: this arrival's crew asks for a visual approach (#766):
-// about one crew in five (by its call sign), in visibility of 8 km or
-// more under no ceiling below 3000 ft, not in cloud (Doc 4444 6.5.3.3).
-func (it *controlled) wantsVisual() bool {
-	if it.circuit != nil || it.cc.weather == nil {
+// goodVisibility: visibility of 8 km or more under no ceiling below 3000
+// ft, not in cloud (Doc 4444 6.5.3.3); false with no weather known.
+func (it *controlled) goodVisibility() bool {
+	if it.cc.weather == nil {
 		return false
 	}
 	w := it.cc.weather()
-	if w == nil || w.VisibilityM < 8000 || w.CeilingFt > 0 && w.CeilingFt < 3000 || w.InCloud {
+	return w != nil && w.VisibilityM >= 8000 && (w.CeilingFt <= 0 || w.CeilingFt >= 3000) && !w.InCloud
+}
+
+// unworked: an IFR flight of ours at a field without a tower, approach not
+// the player's: approach's calls for it are ours to say (#1305).
+func (it *controlled) unworked() bool {
+	if it.view.Rules == "VFR" || it.gates.Load() || it.staffedNow(traffic.PosApproach) {
+		return false
+	}
+	_, ok := it.cc.uncontrolled(it.ICAO)
+	return ok
+}
+
+// circuitReport is the crew's report of report, its position in the
+// circuit; with the side and runway a field without a tower needs (#1305).
+func (it *controlled) circuitReport(report string) traffic.Transmission {
+	if _, ok := it.cc.uncontrolled(it.ICAO); !ok {
+		return traffic.CircuitReport(it.Tail, report)
+	}
+	return withParams(traffic.CircuitReport(it.Tail, string(it.circuit.Side)+" "+report), map[string]string{traffic.ParamRunway: it.circuit.Runway})
+}
+
+// wantsVisual: this arrival's crew asks for a visual approach (#766):
+// about one crew in five (by its call sign), in good visibility.
+func (it *controlled) wantsVisual() bool {
+	if it.circuit != nil || !it.goodVisibility() {
 		return false
 	}
 	h := fnv.New32a()

@@ -36,6 +36,18 @@ func TestSelfAnnounce(t *testing.T) {
 	}
 }
 
+// withCircuit is t with its position as said.
+func withCircuit(t Transmission, where string) Transmission {
+	t.Params[ParamCircuit] = where
+	return t
+}
+
+// withRunway is t with its runway.
+func withRunway(t Transmission, rwy string) Transmission {
+	t.Params[ParamRunway] = rwy
+	return t
+}
+
 // TestRadioUncontrolled: at a field without a tower the radio says the
 // crews' own announcements for the clearances our controllers still decide,
 // on the common frequency, nobody answering; the other calls of tower and
@@ -59,6 +71,12 @@ func TestRadioUncontrolled(t *testing.T) {
 		{Vacated("OKABC", "24"), []string{"Henderson Traffic, OKABC, clear of runway 24, Henderson"}, "118.10"},
 		{CheckIn(PosGround, "Ground", "OKABC", "runway 24 vacated at D", ""), []string{"Henderson Traffic, OKABC, clear of runway 24, Henderson"}, "118.10"},
 		{CheckIn(PosTower, "Tower", "OKABC", "final runway 24", ""), nil, ""},
+		{VFRForLanding("Tower", "OKABC", "Cessna", "10 miles south", "2000 feet", ""), []string{"Henderson Traffic, OKABC, 10 miles south, inbound for landing, Henderson"}, "118.10"},
+		{withCircuit(CheckIn(PosTower, "Tower", "OKABC", "final runway 24", ""), "8 miles east"), []string{"Henderson Traffic, OKABC, 8 miles east, inbound for landing, Henderson"}, "118.10"},
+		{withRunway(CircuitReport("OKABC", "left downwind"), "24"), []string{"Henderson Traffic, OKABC, left downwind runway 24, Henderson"}, "118.10"},
+		{withRunway(CircuitReport("OKABC", "right base"), "24"), []string{"Henderson Traffic, OKABC, right base runway 24, Henderson"}, "118.10"},
+		{withRunway(CircuitReport("OKABC", "left downwind, touch and go"), "24"), []string{"Henderson Traffic, OKABC, left downwind runway 24, touch and go, Henderson"}, "118.10"},
+		{CircuitReport("OKABC", "downwind"), nil, ""},
 		{toStand, nil, ""},
 		{HoldPosition("OKABC"), nil, ""},
 		{pilotTx(PosTower, "OKABC", IntentCheckIn, nil, "Tower, OKABC"), nil, ""},
