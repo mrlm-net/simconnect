@@ -153,7 +153,7 @@ func AdvisoryFrequency(from Position, cs string) Transmission {
 // goes when, and the crews announce it to the traffic around.
 //   - the taxi clearance to a runway: SelfTaxiing;
 //   - the take-off clearance: SelfDeparting;
-//   - the landing clearance: SelfPattern, final;
+//   - the landing or touch-and-go clearance: SelfPattern, final;
 //   - runway vacated: SelfClear;
 //   - a VFR arrival's first call, and a check-in to the tower with its
 //     position (ParamCircuit): SelfInbound;
@@ -193,7 +193,7 @@ func SelfAnnounceFor(field string, t Transmission) (Transmission, bool) {
 		return SelfTaxiing(field, t.Callsign, rwy), true
 	case t.Intent == IntentTakeoff:
 		return SelfDeparting(field, t.Callsign, rwy, ""), true
-	case t.Intent == IntentLanding:
+	case t.Intent == IntentLanding || t.Intent == IntentTouchAndGo:
 		return SelfPattern(field, t.Callsign, "final", rwy), true
 	}
 	return Transmission{}, false

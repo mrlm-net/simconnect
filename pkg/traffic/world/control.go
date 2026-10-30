@@ -196,6 +196,11 @@ type controlled struct {
 	circuit      *traffic.Circuit
 	downwindSaid bool
 	baseSaid     bool // the base leg reported, at a field without a tower (#1305)
+	crossSaid    bool // the crosswind leg reported, at a field without a tower (#1307)
+	// wakeCautioned: told of a heavier aircraft ahead, this circuit (#1307);
+	// landedNoted: its landing noted for those behind it.
+	wakeCautioned atomic.Bool
+	landedNoted   bool
 	ifrCancelled bool // cancelled IFR with approach, at a field without a tower (#1305)
 	// tngRolling: on the runway for a touch-and-go; once in the circuit
 	// again its calls start afresh (#569).
@@ -559,6 +564,8 @@ type controlCenter struct {
 	// airports the simulator knows (a retract plan's destination).
 	jw          jetwayState
 	airportRefs func() map[string]traffic.AirportRef
+	// landed is the last landing per airport and runway (noteLanded, #1307).
+	landed sync.Map
 	// selfAnnounceOff: tuned off (ScheduleTuning.SelfAnnounce, #1303).
 	selfAnnounceOff atomic.Bool
 }
@@ -3971,11 +3978,19 @@ func (it *controlled) handoff(ev TaxiOrArrival) {
 		it.tngRolling = true
 	}
 	if ev.arr != nil && it.tngRolling && !ev.arr.TouchAndGo && ev.arr.State == traffic.ArrivalApproaching {
-		it.tngRolling, it.downwindSaid, it.baseSaid = false, false, false
+		it.tngRolling, it.downwindSaid, it.baseSaid, it.crossSaid, it.landedNoted = false, false, false, false, false
 		it.vacateSaid.Store(false)
+		it.wakeCautioned.Store(false)
+		if _, ok := it.cc.uncontrolled(it.ICAO); ok {
+			it.say(it.circuitReport("upwind")) // off again (#1307)
+		}
 		if it.cc.rejoin != nil {
 			go it.cc.rejoin(it.ICAO, it.Tail)
 		}
+	}
+	if ev.arr != nil && ev.arr.State == traffic.ArrivalRollout && !it.landedNoted {
+		it.landedNoted = true
+		it.cc.noteLanded(it.ICAO, it.view.Runway, it.view.Model)
 	}
 	// A VFR arrival reports downwind abeam the threshold (12.3.4.14 a).
 	if ev.arr != nil && it.circuit != nil && !it.downwindSaid && ev.arr.State == traffic.ArrivalApproaching {
@@ -4001,15 +4016,21 @@ func (it *controlled) handoff(ev TaxiOrArrival) {
 						it.cc.followed(it.ICAO, it.Tail, lead)
 					}
 				}
+				it.wakeCaution()
 			})
 		}
 	}
-	// Nobody to ask them at a field without a tower: base is reported too
-	// (#1305).
-	if ev.arr != nil && it.circuit != nil && !it.baseSaid && ev.arr.State == traffic.ArrivalApproaching {
-		if b, ok := it.circuit.Point(traffic.LegBase); ok && calc.HaversineMeters(ev.arr.Position.Lat, ev.arr.Position.Lon, b.Position.Lat, b.Position.Lon) < 500 {
-			it.baseSaid = true
-			if _, ok := it.cc.uncontrolled(it.ICAO); ok {
+	// Nobody to ask them at a field without a tower: crosswind and base are
+	// reported too, and each circuit round again, also after a go-around
+	// (#1305, #1307).
+	if ev.arr != nil && it.circuit != nil && ev.arr.State == traffic.ArrivalApproaching {
+		if _, ok := it.cc.uncontrolled(it.ICAO); ok {
+			if !it.crossSaid && it.arr.OnCrosswind() {
+				it.crossSaid, it.downwindSaid, it.baseSaid = true, false, false
+				it.say(it.circuitReport("crosswind"))
+			}
+			if !it.baseSaid && it.arr.OnBase() {
+				it.baseSaid, it.crossSaid = true, false
 				it.say(it.circuitReport("base"))
 			}
 		}
@@ -4154,7 +4175,7 @@ func (it *controlled) handoff(ev TaxiOrArrival) {
 		it.approachSaid = false // a go-around is cleared again
 		// At a field without a tower, the field in sight: the crew cancels
 		// IFR with approach before going to the advisory frequency (#1305).
-		if !it.ifrCancelled && it.unworked() && it.goodVisibility() {
+		if !it.ifrCancelled && it.unworked() && it.fieldInSight() {
 			it.ifrCancelled = true
 			it.say(traffic.CancelIFR(station, it.Tail))
 			it.say(traffic.IFRCancelled(it.Tail))
@@ -4602,14 +4623,32 @@ func powerOut(st airport.Parking, spanM float64) bool {
 	return false
 }
 
-// goodVisibility: visibility of 8 km or more under no ceiling below 3000
-// ft, not in cloud (Doc 4444 6.5.3.3); false with no weather known.
-func (it *controlled) goodVisibility() bool {
+// weatherNow is the weather in use, nil when none is known.
+func (it *controlled) weatherNow() *nav.Weather {
 	if it.cc.weather == nil {
-		return false
+		return nil
 	}
-	w := it.cc.weather()
-	return w != nil && w.VisibilityM >= 8000 && (w.CeilingFt <= 0 || w.CeilingFt >= 3000) && !w.InCloud
+	return it.cc.weather()
+}
+
+// goodVisibility: visibility of 8 km or more under no ceiling below 3000
+// ft, not in cloud (Doc 4444 6.5.3.3).
+func goodVisibility(w *nav.Weather) bool {
+	return w.VisibilityM >= 8000 && (w.CeilingFt <= 0 || w.CeilingFt >= 3000) && !w.InCloud
+}
+
+// fieldInSight: a crew can cancel IFR for the field ahead; unknown weather
+// or visibility counts as good, as for VFR flights (scheduler.visual).
+func (it *controlled) fieldInSight() bool {
+	w := it.weatherNow()
+	if w == nil {
+		return true
+	}
+	c := *w
+	if c.VisibilityM <= 0 {
+		c.VisibilityM = 8000
+	}
+	return goodVisibility(&c)
 }
 
 // unworked: an IFR flight of ours at a field without a tower, approach not
@@ -4624,17 +4663,22 @@ func (it *controlled) unworked() bool {
 
 // circuitReport is the crew's report of report, its position in the
 // circuit; with the side and runway a field without a tower needs (#1305).
+// The upwind has no side.
 func (it *controlled) circuitReport(report string) traffic.Transmission {
 	if _, ok := it.cc.uncontrolled(it.ICAO); !ok {
 		return traffic.CircuitReport(it.Tail, report)
 	}
-	return withParams(traffic.CircuitReport(it.Tail, string(it.circuit.Side)+" "+report), map[string]string{traffic.ParamRunway: it.circuit.Runway})
+	if report != "upwind" {
+		report = string(it.circuit.Side) + " " + report
+	}
+	return withParams(traffic.CircuitReport(it.Tail, report), map[string]string{traffic.ParamRunway: it.circuit.Runway})
 }
 
 // wantsVisual: this arrival's crew asks for a visual approach (#766):
 // about one crew in five (by its call sign), in good visibility.
 func (it *controlled) wantsVisual() bool {
-	if it.circuit != nil || !it.goodVisibility() {
+	w := it.weatherNow()
+	if it.circuit != nil || w == nil || !goodVisibility(w) {
 		return false
 	}
 	h := fnv.New32a()

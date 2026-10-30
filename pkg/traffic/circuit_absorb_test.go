@@ -183,3 +183,91 @@ func TestCircuitBaseCall(t *testing.T) {
 		t.Error("base call due twice")
 	}
 }
+
+// TestCircuitOnBase: OnBase is true once round the base turn, also where an
+// extended downwind has moved it, on either side (#1307).
+func TestCircuitOnBase(t *testing.T) {
+	g := lkprGraph(t)
+	p := ProfileFor("C172")
+	for _, side := range []CircuitSide{CircuitLeft, CircuitRight} {
+		c, err := NewCircuit(g.Layout, "24", CircuitConfig{Side: side}, p)
+		if err != nil {
+			t.Fatal(err)
+		}
+		entry, _ := c.JoinDownwind()
+		base, _ := c.Point(LegBase)
+		start := func() (*ArrivalController, func(airport.LatLon, float64) bool) {
+			ec := &eventClient{}
+			ctl := NewArrivalController(NewFleet(ec), ArrivalWithInjector(NewInjector(ec)))
+			st, _ := g.Layout.ParkingIndex("C22")
+			if err := ctl.Start(ArrivalRequest{Graph: g, Runway: "24", Parking: st, Model: "Asobo PassiveAircraft C172", Tail: "OKBAS",
+				InjectApproach: true, Circuit: &c}); err != nil {
+				t.Fatal(err)
+			}
+			go func() {
+				for range ctl.Events() {
+				}
+			}()
+			ctl.Handle(assignedMsg(DefaultArrivalRequestBase, 78))
+			ctl.Handle(arrivalPositionMsg(DefaultArrivalRequestBase+arrReqMonitor, 78, entry.Position, entry.AltFt, 0, CircuitKts(p), false))
+			return ctl, func(pos airport.LatLon, hdg float64) bool {
+				ctl.mu.Lock()
+				ctl.last.Position, ctl.last.Heading = pos, hdg
+				ctl.mu.Unlock()
+				return ctl.OnBase()
+			}
+		}
+		turn := 90.0
+		if side == CircuitRight {
+			turn = -90
+		}
+		onBase, downwind := c.heading+turn, c.heading+180
+		first, at := start()
+		if at(entry.Position, downwind) {
+			t.Errorf("%s: on the base at the join", side)
+		}
+		if at(base.Position, downwind) {
+			t.Errorf("%s: at the corner, still on the downwind", side)
+		}
+		if !at(base.Position, onBase) {
+			t.Errorf("%s: at the corner on the base's heading", side)
+		}
+		if at(base.Position, c.heading) {
+			t.Errorf("%s: on the base with the final's heading", side)
+		}
+		up, _ := c.Point(LegUpwind)
+		at(up.Position, c.heading)
+		if first.OnCrosswind() {
+			t.Errorf("%s: on the crosswind, still on the upwind", side)
+		}
+		cr, _ := c.Point(LegCrosswind)
+		mid := airport.LatLon{Lat: (up.Position.Lat + cr.Position.Lat) / 2, Lon: (up.Position.Lon + cr.Position.Lon) / 2}
+		at(mid, c.heading-turn)
+		if !first.OnCrosswind() {
+			t.Errorf("%s: turned off the upwind", side)
+		}
+		at(mid, c.heading-turn-60) // straight there from the climb-out
+		if !first.OnCrosswind() {
+			t.Errorf("%s: heading for the downwind from the climb-out", side)
+		}
+		at(mid, c.heading+180)
+		if first.OnCrosswind() {
+			t.Errorf("%s: on the crosswind flying the downwind's way", side)
+		}
+		at(base.Position, c.heading-turn)
+		if first.OnCrosswind() {
+			t.Errorf("%s: on the crosswind on the approach side", side)
+		}
+		ctl, at := start()
+		a, err := ctl.AbsorbDelay(time.Minute)
+		if err != nil || a.ExtraNM <= 0 {
+			t.Fatalf("%s: extending: %+v %v", side, a, err)
+		}
+		if at(base.Position, onBase) {
+			t.Errorf("%s: extended, turning short of the moved turn is no base", side)
+		}
+		if out := offsetHeading(base.Position, c.heading+180, a.ExtraNM*1852/2); !at(out, onBase) {
+			t.Errorf("%s: extended by %.1f NM, round the moved turn", side, a.ExtraNM)
+		}
+	}
+}

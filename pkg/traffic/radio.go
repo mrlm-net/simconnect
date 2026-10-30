@@ -95,6 +95,7 @@ const (
 	IntentCircuitDelay  Intent = "circuit_delay"   // circle the aerodrome, orbit, make another circuit
 	IntentVFRForLanding Intent = "vfr_for_landing" // pilot: (type) (position) (level) [information] for landing
 	IntentCircuitReport Intent = "circuit_report"  // pilot: (position in circuit), e.g. downwind
+	IntentWakeCaution   Intent = "wake_caution"    // caution wake turbulence, (the traffic)
 	// The crew decides on its own (#621): pilot "going around"; ATC
 	// acknowledges, "roger".
 	IntentPilotGoAround Intent = "pilot_go_around"
@@ -1023,6 +1024,18 @@ func StraightIn(cs, runway, wind, qnh string) Transmission {
 func FollowTraffic(cs string, number int, traffic string) Transmission {
 	return Say(Transmission{Position: PosTower, Callsign: cs, Intent: IntentFollow,
 		Params: map[string]string{ParamNumber: fmt.Sprint(number), ParamTraffic: traffic}})
+}
+
+// WakeCaution is the tower's caution of possible wake turbulence (#1307):
+// "OKABC, caution wake turbulence, the Airbus A320 on 3 mile final".
+// WakeCautionDue says when. Not said at a field without a tower: there is no
+// controller to give it.
+func WakeCaution(cs, traffic string) Transmission {
+	text := cs + ", caution wake turbulence"
+	if traffic != "" {
+		text += ", " + traffic
+	}
+	return Transmission{Position: PosTower, Callsign: cs, Intent: IntentWakeCaution, Params: map[string]string{ParamTraffic: traffic}, Text: text}
 }
 
 // Circuit approach instructions (12.3.4.15) and delays (12.3.4.17), as said.

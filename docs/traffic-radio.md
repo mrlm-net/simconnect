@@ -97,7 +97,7 @@ The World's own traffic talks that way there (`RadioOptions.Uncontrolled`, `Self
 | Decided | Said |
 |---|---|
 | VFR first call, IFR check-in after the handoff | `SelfInbound` |
-| Report on the downwind and base | `SelfPattern` |
+| Report on the upwind, crosswind, downwind and base | `SelfPattern` |
 | Taxi to a runway | `SelfTaxiing` |
 | Take-off | `SelfDeparting` |
 | Landing | `SelfPattern`, final |

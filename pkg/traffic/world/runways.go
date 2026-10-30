@@ -872,7 +872,10 @@ func (t *towers) apply(icao, rwy string, c traffic.RunwayClearances, ours map[st
 				said = traffic.ClearedStopAndGo(cs, end(cs))
 			}
 		}
-		give(cs, "land", said, func(it *controlled) error { return nil })
+		give(cs, "land", said, func(it *controlled) error {
+			it.wakeCaution() // the traffic ahead now (#1307)
+			return nil
+		})
 	}
 	// Waiting only for the next arrival at a crossing: across behind it,
 	// once it is off the runway. Given once; the plain crossing is then

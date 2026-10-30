@@ -2,6 +2,7 @@ package world
 
 import (
 	"fmt"
+	"time"
 
 	"github.com/mrlm-net/simconnect/pkg/airport"
 	"github.com/mrlm-net/simconnect/pkg/calc"
@@ -48,6 +49,52 @@ func (it *controlled) circuitPlace() (int, string, string) {
 		}
 	}
 	return 0, "", ""
+}
+
+// wakeCautionWindow: a landing this long ago still counts as the preceding
+// one for a wake caution: the longest time minimum for landing behind another
+// (Doc 4444 5.8, 3 min).
+const wakeCautionWindow = 3 * time.Minute
+
+// landedRecord is a landing as noteLanded keeps it.
+type landedRecord struct {
+	model string
+	at    time.Time
+}
+
+// noteLanded notes model's landing on rwy at icao.
+func (cc *controlCenter) noteLanded(icao, rwy, model string) {
+	cc.landed.Store(icao+" "+rwy, landedRecord{model, cc.clock.Now()})
+}
+
+// wakeCaution tells a VFR arrival in the circuit of a heavier aircraft ahead,
+// in the sequence or just landed on its runway, once a circuit (#1307). An
+// IFR arrival stays wake separated by the sequence, so gets none.
+func (it *controlled) wakeCaution() {
+	if it.circuit == nil || it.wakeCautioned.Load() {
+		return
+	}
+	it.mu.Lock()
+	model, rwy := it.view.Model, it.view.Runway
+	it.mu.Unlock()
+	_, ahead, lead := it.circuitPlace()
+	leadModel := ""
+	if l := it.cc.byTail(lead); lead != "" && l != nil {
+		l.mu.Lock()
+		leadModel = l.view.Model
+		l.mu.Unlock()
+	} else if v, ok := it.cc.landed.Load(it.ICAO + " " + rwy); ok {
+		if r := v.(landedRecord); it.cc.clock.Now().Sub(r.at) <= wakeCautionWindow {
+			leadModel, ahead = r.model, "the "+typeSaid(traffic.ProfileFor(r.model).Type)+" landing ahead"
+		}
+	}
+	if leadModel == "" {
+		return
+	}
+	wake := func(m string) traffic.WakeCategory { return traffic.WakeFor(traffic.ProfileFor(m).Type).ICAO }
+	if traffic.WakeCautionDue(wake(leadModel), wake(model)) && it.wakeCautioned.CompareAndSwap(false, true) {
+		it.say(traffic.WakeCaution(it.Tail, ahead))
+	}
 }
 
 // leaderToGo is the arrival this one lands behind ("" none, or landed
