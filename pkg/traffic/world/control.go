@@ -1920,6 +1920,30 @@ func (it *controlled) vacateAt(node airport.NodeID) error {
 	return nil
 }
 
+// exitOnSide is the first exit on side ("left", "right") the arrival can make:
+// a tower not minding which ("vacate left"). Said with the exit it takes.
+func (it *controlled) exitOnSide(side string) (airport.NodeID, error) {
+	p := it.arr.Plan()
+	if p == nil || it.graph == nil {
+		return -1, errors.New("vacate: this arrival has no runway plan yet")
+	}
+	exits, err := it.graph.RunwayExits(p.End.Name)
+	if err != nil {
+		return -1, err
+	}
+	for _, x := range exits {
+		if !strings.EqualFold(x.Side.String(), side) {
+			continue
+		}
+		err := it.cc.do(func() error { return it.arr.VacateAt(x) })
+		if errors.Is(err, traffic.ErrExitTooClose) || errors.Is(err, traffic.ErrExitTooTight) {
+			continue
+		}
+		return x.Node, err
+	}
+	return -1, fmt.Errorf("%w: none on the %s", traffic.ErrExitTooClose, strings.ToLower(side))
+}
+
 // exitAt is the exit off the arrival's runway that node is on.
 func (it *controlled) exitAt(node airport.NodeID) (airport.RunwayExit, error) {
 	p := it.arr.Plan()
@@ -1930,7 +1954,15 @@ func (it *controlled) exitAt(node airport.NodeID) (airport.RunwayExit, error) {
 	if err != nil {
 		return airport.RunwayExit{}, err
 	}
-	x, ok := exitAtNode(exits, node)
+	// One taxiway can leave by several paths through the graph: a clean one
+	// before one with a hook in it (ExitTight).
+	clean := slices.DeleteFunc(slices.Clone(exits), func(x airport.RunwayExit) bool {
+		return it.graph.ExitTight(x, p.End.Heading, airport.RouteOptions{}) != ""
+	})
+	x, ok := exitAtNode(clean, node)
+	if !ok {
+		x, ok = exitAtNode(exits, node)
+	}
 	if !ok {
 		return airport.RunwayExit{}, fmt.Errorf("vacate: no exit off runway %s there", p.End.Name)
 	}
@@ -1959,15 +1991,14 @@ func exitAtNode(exits []airport.RunwayExit, node airport.NodeID) (airport.Runway
 // clearance to something a thousand feet in the air, which the engine would
 // take and which teaches an order of the job that does not exist. The ground
 // clearances begin where ground begins — off the runway (ArrivalPosition) —
-// and the roll itself is the crew's, not the controller's: the aeroplane is
-// stopping, and the next word on the frequency is its call to ground.
+// and on the roll the tower may still name the turn-off (VacateAt, #1330).
 func arrivalActions(s traffic.ArrivalState) []string {
 	switch s {
 	case traffic.ArrivalApproaching, traffic.ArrivalLanding:
-		// `vacate` names the exit it leaves the runway by, and is the tower's
-		// to give before the wheels are down: after that the rollout is a
-		// braking profile already being flown to the old one (VacateAt).
+		// `vacate` names the exit it leaves the runway by.
 		return []string{"land", "goaround", "vacate"}
+	case traffic.ArrivalRollout:
+		return []string{"vacate"}
 	case traffic.ArrivalVacating, traffic.ArrivalAwaitingTaxi:
 		return []string{"taxi", "upto"}
 	case traffic.ArrivalTaxiing:
@@ -2723,7 +2754,7 @@ func registerControl(mux *http.ServeMux, st *state) {
 		}
 		// No limit given is not a limit behind it (#1308): "not ahead on the
 		// taxi route" sent a host looking at the route.
-		if a := r.PathValue("action"); (a == "upto" || a == "vacate") && r.URL.Query().Get("node") == "" {
+		if a := r.PathValue("action"); (a == "upto" || a == "vacate" && r.URL.Query().Get("side") == "") && r.URL.Query().Get("node") == "" {
 			what := map[string]string{"upto": "the clearance limit", "vacate": "the exit"}[a]
 			http.Error(w, a+": ?node= "+what+" is required", http.StatusBadRequest)
 			return
@@ -2741,6 +2772,15 @@ func registerControl(mux *http.ServeMux, st *state) {
 			node = airport.NodeID(n)
 		}
 		action := r.PathValue("action")
+		// Vacate by side alone (?side=left): the first exit there it can make.
+		if side := r.URL.Query().Get("side"); side != "" && action == "vacate" && it.arr != nil && node < 0 {
+			n, err := it.exitOnSide(side)
+			if err != nil {
+				http.Error(w, err.Error(), http.StatusUnprocessableEntity)
+				return
+			}
+			node = n
+		}
 		clr := action
 		if node >= 0 {
 			clr = fmt.Sprintf("%s node %d", action, node)

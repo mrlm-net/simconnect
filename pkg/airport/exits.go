@@ -223,6 +223,36 @@ func (g *Graph) RouteFromRunway(exit RunwayExit, parking int, opts RouteOptions)
 	return r, nil
 }
 
+// ExitTight says why an aircraft cannot vacate by exit x: "" it can. Its wings
+// do not fit the exit (opts.HalfSpan, as for a route), or the exit bends back
+// sharper than MaxExitAngle (Angle is measured to its far end, which hides a
+// hook on the way there).
+func (g *Graph) ExitTight(x RunwayExit, runwayHeading float64, opts RouteOptions) string {
+	if opts.TaxiwayMaxSpan == nil {
+		opts.TaxiwayMaxSpan = KnownTaxiwayMaxSpan[g.Layout.ICAO]
+	}
+	hdg := runwayHeading
+	for i := 0; i+1 < len(x.Path); i++ {
+		from, to := x.Path[i], x.Path[i+1]
+		for _, e := range g.Adj[from] {
+			if e.To == to && !opts.fits(e) {
+				return "the wings do not fit"
+			}
+		}
+		ax, az := g.local.xz(g.Nodes[from].Position)
+		bx, bz := g.local.xz(g.Nodes[to].Position)
+		if ax == bx && az == bz {
+			continue
+		}
+		brg := math.Atan2(bx-ax, bz-az) * 180 / math.Pi
+		if turn := math.Abs(math.Mod(brg-hdg+540, 360) - 180); turn > MaxExitAngle {
+			return "the turn is too sharp"
+		}
+		hdg = brg
+	}
+	return ""
+}
+
 // pathLength is the length of a node path along its edges, in meters.
 func (g *Graph) pathLength(path []NodeID) float64 {
 	sum := 0.0

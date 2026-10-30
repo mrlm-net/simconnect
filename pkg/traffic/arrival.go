@@ -1133,13 +1133,18 @@ func (c *ArrivalController) ChangeStand(parking int) error {
 	return nil
 }
 
-// ErrExitFixed is returned by VacateAt once the aircraft is on the runway:
-// the rollout is planned around the exit it was given, and the braking is
-// already being flown to it.
-var ErrExitFixed = errors.New("traffic: the arrival is on the runway; its exit is fixed")
+// ErrExitFixed is returned by VacateAt once the aircraft is off the runway:
+// it has left by the exit it was given.
+var ErrExitFixed = errors.New("traffic: the arrival is off the runway; its exit is fixed")
+
+// ErrExitTooTight is returned by VacateAt for an exit the aircraft cannot
+// vacate by at any speed: its wings do not fit, or the turn is too sharp
+// (airport.Graph.ExitTight), or no way on from it fits.
+var ErrExitTooTight = errors.New("traffic: too tight to vacate")
 
 // ErrExitTooClose is returned by VacateAt for an exit the aircraft cannot
-// slow down for after its touchdown; bestExit passes such an exit too.
+// slow down for, after its touchdown or from where it is on the roll, or has
+// passed; bestExit passes such an exit too.
 var ErrExitTooClose = errors.New("traffic: the arrival cannot make that exit")
 
 // VacateAt sends the arrival off the runway at x — the controller naming the
@@ -1153,27 +1158,49 @@ var ErrExitTooClose = errors.New("traffic: the arrival cannot make that exit")
 // replacing only the route is #87, where the aeroplane taxied the new way and
 // parked on the old spot.
 //
-// REFUSED ONCE IT IS DOWN, for a reason ChangeStand does not have: the rollout
-// is a braking profile computed to this exit's distance and turn-off speed
-// (planRollout). Changing the target mid-roll does not re-plan the deceleration
-// that is already being flown, so the aeroplane would arrive at the new exit at
-// the wrong speed or miss it entirely. A controller who wants it off somewhere
-// else after touchdown is giving it a taxi route, not an exit.
+// ON THE ROLL too, where a tower says it most (#1330): the rollout is a braking
+// profile to the exit's distance and turn-off speed, so the deceleration is
+// planned again from where the aircraft is, as at the take-over. Refused when
+// it cannot make that exit at its speed under firm braking, or has passed it;
+// off the runway, ErrExitFixed.
 func (c *ArrivalController) VacateAt(x airport.RunwayExit) error {
 	c.mu.Lock()
 	defer c.mu.Unlock()
-	if c.plan == nil || c.state > ArrivalLanding {
+	if c.plan == nil || c.state > ArrivalRollout {
 		return ErrExitFixed
 	}
 	g := c.req.Graph
 	req := c.req
-	reach := exitReach{approachProfileOf(req).TouchdownKts, req.Rollout.BrakeDecel}
-	exits, err := g.RunwayExits(c.plan.End.Name)
-	if err != nil {
-		return err
+	rolling := c.state == ArrivalRollout
+	if rolling && c.plan.Exit.Node == x.Node {
+		return nil
 	}
-	if x.Along < reach.rollout(ExitSpeed(x)) && len(exits) > 0 && x.Node != exits[len(exits)-1].Node {
-		return fmt.Errorf("%w: %s", ErrExitTooClose, x.Taxiway)
+	opts := req.Options
+	if half := c.profile().SpanMeters / 2; half > opts.HalfSpan {
+		opts.HalfSpan = half
+	}
+	why := g.ExitTight(x, c.plan.End.Heading, opts)
+	if why == "" {
+		if r, err := g.RouteFromRunway(x, req.Parking, opts); err == nil && r.Tight {
+			why = "no way on from it fits"
+		}
+	}
+	if why != "" {
+		return fmt.Errorf("%w: %s: %s", ErrExitTooTight, x.Taxiway, why)
+	}
+	if rolling {
+		if err := c.canMakeExit(x); err != nil {
+			return err
+		}
+	} else {
+		reach := exitReach{approachProfileOf(req).TouchdownKts, req.Rollout.BrakeDecel}
+		exits, err := g.RunwayExits(c.plan.End.Name)
+		if err != nil {
+			return err
+		}
+		if x.Along < reach.rollout(ExitSpeed(x)) && len(exits) > 0 && x.Node != exits[len(exits)-1].Node {
+			return fmt.Errorf("%w: %s", ErrExitTooClose, x.Taxiway)
+		}
 	}
 	plan, err := PlanArrival(g, req.Runway, req.Parking, ArrivalOptions{
 		SpawnNm: c.plan.SpawnNm, Exit: &x, Route: req.Options, GroundAGL: req.GroundAGL, NoseOffset: req.NoseOffset, StandSide: req.StandSide,
@@ -1194,5 +1221,37 @@ func (c *ArrivalController) VacateAt(x airport.RunwayExit) error {
 	c.track = newRouteTracker(plan.Route)
 	c.exitAlong = c.track.cum[len(plan.Exit.Path)-1]
 	c.vacateAlong = c.track.cum[plan.VacateIndex] - plan.VacateBackMeters
+	if rolling && c.mover != nil {
+		pose := c.mover.Pose()
+		return c.takeover(arrivalMonitor{Latitude: pose.Position.Lat, Longitude: pose.Position.Lon, Heading: pose.Heading, GroundKts: pose.GroundSpeedKts}, pose.Position, true)
+	}
+	return nil
+}
+
+// canMakeExit reports whether the aircraft on the roll can leave by x: ahead
+// of its nose, and slowing to the turn-off speed by rolloutExitLeadM before it
+// under firm braking. c.mu held.
+func (c *ArrivalController) canMakeExit(x airport.RunwayExit) error {
+	var pos airport.LatLon
+	var hdg, kts float64
+	switch {
+	case c.mover != nil:
+		p := c.mover.Pose()
+		pos, hdg, kts = p.Position, p.Heading, p.GroundSpeedKts
+	case c.approach != nil:
+		p := c.approach.Pose()
+		pos, hdg, kts = p.Position, p.Heading, p.GroundSpeedKts
+	default:
+		pos, hdg, kts = c.last.Position, c.last.Heading, c.last.GroundSpeed
+	}
+	end := c.plan.End
+	along := alongHeading(end.Threshold, end.Heading, NoseGear(pos, hdg, c.profile()))
+	if x.Along <= along {
+		return fmt.Errorf("%w: past %s", ErrExitTooClose, x.Taxiway)
+	}
+	v, vx := kts*ktsToMS, ExitSpeed(x)*ktsToMS
+	if need := (v*v-vx*vx)/(2*c.rolloutProfile().BrakeDecel) + rolloutExitLeadM; x.Along-along < need {
+		return fmt.Errorf("%w: too fast for %s, %.0f kt with %.0f m to it", ErrExitTooClose, x.Taxiway, kts, x.Along-along)
+	}
 	return nil
 }

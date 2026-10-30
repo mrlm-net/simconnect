@@ -78,6 +78,7 @@ func (c *ArrivalController) monitorEvery(p types.SIMCONNECT_PERIOD) {
 // the aircraft's nose gear with its heading and speed, and the lights are set
 // to what the sim shows.
 func (c *ArrivalController) takeover(m arrivalMonitor, pos airport.LatLon, onRunway bool) error {
+	replan := c.mover != nil // ours already: a new exit on the roll (VacateAt)
 	prof := c.profile()
 	nose := NoseGear(pos, m.Heading, prof)
 	route := c.plan.Route.Points
@@ -188,6 +189,9 @@ func (c *ArrivalController) takeover(m arrivalMonitor, pos airport.LatLon, onRun
 		c.mover.SlowAt(hold, RollThroughKts)
 	} else {
 		c.mover.HoldAt(hold)
+	}
+	if replan {
+		return nil
 	}
 
 	if err := c.inj.Takeover(c.objectID); err != nil {

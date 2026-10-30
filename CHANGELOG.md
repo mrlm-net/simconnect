@@ -7,6 +7,14 @@ This project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 ---
 
+## [0.153.0] - 2026-10-30
+
+### Added
+
+- `vacate` on the landing roll: `Actions` offers it in `ArrivalRollout`, `VacateAt` plans the deceleration again from where the aircraft is, and `ErrExitTooClose` says why it cannot: "too fast for A4, 84 kt with 150 m to it", or "past A4". `ErrExitFixed` now means off the runway (#1330).
+- `ErrExitTooTight`: `VacateAt` refuses an exit the aircraft cannot vacate by at any speed: its wings do not fit, the turn is too sharp, or no way on from it fits. `airport.Graph.ExitTight` gives the reason (#1330).
+- `POST /api/control/{id}/vacate?side=left`: the first exit on that side the aircraft can make, for a tower not minding which. It is said with the exit it takes (#1330).
+
 ## [0.152.3] - 2026-10-30
 
 ### Fixed
