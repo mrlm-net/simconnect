@@ -2032,13 +2032,13 @@ func (cc *controlCenter) views() []ControlView {
 	cc.mu.Lock()
 	for _, it := range cc.items {
 		it.mu.Lock()
-		v, id, fixes := it.view, it.objectID, it.fixes
+		v, id, fixes, o := it.view, it.objectID, it.fixes, it.observed
 		it.mu.Unlock()
 		v.ActionParams = actionParams(v.Actions)
 		if cc.tcasView != nil && id != 0 {
 			v.TCAS = cc.tcasView(id)
 		}
-		if o := it.observed; o != nil {
+		if o != nil {
 			v.Real, v.Seeded, v.ObservedID, v.Registration = !o.Seeded, o.Seeded, o.ID, o.Registration
 		}
 		if it.arr != nil && !v.OnGround {
@@ -2679,6 +2679,7 @@ func registerControl(mux *http.ServeMux, st *state) {
 		// Marked as said before it is given: the state change it causes can
 		// arrive before cc.do returns, and would log it a second time.
 		it.mu.Lock()
+		wasSpoken, hadSpoken := it.spoken[action]
 		it.spoken[action] = action != "remove"
 		for _, k := range impliedBy(action) {
 			it.spoken[k] = true
@@ -2704,8 +2705,14 @@ func registerControl(mux *http.ServeMux, st *state) {
 			}
 		}
 		if err := cc.do(do); err != nil {
+			// As it was: refused, the one given before still counts as said,
+			// or its state change would say it again (#1321).
 			it.mu.Lock()
-			delete(it.spoken, action)
+			if hadSpoken {
+				it.spoken[action] = wasSpoken
+			} else {
+				delete(it.spoken, action)
+			}
 			it.mu.Unlock()
 			tlog.printf("%-6s %s: clearance %s refused: %v", it.Tail, it.Kind, clr, err)
 			http.Error(w, err.Error(), http.StatusUnprocessableEntity)

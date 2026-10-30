@@ -7,6 +7,16 @@ This project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 ---
 
+## [0.149.1] - 2026-10-30
+
+### Fixed
+
+- `World.Hold` could stop the whole World: it took the World's lock and then the manager's, while the schedule's tick takes them the other way round (#1318).
+- An aircraft whose spawn was under way when `World.Hold` ran came up beside the replay's traffic and stayed. It now goes again, and its flight is done (#1318).
+- A data race reading a real aircraft's details in the snapshot while it spawned (#1318).
+- A scenario's `push` on a departure already cleared failed with "already cleared for that" since v0.146.0. It is now done, with nothing said (#1321).
+- A refused clearance dropped the mark that the one in force had been said, so the approval was said a second time when the state changed (#1321).
+
 ## [0.149.0] - 2026-10-30
 
 ### Added
