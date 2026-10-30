@@ -603,6 +603,60 @@ func (c *ArrivalController) OnDownwind() bool {
 // arrival flies its downwind.
 const onDownwindDeg = 45.0
 
+// OnBase reports whether a VFR circuit arrival has turned onto its base,
+// wherever an extended downwind has moved that turn to. Round on its base it
+// may no longer fly the procedure (the approach takes it over there).
+func (c *ArrivalController) OnBase() bool {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	ci := c.req.Circuit
+	if ci == nil || c.last.Position == (airport.LatLon{}) {
+		return false
+	}
+	thr, _ := ci.Point(LegRunway)
+	base, _ := ci.Point(LegBase)
+	baseAlong := alongHeading(thr.Position, ci.heading, base.Position) - c.tromboneNM*1852
+	want := ci.heading + 90
+	if ci.Side == CircuitRight {
+		want = ci.heading - 90
+	}
+	return alongHeading(thr.Position, ci.heading, c.last.Position) <= baseAlong+onBaseMarginM &&
+		math.Abs(headingDiff(c.last.Heading, want)) < onDownwindDeg
+}
+
+// onBaseMarginM: this short of its base turn's corner a circuit arrival can
+// be halfway round the turn.
+const onBaseMarginM = 300.0
+
+// OnCrosswind reports whether a VFR circuit arrival has left the runway's
+// line past its threshold, turning across it towards its downwind. After a
+// touch-and-go it flies there straight from its climb-out (circuitAgain), not
+// round the upwind's corner.
+func (c *ArrivalController) OnCrosswind() bool {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	ci := c.req.Circuit
+	if ci == nil || c.last.Position == (airport.LatLon{}) {
+		return false
+	}
+	thr, _ := ci.Point(LegRunway)
+	want := ci.heading - 90
+	if ci.Side == CircuitRight {
+		want = ci.heading + 90
+	}
+	return alongHeading(thr.Position, ci.heading, c.last.Position) > 0 &&
+		alongHeading(thr.Position, want, c.last.Position) > onCrosswindShare*ci.DownwindNM*1852 &&
+		math.Abs(headingDiff(c.last.Heading, want)) < onCrosswindDeg
+}
+
+// onCrosswindShare, onCrosswindDeg: this share of the way to the downwind,
+// within this of the heading across the runway, a circuit arrival is on its
+// crosswind.
+const (
+	onCrosswindShare = 0.2
+	onCrosswindDeg   = 75.0
+)
+
 // CircuitFinal reports whether a VFR circuit arrival flying its circuit has
 // turned final towards the runway, not going round again: established for
 // its landing clearance, before the injected approach takes it over 0.5 NM

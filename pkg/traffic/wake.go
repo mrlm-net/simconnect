@@ -42,6 +42,20 @@ func (w *WakeCategory) UnmarshalText(b []byte) error {
 	return nil
 }
 
+// WakeCautionDue: a flight behind leader needs a caution of possible wake
+// turbulence (#1307): leader is of a heavier category. The controller gives it
+// where no wake separation is applied, to VFR arrivals landing behind a
+// preceding SUPER, HEAVY or MEDIUM aircraft; the pilot stays responsible for
+// the spacing and asks for more if needed (Fiji CAA AIC 11/22, 3.1, 3.1.2).
+func WakeCautionDue(leader, follower WakeCategory) bool {
+	return wakeRank(leader) > wakeRank(follower)
+}
+
+// wakeRank orders the ICAO categories, light first.
+func wakeRank(w WakeCategory) int {
+	return strings.IndexByte("LMHJ", byte(w))
+}
+
 // RecatCategory is the RECAT-EU wake category, A (super heavy) to F
 // (light).
 type RecatCategory byte

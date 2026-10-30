@@ -409,6 +409,18 @@ func (r *remoteArr) OnDownwind() bool {
 	return o0
 }
 
+func (r *remoteArr) OnBase() bool {
+	var o0 bool
+	r.c.dropped(r.c.call(r.t, "OnBase", []any{}, &o0))
+	return o0
+}
+
+func (r *remoteArr) OnCrosswind() bool {
+	var o0 bool
+	r.c.dropped(r.c.call(r.t, "OnCrosswind", []any{}, &o0))
+	return o0
+}
+
 func (r *remoteArr) SetCircuitExtendMax(nm float64) {
 	r.c.dropped(r.c.call(r.t, "SetCircuitExtendMax", []any{nm}))
 }

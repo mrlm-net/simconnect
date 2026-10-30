@@ -7,6 +7,18 @@ This project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 ---
 
+## [0.145.0] - 2026-10-30
+
+### Added
+
+- At a field without a tower, a VFR circuit now also reports the upwind after a touch-and-go and the crosswind ("left crosswind runway 24"), and reports its legs again on the next circuit, also after a go-around. The first circuit's final is announced before a touch-and-go too. `ArrivalController.OnBase` and `OnCrosswind` tell when a circuit arrival has turned onto those legs (#1307).
+- At a towered field, the tower gives a VFR arrival "caution wake turbulence" with the traffic, when a heavier aircraft is ahead of it in the sequence or landed on its runway in the last 3 minutes, once per circuit (`WakeCaution`, `WakeCautionDue`). It is said after a sequence call that names the traffic, or else with the landing clearance. At a field without a tower nobody says it (#1307).
+
+### Fixed
+
+- The base report no longer goes missing when the downwind is extended; it follows the moved turn (#1307).
+- With no weather known, an IFR arrival at a field without a tower now cancels IFR, as unknown weather counts as good for VFR flights too (#1307).
+
 ## [0.144.0] - 2026-10-30
 
 ### Added

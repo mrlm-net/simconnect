@@ -438,6 +438,7 @@ func (q *sequences) sayInCircuitNow(it *controlled, e traffic.SequenceEntry, tx 
 		}
 	}
 	it.say(tx)
+	it.wakeCaution()
 }
 
 // circuitAbsorbEvery: how often a VFR circuit arrival's delay is acted on
