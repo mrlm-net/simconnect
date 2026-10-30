@@ -7,6 +7,13 @@ This project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 ---
 
+## [0.152.0] - 2026-10-30
+
+### Added
+
+- `camera.Spot`: a camera standing in the world, fixed or on a rail following its subject, the lens keeping the aircraft at a set share of the frame, with an aim smoothed from samples as rare as one a second (`LockAim` for the object itself).
+- Spots at any airport from its data: `World.Spots`, `GET /api/camera/spots`, threshold, touchdown, approach, holding and apron, changed or added per value in `DataDir/spots.json`. `World.PlaySpot` and `POST /api/camera/spot` play one on any aircraft or the player; `"spot"` on a scene's shot.
+
 ## [0.151.0] - 2026-10-30
 
 ### Added

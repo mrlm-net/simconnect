@@ -36,6 +36,8 @@ import (
 //	GET  /api/camera/glides            — the glides between picked frames
 //	POST /api/camera/capture {icao, name, tail} — the simulator's camera placed (capture.go)
 //	POST /api/camera/shot {icao, tail, move, side, sec, back, fov} — one move, to tune it
+//	GET  /api/camera/spots?icao=       — the spots at an airport (spots.go)
+//	POST /api/camera/spot {icao, spot, id|tail, sec, share, lock} — one, on any aircraft
 
 // cameraHeard is the live connection's camera operator, for the radio and
 // the voice to tell what is heard.
@@ -773,6 +775,35 @@ func registerCamera(mux *http.ServeMux, st *state) {
 	})
 	mux.HandleFunc("GET /api/camera/glides", func(w http.ResponseWriter, r *http.Request) {
 		writeJSON(w, compositionGlides)
+	})
+	mux.HandleFunc("GET /api/camera/spots", func(w http.ResponseWriter, r *http.Request) {
+		m := cam(w)
+		if m == nil {
+			return
+		}
+		g, err := m.cc.graph(strings.ToUpper(r.URL.Query().Get("icao")))
+		if err != nil {
+			http.Error(w, err.Error(), http.StatusBadRequest)
+			return
+		}
+		writeJSON(w, m.cc.spots(g))
+	})
+	mux.HandleFunc("POST /api/camera/spot", func(w http.ResponseWriter, r *http.Request) {
+		m := cam(w)
+		if m == nil {
+			return
+		}
+		var req SpotRequest
+		if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+			http.Error(w, err.Error(), http.StatusBadRequest)
+			return
+		}
+		got, err := m.playSpot(req)
+		if err != nil {
+			http.Error(w, err.Error(), http.StatusUnprocessableEntity)
+			return
+		}
+		writeJSON(w, map[string]string{"playing": got})
 	})
 	mux.HandleFunc("POST /api/camera/shot", func(w http.ResponseWriter, r *http.Request) {
 		m := cam(w)

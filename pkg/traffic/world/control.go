@@ -584,6 +584,8 @@ type controlCenter struct {
 	// airfield other traffic is (TrafficPicture, #623).
 	layout func(icao string) (*airport.Layout, bool)
 	scan   []Traffic
+	// scanNow: the same for the camera (spots.go).
+	scanNow atomic.Pointer[scanned]
 	gameAt time.Time
 	// jw: jetways for our traffic (jetways.go, #572); airportRefs the
 	// airports the simulator knows (a retract plan's destination).
@@ -4860,6 +4862,7 @@ func (cc *controlCenter) reportTraffic(scan []Traffic) {
 	cc.mu.Lock()
 	cc.scan = scan
 	cc.mu.Unlock()
+	cc.scanNow.Store(&scanned{at: traffic.Now(), list: scan})
 	for _, t := range scan {
 		if t.User {
 			cc.detail.SetViewer(airport.LatLon{Lat: t.Latitude, Lon: t.Longitude})

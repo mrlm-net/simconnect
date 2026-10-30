@@ -137,7 +137,7 @@ func (sc Scene) validate() error {
 			if !roles[s.Who] {
 				return fmt.Errorf("scene: %s: shot of %q, not in the cast", what, s.Who)
 			}
-			if s.From == "" && !moves[s.Move] {
+			if s.From == "" && s.Spot == "" && !moves[s.Move] {
 				return fmt.Errorf("scene: %s: no move %q", what, s.Move)
 			}
 		}
