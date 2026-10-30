@@ -7,6 +7,12 @@ This project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 ---
 
+## [0.152.3] - 2026-10-30
+
+### Fixed
+
+- A departure was assigned a runway in use that publishes no SID (EDDF 25R, with 25C in use beside it), leaving it no procedure to be cleared on. Runways with a SID are now taken while one is in use. `ControlView.NoSID` marks a departure whose runway has none, so a host can tell it from one with no procedure picked yet (#1329).
+
 ## [0.152.2] - 2026-10-30
 
 ### Fixed
