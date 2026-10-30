@@ -7,6 +7,12 @@ This project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 ---
 
+## [0.152.1] - 2026-10-30
+
+### Fixed
+
+- A take-off starting a few degrees off the runway heading snapped to it in one frame (live at LOWI: 5° at 1 kt). The aircraft now straightens out over the first 40 m of its roll.
+
 ## [0.152.0] - 2026-10-30
 
 ### Added
