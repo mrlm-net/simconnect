@@ -379,6 +379,10 @@ type ControlView struct {
 	// all, correctly, and a strip with no buttons and no reason reads as a
 	// stuck game. This is the other half: whose move it is.
 	Request string `json:"request,omitempty"`
+	// NoSID: a departure whose runway publishes no SID, so it has no procedure
+	// to be cleared on and never will have there (#1329). Procedure empty
+	// without it: none picked.
+	NoSID bool `json:"noSID,omitempty"`
 	// ClearedEarly are the clearances a player gave it ahead of its crew: not
 	// called for yet, or before its IFR clearance (#1308). They are taken, as
 	// a controller can expedite; a host decides what they mean.
@@ -1323,6 +1327,7 @@ func (cc *controlCenter) spawn(g *airport.Graph, r SpawnRequest) (*controlled, e
 		return nil, fmt.Errorf("kind must be departure or arrival")
 	}
 	it.view = ControlView{ID: n, ICAO: g.Layout.ICAO, Squawk: r.Squawk, Manual: r.Gates, Kind: r.Kind, Rules: flightRules(r), Tail: r.Tail, Model: r.Model, Runway: r.Runway, Stand: g.Layout.Parking[r.Stand].Label(), State: "spawning", LimitNode: -1}
+	it.view.NoSID = r.Kind == "departure" && cc.noSID(g.Layout.ICAO, r.Runway)
 	it.keepSpot()
 	cc.log.printf("%-6s %s: spawned %q at %s, runway %s%s (gates %v, injected approach %v)", r.Tail, r.Kind, r.Model, it.view.Stand, r.Runway, entryNote(r.Entry), r.Gates, r.Kind == "arrival" && !r.AILanding)
 	it.setRoute()
@@ -3018,12 +3023,11 @@ func (cc *controlCenter) pickRunway(g *airport.Graph, arrival bool, stand int) s
 // g's airport: several with parallel runways used together.
 func (cc *controlCenter) runwaysInUse(g *airport.Graph, arrival bool) []airport.RunwayEnd {
 	if use, ok := cc.runwayUse(g); ok {
-		ends := use.Departures
-		if arrival {
-			ends = use.Arrivals
+		if arrival && len(use.Arrivals) > 0 && use.Arrivals[0].Name != "" {
+			return use.Arrivals
 		}
-		if len(ends) > 0 && ends[0].Name != "" {
-			return ends
+		if !arrival && len(use.Departures) > 0 && use.Departures[0].Name != "" {
+			return cc.withSID(g, use.Departures)
 		}
 	}
 	lim := cc.limitsOf(g)
@@ -3052,6 +3056,40 @@ func (cc *controlCenter) runwaysInUse(g *airport.Graph, arrival bool) []airport.
 		return []airport.RunwayEnd{end}
 	}
 	return nil
+}
+
+// withSID leaves out the departure runways in use that publish no SID while
+// another does (#1329: at EDDF, 25C and 25R in use, 25R is for landing): a
+// departure there has no procedure to be cleared on. All without one, or the
+// procedures not known: as they are, and the view says so (NoSID).
+func (cc *controlCenter) withSID(g *airport.Graph, ends []airport.RunwayEnd) []airport.RunwayEnd {
+	if len(ends) < 2 || cc.procedures == nil {
+		return ends
+	}
+	p, ok := cc.procedures(g.Layout.ICAO)
+	if !ok {
+		return ends
+	}
+	out := make([]airport.RunwayEnd, 0, len(ends))
+	for _, e := range ends {
+		if len(p.SIDsFor(e.Name)) > 0 {
+			out = append(out, e)
+		}
+	}
+	if len(out) == 0 {
+		return ends
+	}
+	return out
+}
+
+// noSID reports a departure off runway with no SID published for it. Only
+// when the airport's procedures are known: not loaded yet says nothing.
+func (cc *controlCenter) noSID(icao, runway string) bool {
+	if cc.procedures == nil {
+		return false
+	}
+	p, ok := cc.procedures(icao)
+	return ok && len(p.SIDsFor(runway)) == 0
 }
 
 // limitsOf are g's airport limits, with its procedures when known.

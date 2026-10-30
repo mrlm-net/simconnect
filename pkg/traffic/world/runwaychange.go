@@ -211,6 +211,7 @@ func (cc *controlCenter) changeDepartureRunway(g *airport.Graph, it *controlled,
 	}
 	it.mu.Lock()
 	it.view.Runway, it.view.Procedure = runway, sid
+	it.view.NoSID = cc.noSID(g.Layout.ICAO, runway)
 	it.keepSpot()
 	it.procSaid = ""
 	it.fixes = nil
