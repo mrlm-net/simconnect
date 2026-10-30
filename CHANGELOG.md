@@ -7,6 +7,12 @@ This project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 ---
 
+## [0.145.1] - 2026-10-30
+
+### Fixed
+
+- The World no longer gives a VFR arrival the wake turbulence caution when a player staffs the tower (#1310).
+
 ## [0.145.0] - 2026-10-30
 
 ### Added
