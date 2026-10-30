@@ -34,6 +34,8 @@ A `StaffedStation` is a whole position (`Position`: "delivery", "ground", "tower
 - **Leaving the staffed stations** (handed to a position the AI works) it goes back to the AI from its current state, and a request still waiting is answered, a departure clearance too.
 - **Its own toggle wins:** an aircraft set manual or automatic by hand (below) is left as set.
 
+`ControlView.Actions` follows the crew: on the stand, nothing until it has its IFR clearance and has called, then what it called for. `ControlView.Request` says what it called for. A clearance ahead of the crew is still taken, as a controller can expedite; `ControlView.ClearedEarly` lists those, so a host can warn or score them. An aircraft cleared early gets no "contact ground" after its late IFR clearance (#1308).
+
 The player gives clearances through the same calls as any host: `World.Clear(id, action)` (`POST /api/control/{id}/{action}`), `World.Approach(icao, callsign, action)` for the arrivals' sequence, `World.ApproachDescend(icao, callsign, ft)` for a lower level on the STAR (said against the transition altitude, never a climb), and `World.Phrase(id, action)` for what a clearance would say. Each is said on the radio with its readback, as the automatic controllers' are.
 
 **Modes.** `StaffedStation.Mode` is what the AI does on the station when an aircraft on it is predicted to lose separation. In every mode the routine clearances, speeds, levels and vectors stay the player's, and the AI gives no traffic information there either.

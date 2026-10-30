@@ -41,7 +41,7 @@ func TestReadyForTaxiContact(t *testing.T) {
 	var dep world.ControlView
 	if !h.Until(10*time.Minute, func() bool {
 		for _, v := range h.World.Snapshot().Aircraft {
-			if v.Kind == "departure" && v.State == traffic.TaxiAwaitingPushback.String() && v.Position.Lat != 0 && slices.Contains(v.Actions, "pushback") && !heardPush(h, v.Tail) {
+			if v.Kind == "departure" && v.State == traffic.TaxiAwaitingPushback.String() && v.Position.Lat != 0 && !heardPush(h, v.Tail) {
 				dep = v
 				return true
 			}

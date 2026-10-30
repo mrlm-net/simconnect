@@ -261,6 +261,9 @@ type controlled struct {
 	// handoffFt and towerAtM: where this departure goes to departure
 	// (height) and to tower (meters short of the runway), varied.
 	handoffFt, towerAtM float64
+	// called: the request its crew has said (a request waits for delivery
+	// and boarding), what a controller is answering (#1308).
+	called string
 	// request is what the crew asks for now (TaxiEvent.Request, #462);
 	// waiting one made before its clearance was done (delivered: the
 	// delivery exchange finished and the aircraft with ground).
@@ -367,16 +370,20 @@ type ControlView struct {
 	Entry        string        `json:"entry,omitempty"`        // a departure's runway entry ("" full length)
 	Deicing      bool          `json:"deicing,omitempty"`      // being de-iced
 	State        string        `json:"state"`
-	// Request is what the crew is asking for right now, in the engine's own
-	// words: "pushback", "start_up", "taxi"; "" when they are waiting on
-	// nobody (TaxiEvent.Request, #462).
+	// Request is what the crew has called for and is waiting on, in the
+	// engine's own words: "pushback", "start_up", "taxi"; "" when it has not
+	// called, as with delivery still or boarding (#462, #1308).
 	//
 	// IT IS WHAT THE OFFERED LIST CANNOT SAY. Actions names what a controller
 	// MAY give; a departure cleared to push and start is offered nothing at
 	// all, correctly, and a strip with no buttons and no reason reads as a
 	// stuck game. This is the other half: whose move it is.
-	Request        string `json:"request,omitempty"`
-	HoldingShortOf string `json:"holdingShortOf,omitempty"`
+	Request string `json:"request,omitempty"`
+	// ClearedEarly are the clearances a player gave it ahead of its crew: not
+	// called for yet, or before its IFR clearance (#1308). They are taken, as
+	// a controller can expedite; a host decides what they mean.
+	ClearedEarly   []string `json:"clearedEarly,omitempty"`
+	HoldingShortOf string   `json:"holdingShortOf,omitempty"`
 	// TaxiRemainingM: a departure's taxi still to go to its runway (m).
 	TaxiRemainingM float64        `json:"taxiRemainingM,omitempty"`
 	AtLimit        bool           `json:"atLimit"`
@@ -1496,7 +1503,7 @@ func (it *controlled) update(ev TaxiOrArrival) {
 	// off (deferred first: runs last).
 	defer func() {
 		if ev.dep != nil && ev.dep.Request != it.request {
-			it.request = ev.dep.Request
+			it.request, it.called = ev.dep.Request, ""
 			if it.request != "" {
 				it.onRequest(it.request)
 			}
@@ -1645,8 +1652,8 @@ func (it *controlled) update(ev TaxiOrArrival) {
 		if e.Err != nil {
 			v.Error = e.Err.Error()
 		}
-		v.Request = e.Request
-		v.Actions = departureActions(e.State, e.HoldingShortOf, it.dep)
+		v.Request = it.called
+		v.Actions = askedFor(departureActions(e.State, e.HoldingShortOf, it.dep), v.State, it.delivered, it.called)
 		if it.clearanceDue != nil {
 			v.Actions = append([]string{"clearance"}, v.Actions...)
 		}
@@ -1786,6 +1793,60 @@ func departureActions(s traffic.TaxiState, holdingShortOf string, ctl departureC
 		return []string{"abort"}
 	}
 	return nil
+}
+
+// askedFor keeps of a departure's actions on its stand those its crew has come
+// to (#1308). The taxi state alone says nothing about the conversation:
+// "awaiting pushback" holds from the spawn, through delivery and before the
+// crew's call. Nothing is offered until it has its clearance and has called.
+func askedFor(actions []string, state string, delivered bool, called string) []string {
+	if !onStand(state) {
+		return actions
+	}
+	if !delivered {
+		return nil
+	}
+	var asked []string
+	switch called {
+	case "pushback":
+		asked = []string{"pushback", "pushstart"}
+	case "start_up":
+		asked = []string{"startup"}
+		if state == traffic.TaxiAwaitingPushback.String() {
+			asked = append(asked, "taxi", "upto") // taxis straight out: one call, one answer
+		}
+	case "taxi":
+		asked = []string{"taxi", "upto"}
+	}
+	return slices.DeleteFunc(actions, func(a string) bool { return !slices.Contains(asked, a) })
+}
+
+// onStand: the taxi states before it taxis.
+func onStand(state string) bool {
+	switch state {
+	case traffic.TaxiAwaitingPushback.String(), traffic.TaxiPushback.String(), traffic.TaxiAwaitingTaxi.String():
+		return true
+	}
+	return false
+}
+
+// clearedEarly: a player's action comes ahead of the crew's order (#1308):
+// not among those its crew has come to on the stand, or a runway clearance
+// before its IFR clearance. it.mu is held.
+func (it *controlled) clearedEarly(action string) bool {
+	if it.dep == nil {
+		return false
+	}
+	switch action {
+	case "lineup", "lineupbehind", "takeoff":
+		if !onStand(it.view.State) {
+			return !it.delivered
+		}
+		return true
+	case "pushback", "pushstart", "startup", "taxi", "upto":
+		return onStand(it.view.State) && !slices.Contains(askedFor([]string{action}, it.view.State, it.delivered, it.called), action)
+	}
+	return false
 }
 
 func arrivalActions(s traffic.ArrivalState) []string {
@@ -2587,6 +2648,9 @@ func registerControl(mux *http.ServeMux, st *state) {
 			m, it.managed = it.managed, nil // removed here, not failed
 		}
 		it.mu.Unlock()
+		it.mu.Lock()
+		early := it.clearedEarly(action)
+		it.mu.Unlock()
 		// A pushback facing a compass direction ("east"): planned again so.
 		facing := r.URL.Query().Get("facing")
 		do := func() error { return it.act(action, node) }
@@ -2606,6 +2670,12 @@ func registerControl(mux *http.ServeMux, st *state) {
 			tlog.printf("%-6s %s: clearance %s refused: %v", it.Tail, it.Kind, clr, err)
 			http.Error(w, err.Error(), http.StatusUnprocessableEntity)
 			return
+		}
+		if early {
+			it.mu.Lock()
+			it.view.ClearedEarly = append(slices.Clone(it.view.ClearedEarly), action)
+			it.mu.Unlock()
+			tlog.printf("%-6s %s: clearance %s ahead of its crew", it.Tail, it.Kind, clr)
 		}
 		switch action {
 		case "remove":
