@@ -7,6 +7,12 @@ This project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 ---
 
+## [0.142.0] - 2026-10-30
+
+### Added
+
+- Our traffic announces itself at fields without a tower (#1296). Before, a tower and ground named after the common frequency cleared it there. Now the crews say `SelfTaxiing`, `SelfDeparting`, `SelfPattern` (final) and `SelfClear` on the common frequency when the World decides those moves, and approach hands a flight over with "change to advisory frequency approved". No other tower, ground or delivery call is said. `traffic.RadioOptions.Uncontrolled`, `UncontrolledField`, `SelfAnnounceFor`, `AdvisoryFrequency`, `FieldCallName`. A player staffing tower, ground or delivery there keeps the usual dialogue. Towered airports do not change.
+
 ## [0.141.0] - 2026-10-29
 
 ### Added

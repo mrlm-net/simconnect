@@ -84,6 +84,31 @@ func (cc *controlCenter) stations(icao string) []traffic.Station {
 	return st
 }
 
+// uncontrolled is icao as a field without a tower for the radio (#1296):
+// its crews announce themselves, unless a player works tower, ground or
+// delivery there.
+func (cc *controlCenter) uncontrolled(icao string) (traffic.UncontrolledField, bool) {
+	if cc.graph == nil {
+		return traffic.UncontrolledField{}, false
+	}
+	g, err := cc.graph(icao)
+	if err != nil || g.Layout.Controlled() {
+		return traffic.UncontrolledField{}, false
+	}
+	if cc.core != nil {
+		for _, pos := range []traffic.Position{traffic.PosTower, traffic.PosGround, traffic.PosDelivery} {
+			if _, staffed := cc.core.staffedAt(icao, pos, ""); staffed {
+				return traffic.UncontrolledField{}, false
+			}
+		}
+	}
+	f := traffic.UncontrolledField{Name: traffic.FieldCallName(g.Layout)}
+	if c, ok := g.Layout.SelfAnnounceFrequency(); ok {
+		f.Freq = c.String()
+	}
+	return f, true
+}
+
 // night: 22:00 to 06:00 sim local time at the user aircraft, when quiet
 // airports have the tower work ground and delivery (#722).
 func (cc *controlCenter) night() bool {
