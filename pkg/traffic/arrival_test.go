@@ -947,3 +947,63 @@ func TestSlowerAircraftEarlierExit(t *testing.T) {
 		}
 	}
 }
+
+// A controller names the exit before the landing (#1308 follow-up, "vacate
+// where"): the ground part is planned again from it, the stand is kept, and
+// once the aircraft is down it is refused — the rollout's braking is already
+// being flown to the old exit.
+func TestArrivalVacateAt(t *testing.T) {
+	ctl, _ := startArrival(t)
+	g := ctl.req.Graph
+	was := ctl.Plan().Exit
+	parking := ctl.req.Parking
+
+	exits, err := g.RunwayExits(ctl.Plan().End.Name)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var other airport.RunwayExit
+	for _, x := range exits {
+		if x.Node != was.Node {
+			other = x
+			break
+		}
+	}
+	if other.Node == 0 && other.RunwayNode == 0 {
+		t.Skip("this runway end has only one exit")
+	}
+
+	if err := ctl.VacateAt(other); err != nil {
+		t.Fatal(err)
+	}
+	p := ctl.Plan()
+	if p.Exit.Node != other.Node {
+		t.Errorf("exit %v, want %v", p.Exit.Node, other.Node)
+	}
+	// THE STAND IS NOT TOUCHED. This is ChangeStand's mirror image, and the
+	// mirror has to hold: changing where it leaves the runway does not change
+	// where it is going.
+	if ctl.req.Parking != parking {
+		t.Errorf("parking %d, want %d unchanged", ctl.req.Parking, parking)
+	}
+	stand, _ := g.ParkingNode(parking)
+	if p.Route.Nodes[len(p.Route.Nodes)-1] != stand {
+		t.Errorf("route ends at %d, want the stand node %d", p.Route.Nodes[len(p.Route.Nodes)-1], stand)
+	}
+	// And the whole ground part follows it, not the route alone (#87).
+	if p.VacateIndex >= len(p.Route.Nodes) || ctl.vacateAlong != ctl.track.cum[p.VacateIndex]-p.VacateBackMeters {
+		t.Errorf("vacate stop %d not on the new route", p.VacateIndex)
+	}
+	if ctl.exitAlong != ctl.track.cum[len(p.Exit.Path)-1] {
+		t.Error("the exit distance was not re-measured on the new route")
+	}
+
+	// Down and rolling: the exit is fixed, because the deceleration to it is
+	// already being flown.
+	ctl.mu.Lock()
+	ctl.state = ArrivalRollout
+	ctl.mu.Unlock()
+	if err := ctl.VacateAt(was); !errors.Is(err, ErrExitFixed) {
+		t.Errorf("after touchdown: %v, want ErrExitFixed", err)
+	}
+}

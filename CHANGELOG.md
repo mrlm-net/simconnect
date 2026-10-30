@@ -7,6 +7,20 @@ This project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 ---
 
+## [0.150.0] - 2026-10-30
+
+### Added
+
+- `ArrivalController.VacateAt(exit)` sends an arrival off the runway by an exit the controller names, instead of the one the engine chose for the rollout: the whole ground part is planned again from it, the stand unchanged (`ChangeStand`'s mirror image). Refused once the aircraft is down (`ErrExitFixed`) — the rollout is a braking profile already being flown to the old exit, and re-aiming it mid-roll would arrive at the wrong speed or miss the turn-off.
+- The `vacate` action on an arrival, with the exit named by any node on it (`?node=N`), so a map click on the turn-off, the taxiway behind it or the runway centreline where it begins all mean the same exit. A click matching no exit is refused rather than snapped to the nearest: `bestExit` already weighs what an aircraft can make at its speed, and "the nearest exit to wherever you clicked" undoes that.
+- `vacate` is in `ControlView.ActionParams` as needing `node`, beside `upto` (#1308): a host is told it takes a point rather than discovering it from a refusal.
+- `VacateAtExit` says it: "CSA123, vacate left via L" (Doc 4444 12.3.4.20), the side alone when the turn-off has no name.
+
+### Changed
+
+- An arrival is **ground's once it is off the runway**, not once it has stopped. `ArrivalPosition` kept the tower through `ArrivalVacating` — "off the runway, rolling clear to the vacate stop" — so the handover, the crew's call and the taxi clearance all queued behind a full stop. A staffed tower could not hand it on until then either, since `handoffDue` follows this.
+- An arrival's `Actions` follow its phase, as a departure's now follow its crew (#1308): `land` and `goaround` in the air, `vacate` with them before the wheels are down, nothing on the landing roll, and the ground clearances from the moment it is off the runway. This offered `taxi` and `upto` to an aeroplane on final.
+
 ## [0.149.1] - 2026-10-30
 
 ### Fixed
@@ -38,6 +52,7 @@ This project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 - A circuit's downwind is no longer extended once the aircraft has started its turn in. It turned back and came onto the final the long way round, with no base at all (#1314).
 - The conflict log no longer reports lost separation between VFR traffic not separated where it is, unless they nearly meet (within 1 NM and 500 ft) (#1314).
 - A VFR departure leaving a field without a tower no longer calls "Departure" and gets "identified" (#1314).
+
 
 ## [0.147.0] - 2026-10-30
 

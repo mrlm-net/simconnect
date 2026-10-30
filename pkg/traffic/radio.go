@@ -80,6 +80,7 @@ const (
 	IntentDescendVia         Intent = "descend_via"          // descend via the STAR to a level (#754)
 	IntentHeading            Intent = "heading"              // turn left or right heading
 	IntentContact            Intent = "contact"              // a handoff: contact the next position (#416)
+	IntentVacate             Intent = "vacate"               // leave the runway by a named exit
 	IntentIdentified         Intent = "identified"           // radar identification after the departure's check-in, with its climb
 	IntentWeather            Intent = "weather"              // the wind and QNH, asked for by the crew
 	IntentDirectTo           Intent = "direct_to"            // cleared direct to a fix, asked for by the crew
@@ -629,6 +630,8 @@ func phrase(cs string, in Intent, p map[string]string) string {
 			s += ", climb to " + p[ParamLevel] // 12.3.1.2 a
 		}
 		return s
+	case IntentVacate:
+		return fmt.Sprintf("%s, vacate %s", cs, p[ParamVacate]) // 12.3.4.20
 	case IntentContact:
 		station := strings.TrimSpace(p[ParamStation] + " " + p[ParamFreq])
 		if p[ParamRush] != "" && p[ParamWhen] != "" {
@@ -1435,6 +1438,19 @@ func WhenVacatedVia(cs string, from, to Position, station, freq, side, taxiway s
 	return Say(t)
 }
 
+// VacateAtExit is the tower naming the exit before the landing: "CSA123,
+// vacate left via L" (Doc 4444 12.3.4.20). side is "left" or "right",
+// taxiway "" when the exit has no name — then only the side is said, which
+// is what a controller says when the turn-off is unnamed.
+func VacateAtExit(cs string, from Position, side, taxiway string) Transmission {
+	where := strings.TrimSpace(side + " via " + taxiway)
+	if taxiway == "" {
+		where = side
+	}
+	return Say(Transmission{Position: from, Callsign: cs, Intent: IntentVacate,
+		Params: map[string]string{ParamVacate: where}})
+}
+
 // vacateVia is " left via L" for an expedite with where to vacate, "" none.
 func vacateVia(p map[string]string) string {
 	if p[ParamVacate] == "" {
@@ -1499,8 +1515,18 @@ func DeparturePosition(s TaxiState, atOwnRunway bool) Position {
 
 // ArrivalPosition is the position working an arrival in state s: approach
 // on the STAR and approach, tower once established on the final (onFinal)
-// and through the landing roll and the vacating, ground from there to the
-// stand.
+// and through the landing roll, ground from the moment it is off the
+// runway to the stand.
+//
+// VACATED IS THE HANDOVER, NOT STOPPED. This kept the tower through
+// ArrivalVacating, which is "off the runway, rolling clear to the vacate
+// stop" — so an aeroplane already clear of the runway was still the
+// tower's, and only became ground's once it had come to a halt at
+// ArrivalAwaitingTaxi. A controller working a staffed tower could not hand
+// it on until then either (handoffDue follows this), so the handover, the
+// crew's call and the taxi clearance all queued up behind a full stop that
+// serves no one: Doc 4444 12.3.4.20 is "when vacated, contact ground", and
+// vacated is what ArrivalVacating means.
 func ArrivalPosition(s ArrivalState, onFinal bool) Position {
 	switch s {
 	case ArrivalApproaching:
@@ -1508,7 +1534,7 @@ func ArrivalPosition(s ArrivalState, onFinal bool) Position {
 			return PosTower
 		}
 		return PosApproach
-	case ArrivalLanding, ArrivalRollout, ArrivalVacating:
+	case ArrivalLanding, ArrivalRollout:
 		return PosTower
 	}
 	if s < ArrivalApproaching {

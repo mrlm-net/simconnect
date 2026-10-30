@@ -1132,3 +1132,55 @@ func (c *ArrivalController) ChangeStand(parking int) error {
 	c.vacateAlong = c.track.cum[plan.VacateIndex] - plan.VacateBackMeters
 	return nil
 }
+
+// ErrExitFixed is returned by VacateAt once the aircraft is on the runway:
+// the rollout is planned around the exit it was given, and the braking is
+// already being flown to it.
+var ErrExitFixed = errors.New("traffic: the arrival is on the runway; its exit is fixed")
+
+// VacateAt sends the arrival off the runway at x — the controller naming the
+// exit instead of taking the one the engine chose for the rollout ("vacate
+// left at A4"; Doc 4444 12.3.4.20).
+//
+// THE SAME RE-PLAN AS ChangeStand, from the other end: that one keeps the exit
+// and changes the stand, this keeps the stand and changes the exit. The whole
+// ground part is planned again rather than the route alone — the vacate stop,
+// the taxi-in waypoints and the stop on the stand all hang off the exit, and
+// replacing only the route is #87, where the aeroplane taxied the new way and
+// parked on the old spot.
+//
+// REFUSED ONCE IT IS DOWN, for a reason ChangeStand does not have: the rollout
+// is a braking profile computed to this exit's distance and turn-off speed
+// (planRollout). Changing the target mid-roll does not re-plan the deceleration
+// that is already being flown, so the aeroplane would arrive at the new exit at
+// the wrong speed or miss it entirely. A controller who wants it off somewhere
+// else after touchdown is giving it a taxi route, not an exit.
+func (c *ArrivalController) VacateAt(x airport.RunwayExit) error {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	if c.plan == nil || c.state > ArrivalLanding {
+		return ErrExitFixed
+	}
+	g := c.req.Graph
+	req := c.req
+	plan, err := PlanArrival(g, req.Runway, req.Parking, ArrivalOptions{
+		SpawnNm: c.plan.SpawnNm, Exit: &x, Route: req.Options, GroundAGL: req.GroundAGL, NoseOffset: req.NoseOffset, StandSide: req.StandSide,
+		TouchdownKts: approachProfileOf(req).TouchdownKts, BrakeDecel: req.Rollout.BrakeDecel,
+	})
+	if err != nil {
+		return err
+	}
+	plan.Spawn = c.plan.Spawn
+	// MSFS AI landing it (not injected, its procedure flown): the landing
+	// chain to the new vacate stop, as ChangeStand re-points it.
+	if !req.InjectApproach && !c.flyingProc && c.objectID != 0 && c.state >= ArrivalApproaching {
+		if err := c.fleet.SetWaypoints(c.objectID, c.defBase+arrDefWaypoints, plan.Waypoints); err != nil {
+			return err
+		}
+	}
+	c.plan = plan
+	c.track = newRouteTracker(plan.Route)
+	c.exitAlong = c.track.cum[len(plan.Exit.Path)-1]
+	c.vacateAlong = c.track.cum[plan.VacateIndex] - plan.VacateBackMeters
+	return nil
+}

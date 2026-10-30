@@ -63,6 +63,7 @@ type arrivalCtl interface {
 	ClearToCross()
 	ClearToTaxi()
 	ClearUpTo(node airport.NodeID) error
+	VacateAt(x airport.RunwayExit) error
 	TaxiInForce(node airport.NodeID) bool
 	DirectToJoin() error
 	DescendTo(altFt float64) error
