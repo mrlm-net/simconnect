@@ -1007,12 +1007,20 @@ func TestArrivalVacateAt(t *testing.T) {
 		t.Errorf("exit %v after a refusal, want %v", ctl.Plan().Exit.Node, other.Node)
 	}
 
-	// Down and rolling: the exit is fixed, because the deceleration to it is
-	// already being flown.
+	// Down and rolling: the exit it is braking for stays as it is (the other
+	// exits, TestVacateOnTheRoll).
 	ctl.mu.Lock()
 	ctl.state = ArrivalRollout
 	ctl.mu.Unlock()
+	if err := ctl.VacateAt(other); err != nil {
+		t.Errorf("on the roll, the same exit: %v", err)
+	}
+
+	// Off the runway: the exit is fixed.
+	ctl.mu.Lock()
+	ctl.state = ArrivalVacating
+	ctl.mu.Unlock()
 	if err := ctl.VacateAt(was); !errors.Is(err, ErrExitFixed) {
-		t.Errorf("after touchdown: %v, want ErrExitFixed", err)
+		t.Errorf("off the runway: %v, want ErrExitFixed", err)
 	}
 }

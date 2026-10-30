@@ -32,13 +32,11 @@ func TestArrivalActionsNoGroundClearanceInTheAir(t *testing.T) {
 	}
 }
 
-// THE ROLL IS THE CREW'S. Between touchdown and being clear of the runway the
-// aeroplane is stopping; there is nothing for a controller to say, and the next
-// word on the frequency is its own call to ground. Offering a taxi clearance
-// here was offering one to an aircraft still ON the runway it has to vacate.
-func TestArrivalActionsNothingToSayOnTheRoll(t *testing.T) {
-	if got := arrivalActions(traffic.ArrivalRollout); len(got) != 0 {
-		t.Errorf("on the landing roll: want nothing offered, got %v", got)
+// ON THE ROLL THE TOWER MAY ONLY NAME THE TURN-OFF (#1330). A taxi clearance
+// here is one to an aircraft still ON the runway it has to vacate.
+func TestArrivalActionsOnlyVacateOnTheRoll(t *testing.T) {
+	if got := arrivalActions(traffic.ArrivalRollout); !slices.Equal(got, []string{"vacate"}) {
+		t.Errorf("on the landing roll: want only vacate, got %v", got)
 	}
 }
 
