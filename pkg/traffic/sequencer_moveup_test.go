@@ -22,7 +22,7 @@ func TestSequencerMoveUpNearFinal(t *testing.T) {
 		vfr.GroundKts, vfr.FinalKts = 100, 70
 		s.Update(now, []ApproachAircraft{arr("DLH792", "A320", c.jetNM), vfr})
 		// Back on a short downwind: predicted well before the jet.
-		vfr.DistanceToGoNM, vfr.Extendable = 4, true
+		vfr.DistanceToGoNM, vfr.Extendable = 5.5, true
 		seq := s.Update(now.Add(time.Second), []ApproachAircraft{arr("DLH792", "A320", c.jetNM-0.1), vfr})
 		if seq[0].Callsign != c.ahead {
 			t.Errorf("jet %.0f NM to go: %s first (delay %v / %v), want %s", c.jetNM, seq[0].Callsign, seq[0].Delay, seq[1].Delay, c.ahead)

@@ -21,6 +21,7 @@ type departureCtl interface {
 	FacesOut() bool
 	ClearToTaxi()
 	ClearUpTo(node airport.NodeID) error
+	TaxiInForce(node airport.NodeID) bool
 	Cancel() error
 	HoldPosition() error
 	AbortTakeoff() error
@@ -62,6 +63,7 @@ type arrivalCtl interface {
 	ClearToCross()
 	ClearToTaxi()
 	ClearUpTo(node airport.NodeID) error
+	TaxiInForce(node airport.NodeID) bool
 	DirectToJoin() error
 	DescendTo(altFt float64) error
 	DirectTo(p airport.LatLon) (string, traffic.Vector, error)
@@ -87,6 +89,8 @@ type arrivalCtl interface {
 	ProcedureRoute() []airport.LatLon
 	CircuitFinal() bool
 	OnDownwind() bool
+	OnBase() bool
+	OnCrosswind() bool
 	SetCircuitExtendMax(nm float64)
 	ProcedureCorners() []airport.LatLon
 	ReduceToFinalSpeed() (time.Duration, error)

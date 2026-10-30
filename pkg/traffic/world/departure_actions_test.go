@@ -1,6 +1,7 @@
 package world
 
 import (
+	"errors"
 	"slices"
 	"testing"
 
@@ -195,3 +196,18 @@ func TestDepartureActionsRepeatableClearancesSurvive(t *testing.T) {
 		t.Errorf("want upto still offered (a new limit is a new clearance), got %v", taxiing)
 	}
 }
+
+// A taxi clearance in other words, a changed route or runway, still goes out;
+// the once-only ones are refused (#1270 over #1275, which stops the same words
+// before act).
+func TestActTaxiInForceNotRefused(t *testing.T) {
+	it := &controlled{dep: &standDep{pushed: true, started: true, taxied: true}}
+	if err := it.act("taxi", -1); err != nil {
+		t.Errorf("taxi in other words: %v", err)
+	}
+	if err := it.act("pushback", -1); !errors.Is(err, traffic.ErrAlreadyCleared) {
+		t.Errorf("pushback again: want ErrAlreadyCleared, got %v", err)
+	}
+}
+
+func (f *standDep) ClearToTaxi() {}

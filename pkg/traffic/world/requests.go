@@ -162,6 +162,20 @@ func (it *controlled) onRequest(req string) {
 	it.askGround(req)
 }
 
+// setManual puts it under the user's control (on) or back to automatic
+// control; back to automatic, a request still waiting is answered.
+func (it *controlled) setManual(on bool) {
+	it.gates.Store(on)
+	it.mu.Lock()
+	it.view.Manual, it.manualSet = on, on
+	req := it.request
+	it.mu.Unlock()
+	tlog.printf("%-6s %s", it.Tail, map[bool]string{true: "under your control", false: "back to automatic control"}[on])
+	if !on && req != "" {
+		it.askGround(req)
+	}
+}
+
 // askGround puts the ground controller's answer to request req on the
 // agenda: a vacated arrival's taxi before a departure's, a pushback or
 // start-up last; dropped if the crew no longer asks when its turn comes.

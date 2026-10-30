@@ -84,6 +84,40 @@ An airport's frequencies come with its layout. `Layout.Frequencies` holds each o
 - approach to centre;
 - tower to the common traffic frequency.
 
+### Fields without a tower
+
+Most airports have no tower: about 35,000 in the simulator's data. There nobody clears anyone; pilots announce what they do on the field's common frequency (#1296). `FrequencyFor` still falls back to that frequency, so a client that asks for the tower there gets it.
+
+- `Layout.Controlled()` tells whether the field has a tower.
+- `SelfAnnounceFrequency()` is the common frequency to announce on: the CTAF, else the UNICOM, else the MULTICOM (`Frequency.Service`). A frequency named only for the runway lights is not one (AYBK's MULTICOM "ACTIVATE LIGHT ONLY").
+- `ControlledFrequency(kind)` is a controller's frequency only, never the common one or flight information. At a field without a tower there is no tower; ground and clearance count only on a frequency of the field's own (KVUO: clearance by Portland). Approach, departure and centre fall back as in `FrequencyFor`.
+
+The World's own traffic talks that way there (`RadioOptions.Uncontrolled`, `SelfAnnounceFor`). Our controllers still decide who goes when, unheard; on the air are the crews' announcements for those decisions, on the common frequency, with the field called by `FieldCallName`:
+
+| Decided | Said |
+|---|---|
+| VFR first call, IFR check-in after the handoff | `SelfInbound` |
+| Report on the upwind, crosswind, downwind and base | `SelfPattern` |
+| Taxi to a runway | `SelfTaxiing` |
+| Take-off | `SelfDeparting` |
+| Landing | `SelfPattern`, final |
+| Runway vacated | `SelfClear` |
+| Approach's handoff to the tower | `AdvisoryFrequency`: "OKABC, change to advisory frequency approved" |
+
+Every other call of tower, ground and delivery, and the crews' calls to them, are not said; `Transmit` then returns an empty transmission. Approach, departure and centre stay as they are. A player working tower, ground or delivery there (`SetStaffed`) keeps the usual dialogue, for the whole field.
+
+The calls go to "<Field> Traffic" (`TrafficStation`, `PosTraffic`, `IntentSelfAnnounce`). Each ends with the field's name, and nobody answers:
+
+| Call | Said |
+|---|---|
+| `SelfTaxiing` | "Henderson Traffic, OKABC, taxiing to runway 24, Henderson" |
+| `SelfDeparting` | "…, departing runway 24, to the north, Henderson"; `PatternStay`: "remaining in the pattern" |
+| `SelfInbound` | "…, 10 miles south, inbound for landing, Henderson" |
+| `SelfPattern` | "…, left downwind runway 24, Henderson" (a leg as said: "right base", "final") |
+| `SelfClear` | "…, clear of runway 24, Henderson" |
+
+An IFR flight at such a field gets its clearance and release from approach or centre. The release is `ReleasedForDeparture` ("OKABC, released for departure, report airborne"), the cancellation `CancelIFR` ("Portland Approach, OKABC, cancel IFR"), answered with `IFRCancelled` ("OKABC, IFR cancellation received").
+
 Who works an aircraft follows its state:
 
 | | Positions |
@@ -214,7 +248,7 @@ An airport may have several stations per position, and one controller may work s
 
 `DefaultStations` builds them from the scenery's frequencies. `StationsWith` adds an airport's own stations: a position the override gives replaces its defaults. `PickStation` picks the station that works an aircraft by its taxiways, runway and position.
 
-In the world, each aircraft talks to the station of its sector. Taxiing into another ground station's sector, it is handed over: "CSA1, contact Ruzyne Apron 121.8". An airport's own stations live in the local settings (`stations.json` beside the other overrides), set with `PUT /api/stations?icao=LKPR` and a list of stations. `DELETE` goes back to the defaults; `GET` shows the stations as worked. A night with ground and tower combined:
+In the world, each aircraft talks to the station of its sector. Taxiing into another ground station's sector, it is handed over: "CSA1, contact Ruzyne Apron 121.8". A pushback is worked by the station that cleared it to the end; pushed into another ground station's sector, the crew is told after the push "CSA1, when ready for taxi contact Ruzyne Ground 121.91" and asks that station for taxi. An airport's own stations live in the local settings (`stations.json` beside the other overrides), set with `PUT /api/stations?icao=LKPR` and a list of stations. `DELETE` goes back to the defaults; `GET` shows the stations as worked. A night with ground and tower combined:
 
 ```json
 [{"position":"ground","name":"Ruzyne Ground","freq":"121.91","controller":"LKPR night"},

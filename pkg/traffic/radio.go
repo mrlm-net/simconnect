@@ -95,6 +95,7 @@ const (
 	IntentCircuitDelay  Intent = "circuit_delay"   // circle the aerodrome, orbit, make another circuit
 	IntentVFRForLanding Intent = "vfr_for_landing" // pilot: (type) (position) (level) [information] for landing
 	IntentCircuitReport Intent = "circuit_report"  // pilot: (position in circuit), e.g. downwind
+	IntentWakeCaution   Intent = "wake_caution"    // caution wake turbulence, (the traffic)
 	// The crew decides on its own (#621): pilot "going around"; ATC
 	// acknowledges, "roger".
 	IntentPilotGoAround Intent = "pilot_go_around"
@@ -386,7 +387,7 @@ func phrase(cs string, in Intent, p map[string]string) string {
 		if p[ParamReport] != "" {
 			// What the crew is to call next, said with the approval: the push
 			// is not a taxi clearance, and the crew asks again once the tug
-			// has gone (CAP 413 4.33, Doc 4444 12.3.4.4).
+			// has gone.
 			s += ", report " + p[ParamReport]
 		}
 		return s
@@ -1051,6 +1052,18 @@ func FollowTraffic(cs string, number int, traffic string) Transmission {
 		Params: map[string]string{ParamNumber: fmt.Sprint(number), ParamTraffic: traffic}})
 }
 
+// WakeCaution is the tower's caution of possible wake turbulence (#1307):
+// "OKABC, caution wake turbulence, the Airbus A320 on 3 mile final".
+// WakeCautionDue says when. Not said at a field without a tower: there is no
+// controller to give it.
+func WakeCaution(cs, traffic string) Transmission {
+	text := cs + ", caution wake turbulence"
+	if traffic != "" {
+		text += ", " + traffic
+	}
+	return Transmission{Position: PosTower, Callsign: cs, Intent: IntentWakeCaution, Params: map[string]string{ParamTraffic: traffic}, Text: text}
+}
+
 // Circuit approach instructions (12.3.4.15) and delays (12.3.4.17), as said.
 const (
 	InstrShortApproach  = "make short approach"
@@ -1543,6 +1556,10 @@ type RadioOptions struct {
 	// Variety varies what crews and controllers say and when (#721); nil:
 	// off. Radio.SetVariety changes it.
 	Variety *Variety
+	// Uncontrolled gives the field when airport has no tower working it
+	// (#1296): what is said there is SelfAnnounceFor's, on its common
+	// frequency. Nil: every airport has one.
+	Uncontrolled func(airport string) (UncontrolledField, bool)
 }
 
 // Radio carries the transmissions of our controllers (and, with #417,
@@ -1622,6 +1639,21 @@ func (r *Radio) transmit(airport string, t Transmission, readBack bool) Transmis
 	}
 	if t.Airport == "" {
 		t.Airport = airport
+	}
+	if r.opts.Uncontrolled != nil {
+		if f, ok := r.opts.Uncontrolled(t.Airport); ok {
+			if localPosition(t.Position) || t.Intent == IntentContact {
+				at, where := t.At, t.Airport
+				said, ok := SelfAnnounceFor(f.Name, t)
+				if !ok {
+					return Transmission{}
+				}
+				t, t.At, t.Airport = said, at, where
+				if t.Position == PosTraffic {
+					t.Frequency = f.Freq
+				}
+			}
+		}
 	}
 	t = r.word(t)
 	if t.Frequency == "" && r.opts.FrequencyOf != nil {

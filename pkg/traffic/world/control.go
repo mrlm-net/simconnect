@@ -78,7 +78,11 @@ type controlled struct {
 	// frame, which must not take it.mu (tugWaitsForJetway).
 	tugAfter atomic.Bool
 	// other is its other airport (SpawnRequest.Other), for a new stand.
-	other    string
+	other string
+	// overnight: on its stand through the night (#1294): remote stands
+	// first (StandRequirements.Overnight).
+	overnight bool
+
 	tugStand atomic.Int32
 	// Turnaround (arrival): the departure to start once parked, and
 	// departNow to start it before the dwell is over.
@@ -109,8 +113,10 @@ type controlled struct {
 	// observed: a real aircraft's sighting (#841), nil one of the schedule.
 	observed *traffic.Sighting
 	// deliver: a parked real aircraft's call to delivery, made when its
-	// departure is seen (nil: made already).
-	deliver func()
+	// departure is seen (nil: made already); a night stop's at deliverAt
+	// (#1294).
+	deliver   func()
+	deliverAt time.Time
 	// clearanceDue: its departure clearance, asked for on a staffed
 	// delivery and not given yet (action "clearance"; given by the World
 	// once delivery is no longer staffed; amended by the player first,
@@ -144,6 +150,9 @@ type controlled struct {
 	// gates: the user gives every clearance ("hold at every clearance");
 	// otherwise the tower clears it onto and across runways (#393).
 	gates atomic.Bool
+	// playerAt: when the player last gave it an instruction (unix ns), the
+	// safety net's deadline counted from it (#1096).
+	playerAt atomic.Int64
 	// approach: an arrival's STAR and approach points (the sequencer, #390).
 	approach []airport.LatLon
 	// atc is the position working it now (#416); atisSaid: its pilot has
@@ -180,11 +189,19 @@ type controlled struct {
 	sayMu     sync.Mutex
 	lastATC   string
 	lastATCAt time.Time
+	taxiSaid  string // the last taxi clearance said to it (#1269)
 	visual    bool // cleared for a visual approach, as the crew asked (#766)
 	// circuit: a VFR arrival's circuit (#568); downwindSaid once it has
 	// reported downwind.
 	circuit      *traffic.Circuit
 	downwindSaid bool
+	baseSaid     bool // the base leg reported, at a field without a tower (#1305)
+	crossSaid    bool // the crosswind leg reported, at a field without a tower (#1307)
+	// wakeCautioned: told of a heavier aircraft ahead, this circuit (#1307);
+	// landedNoted: its landing noted for those behind it.
+	wakeCautioned atomic.Bool
+	landedNoted   bool
+	ifrCancelled bool // cancelled IFR with approach, at a field without a tower (#1305)
 	// tngRolling: on the runway for a touch-and-go; once in the circuit
 	// again its calls start afresh (#569).
 	tngRolling bool
@@ -556,6 +573,10 @@ type controlCenter struct {
 	// airports the simulator knows (a retract plan's destination).
 	jw          jetwayState
 	airportRefs func() map[string]traffic.AirportRef
+	// landed is the last landing per airport and runway (noteLanded, #1307).
+	landed sync.Map
+	// selfAnnounceOff: tuned off (ScheduleTuning.SelfAnnounce, #1303).
+	selfAnnounceOff atomic.Bool
 }
 
 func newControlCenter(client engine.Client, k *core) *controlCenter {
@@ -592,6 +613,8 @@ func newControlCenter(client engine.Client, k *core) *controlCenter {
 		FrequencyOf: func(icao string, pos traffic.Position) string { _, f := cc.stationOf(icao, pos); return f },
 		// One person on several frequencies: one voice (#722).
 		ControllerOf: func(icao, freq string) string { return traffic.ControllerOn(cc.stations(icao), freq) },
+		// A field without a tower: its crews announce themselves (#1296).
+		Uncontrolled: cc.uncontrolled,
 		// Faster on a busy frequency and after a safety call, as a
 		// controller speeds up.
 		TempoOf: func(icao, freq string) float64 { return cc.agenda.tempo(icao, freq, cc.clock.Now()) },
@@ -690,6 +713,7 @@ func (cc *controlCenter) tick() {
 		cc.gameAt = now
 		cc.timed("game", func() { cc.gameTick(now) })
 		cc.timed("rescue", func() { cc.rescueTick(now) })
+		cc.timed("calls due", func() { cc.callsDue(now) })
 	}
 	// The stand allocators are fed by the traffic picture (Allocate): no
 	// scans of their own.
@@ -700,6 +724,28 @@ func (cc *controlCenter) tick() {
 	}
 	cc.timed("keep clear", cc.keepClear)
 	cc.timed("jetways", func() { cc.jetwayTick(cc.clock.Now()) })
+}
+
+// callsDue makes the first call of the parked aircraft whose time came:
+// night stops calling delivery DepartureLead before their STD (#1294).
+func (cc *controlCenter) callsDue(now time.Time) {
+	cc.mu.Lock()
+	items := make([]*controlled, 0, len(cc.items))
+	for _, it := range cc.items {
+		items = append(items, it)
+	}
+	cc.mu.Unlock()
+	for _, it := range items {
+		it.mu.Lock()
+		deliver := it.deliver
+		if deliver == nil || it.deliverAt.IsZero() || now.Before(it.deliverAt) {
+			it.mu.Unlock()
+			continue
+		}
+		it.deliver, it.deliverAt = nil, time.Time{}
+		it.mu.Unlock()
+		deliver()
+	}
 }
 
 // timed runs f, logging it when it takes longer than slowStep: the tick
@@ -767,7 +813,7 @@ func (cc *controlCenter) recheckArrivalStands() {
 		}
 		it.stands.Release(old)
 		l := it.graph.Layout
-		newStand, err := it.stands.Assign(traffic.StandRequirements{Owner: tail, Airline: airlineOf(tail), HalfSpan: half, Runway: rwy, NoJetway: traffic.NoJetway(model), Prefer: cc.jetwayGates(it.graph.Layout.ICAO), Other: it.other})
+		newStand, err := it.stands.Assign(traffic.StandRequirements{Owner: tail, Airline: airlineOf(tail), HalfSpan: half, Runway: rwy, NoJetway: traffic.NoJetway(model), Overnight: it.overnight, Bridged: cc.jetwayStands(it.graph.Layout.ICAO), Prefer: cc.jetwayGates(it.graph.Layout.ICAO), Other: it.other})
 		if err == nil {
 			err = it.arr.ChangeStand(newStand)
 			if err != nil {
@@ -937,8 +983,13 @@ type SpawnRequest struct {
 	adopt  uint32    // departure: the aircraft already on the stand (turnaround)
 	pushAt time.Time // departure: stay on the stand until then (its STD)
 	// parked: a real aircraft standing with no departure yet (#841): it
-	// calls delivery only when one comes (controlled.deliver).
+	// calls delivery only when one comes (controlled.deliver); a night
+	// stop (#1294) at callAt.
 	parked bool
+	callAt time.Time
+	// overnight: on its stand through the night (#1294): remote stands
+	// first (#1298).
+	overnight bool
 	// offBlock: an arrival's turnaround departure time, for its stand
 	// (StandRequirements.OffBlock).
 	offBlock time.Time
@@ -1009,7 +1060,7 @@ func (cc *controlCenter) spawn(g *airport.Graph, r SpawnRequest) (*controlled, e
 	// The stand: assigned (-1) or the one asked for, if nobody holds it.
 	alloc := cc.allocator(g)
 	if r.Stand < 0 {
-		req := traffic.StandRequirements{Owner: r.Tail, Airline: airlineOf(r.Tail), HalfSpan: prof.SpanMeters / 2, OffBlock: r.pushAt, NoJetway: traffic.NoJetway(r.Model), Prefer: cc.jetwayGates(g.Layout.ICAO), Other: r.Other}
+		req := traffic.StandRequirements{Owner: r.Tail, Airline: airlineOf(r.Tail), HalfSpan: prof.SpanMeters / 2, OffBlock: r.pushAt, NoJetway: traffic.NoJetway(r.Model), Overnight: r.overnight, Bridged: cc.jetwayStands(g.Layout.ICAO), Prefer: cc.jetwayGates(g.Layout.ICAO), Other: r.Other}
 		if r.Kind == "arrival" {
 			req.Runway, req.OffBlock = r.Runway, r.offBlock
 		}
@@ -1138,7 +1189,7 @@ func (cc *controlCenter) spawn(g *airport.Graph, r SpawnRequest) (*controlled, e
 			fixes = append(fixes, airFix{Ident: p.Ident, LatLon: p.Position})
 		}
 	}
-	it := &controlled{approach: approach, fixes: fixes, defBase: defBase, ID: n, Kind: r.Kind, Tail: r.Tail, ICAO: g.Layout.ICAO, graph: g, stands: alloc, stand: r.Stand, other: r.Other, spoken: map[string]bool{}, removed: make(chan struct{}), cc: cc}
+	it := &controlled{approach: approach, fixes: fixes, defBase: defBase, ID: n, Kind: r.Kind, Tail: r.Tail, ICAO: g.Layout.ICAO, graph: g, stands: alloc, stand: r.Stand, other: r.Other, overnight: r.overnight, spoken: map[string]bool{}, removed: make(chan struct{}), cc: cc}
 	it.tugAfter.Store(rand.Float64() < TugAfterJetwayShare)
 	it.tugStand.Store(int32(r.Stand))
 	it.gates.Store(r.Gates)
@@ -1169,7 +1220,7 @@ func (cc *controlCenter) spawn(g *airport.Graph, r SpawnRequest) (*controlled, e
 		}
 		nose, side := cc.standPlace(g, r.Stand, model)
 		startAt := traffic.Now()
-		ctl, ch, err := cc.sim.StartDeparture(defBase, reqBase, traffic.TaxiRequest{Graph: g, Parking: r.Stand, Runway: r.Runway, Entry: r.Entry, ObjectID: r.adopt, PushbackAt: r.pushAt, NoseOffset: nose, StandSide: side,
+		ctl, ch, err := cc.sim.StartDeparture(defBase, reqBase, traffic.TaxiRequest{Graph: g, Parking: r.Stand, Runway: r.Runway, Entry: r.Entry, ISADeviationC: cc.isaDeviation(g), ObjectID: r.adopt, PushbackAt: r.pushAt, NoseOffset: nose, StandSide: side,
 			Options: airport.RouteOptions{Via: r.Via, Taxiways: r.Taxiways, HoldShortQueue: cc.holdShortQueue(g, r.Runway), LowVisibility: cc.lowVisibility(g, r.Runway)},
 			Model:   model, Livery: livery, Tail: r.Tail, HoldForClearances: true /* clearances on request, #462 */, HoldForRunway: !r.Gates, Tug: tug, TugWait: it.tugWaitsForJetway, Fuel: fuel, Stairs: stairs, GPU: gpu, Buses: buses, Deboard: deboard, Profile: prof,
 			Aircraft: &ac, Departure: procRoute, VFR: r.Circuit, Airport: &lim, Deice: deice,
@@ -1308,7 +1359,7 @@ func (cc *controlCenter) spawn(g *airport.Graph, r SpawnRequest) (*controlled, e
 				it.clearance(clr)
 			}
 			if r.parked {
-				it.deliver = deliver // a real aircraft parked: it calls once its departure is seen (#841)
+				it.deliver, it.deliverAt = deliver, r.callAt // a real aircraft parked: it calls once its departure is seen (#841); a night stop at callAt (#1294)
 			} else {
 				deliver()
 			}
@@ -1319,14 +1370,7 @@ func (cc *controlCenter) spawn(g *airport.Graph, r SpawnRequest) (*controlled, e
 			p := it.arr.Plan()
 			pos, level := "", ""
 			if p != nil {
-				at := airport.LatLon{Lat: p.Spawn.Latitude, Lon: p.Spawn.Longitude}
-				nm := calc.HaversineNM(g.Layout.Latitude, g.Layout.Longitude, at.Lat, at.Lon)
-				miles := math.Max(1, math.Round(nm))
-				unit := "miles"
-				if miles == 1 {
-					unit = "mile"
-				}
-				pos = fmt.Sprintf("%.0f %s %s", miles, unit, traffic.CompassName(calc.BearingDegrees(g.Layout.Latitude, g.Layout.Longitude, at.Lat, at.Lon)))
+				pos = positionSaid(g.Layout, airport.LatLon{Lat: p.Spawn.Latitude, Lon: p.Spawn.Longitude})
 				level = fmt.Sprintf("%.0f feet", math.Round(p.Spawn.Altitude/100)*100)
 			}
 			if it.vfrPoint != nil {
@@ -1758,6 +1802,16 @@ func arrivalActions(s traffic.ArrivalState) []string {
 	return nil
 }
 
+// positionSaid is at as said from l's airport: "10 miles south".
+func positionSaid(l *airport.Layout, at airport.LatLon) string {
+	miles := math.Max(1, math.Round(calc.HaversineNM(l.Latitude, l.Longitude, at.Lat, at.Lon)))
+	unit := "miles"
+	if miles == 1 {
+		unit = "mile"
+	}
+	return fmt.Sprintf("%.0f %s %s", miles, unit, traffic.CompassName(calc.BearingDegrees(l.Latitude, l.Longitude, at.Lat, at.Lon)))
+}
+
 // flightRules: a circuit arrival flies VFR (#568), everything else IFR on
 // its procedures or plan.
 func flightRules(r SpawnRequest) string {
@@ -1786,8 +1840,9 @@ func (it *controlled) act(action string, node airport.NodeID) error {
 	// advice and this is the gate — a host that clears by name, a stale
 	// strip or a double click all arrive here (#1269). `upto` is absent on
 	// purpose: whether it repeats depends on the node, which only
-	// ClearUpTo can judge.
-	case d != nil && action != "upto" && d.Cleared(action):
+	// ClearUpTo can judge. So is `taxi`: a changed route or runway still
+	// goes out, and the same words stop earlier (taxiInForce).
+	case d != nil && action != "upto" && action != "taxi" && d.Cleared(action):
 		return fmt.Errorf("%s: %w", action, traffic.ErrAlreadyCleared)
 	case d != nil && action == "pushback":
 		d.ClearPushback()
@@ -2123,7 +2178,10 @@ func registerControl(mux *http.ServeMux, st *state) {
 		icao := strings.ToUpper(call.ICAO)
 		said := []traffic.Transmission{}
 		say := func(t traffic.Transmission) {
-			said = append(said, cc.radio.Transmit(icao, t))
+			// Nothing is said to a tower that is not there (#1296).
+			if tx := cc.radio.Transmit(icao, t); tx.Text != "" {
+				said = append(said, tx)
+			}
 		}
 		switch call.Intent {
 		case string(traffic.IntentRequestTaxi):
@@ -2298,16 +2356,7 @@ func registerControl(mux *http.ServeMux, st *state) {
 		// Manual (?on=1) or automatic (?on=0): who gives its clearances. Back to
 		// automatic, a request still waiting is answered.
 		if r.PathValue("action") == "manual" {
-			on := r.URL.Query().Get("on") != "0"
-			it.gates.Store(on)
-			it.mu.Lock()
-			it.view.Manual, it.manualSet = on, on
-			req := it.request
-			it.mu.Unlock()
-			tlog.printf("%-6s %s", it.Tail, map[bool]string{true: "under your control", false: "back to automatic control"}[on])
-			if !on && req != "" {
-				it.askGround(req)
-			}
+			it.setManual(r.URL.Query().Get("on") != "0")
 			w.WriteHeader(http.StatusNoContent)
 			return
 		}
@@ -2490,6 +2539,9 @@ func registerControl(mux *http.ServeMux, st *state) {
 			http.Error(w, it.Tail+" is not on your frequency ("+as+")", http.StatusForbidden)
 			return
 		}
+		if a := r.PathValue("action"); a != "remove" && a != "locate" {
+			it.playerAt.Store(cc.clock.Now().UnixNano())
+		}
 		node := airport.NodeID(-1)
 		if s := r.URL.Query().Get("node"); s != "" {
 			n, err := strconv.Atoi(s)
@@ -2512,6 +2564,12 @@ func registerControl(mux *http.ServeMux, st *state) {
 			it.view.Manual = true
 			it.mu.Unlock()
 			tlog.printf("%-6s under your control", it.Tail)
+		}
+		// The taxi clearance it is following already: not said again.
+		if (action == "taxi" || action == "upto") && it.taxiInForce(action, node) {
+			tlog.printf("%-6s %s: clearance %s in force already, not said again", it.Tail, it.Kind, clr)
+			w.WriteHeader(http.StatusNoContent)
+			return
 		}
 		// Pushback with the start-up in one (?startup=1).
 		if action == "pushback" && r.URL.Query().Get("startup") == "1" {
@@ -2579,6 +2637,32 @@ func orNone(s string) string {
 		return "none"
 	}
 	return s
+}
+
+// isaDeviation is the temperature above ISA at g's airport now, °C (0
+// without weather): a warm day lengthens the take-off (#1232).
+func (cc *controlCenter) isaDeviation(g *airport.Graph) float64 {
+	if cc.weather == nil {
+		return 0
+	}
+	w := cc.weather()
+	if w == nil || math.IsNaN(w.TempC) {
+		return 0
+	}
+	return w.TempC - (15 - 1.98*g.Layout.Altitude/0.3048/1000)
+}
+
+// unableRunway: the crew of it refuses runway, too short for its take-off,
+// on the frequency of the position working it, and keeps its own (#1232).
+func (it *controlled) unableRunway(runway string, err error) {
+	it.mu.Lock()
+	own, pos := it.view.Runway, it.atc
+	it.mu.Unlock()
+	if pos == "" {
+		pos = traffic.PosDelivery
+	}
+	it.cc.log.printf("%-6s runway %s refused by the crew: %v", it.Tail, runway, err)
+	it.say(traffic.RunwayTooShort(pos, it.Tail, runway, own))
 }
 
 // crosswind is the crosswind on runway end rwy now, knots, positive from
@@ -3251,6 +3335,8 @@ func typeSaid(icao string) string {
 		return "Diamond " + icao[:2] + "-" + icao[2:] // "Diamond DA-62"
 	case icao == "E50P" || icao == "E55P":
 		return "Phenom"
+	case strings.HasPrefix(icao, "LJ"):
+		return "Learjet"
 	case icao == "E545" || icao == "E550":
 		return "Praetor"
 	case strings.HasPrefix(icao, "B7") && len(icao) >= 3:
@@ -3953,11 +4039,19 @@ func (it *controlled) handoff(ev TaxiOrArrival) {
 		it.tngRolling = true
 	}
 	if ev.arr != nil && it.tngRolling && !ev.arr.TouchAndGo && ev.arr.State == traffic.ArrivalApproaching {
-		it.tngRolling, it.downwindSaid = false, false
+		it.tngRolling, it.downwindSaid, it.baseSaid, it.crossSaid, it.landedNoted = false, false, false, false, false
 		it.vacateSaid.Store(false)
+		it.wakeCautioned.Store(false)
+		if _, ok := it.cc.uncontrolled(it.ICAO); ok {
+			it.say(it.circuitReport("upwind")) // off again (#1307)
+		}
 		if it.cc.rejoin != nil {
 			go it.cc.rejoin(it.ICAO, it.Tail)
 		}
+	}
+	if ev.arr != nil && ev.arr.State == traffic.ArrivalRollout && !it.landedNoted {
+		it.landedNoted = true
+		it.cc.noteLanded(it.ICAO, it.view.Runway, it.view.Model)
 	}
 	// A VFR arrival reports downwind abeam the threshold (12.3.4.14 a).
 	if ev.arr != nil && it.circuit != nil && !it.downwindSaid && ev.arr.State == traffic.ArrivalApproaching {
@@ -3970,7 +4064,7 @@ func (it *controlled) handoff(ev TaxiOrArrival) {
 					report = "downwind, stop and go"
 				}
 			}
-			it.say(traffic.CircuitReport(it.Tail, report))
+			it.say(it.circuitReport(report))
 			// The tower gives its place in the landing sequence (#569).
 			it.call(traffic.PosTower, prioApproach, func() {
 				// Told with an extended downwind already: not again.
@@ -3983,7 +4077,23 @@ func (it *controlled) handoff(ev TaxiOrArrival) {
 						it.cc.followed(it.ICAO, it.Tail, lead)
 					}
 				}
+				it.wakeCaution()
 			})
+		}
+	}
+	// Nobody to ask them at a field without a tower: crosswind and base are
+	// reported too, and each circuit round again, also after a go-around
+	// (#1305, #1307).
+	if ev.arr != nil && it.circuit != nil && ev.arr.State == traffic.ArrivalApproaching {
+		if _, ok := it.cc.uncontrolled(it.ICAO); ok {
+			if !it.crossSaid && it.arr.OnCrosswind() {
+				it.crossSaid, it.downwindSaid, it.baseSaid = true, false, false
+				it.say(it.circuitReport("crosswind"))
+			}
+			if !it.baseSaid && it.arr.OnBase() {
+				it.baseSaid, it.crossSaid = true, false
+				it.say(it.circuitReport("base"))
+			}
 		}
 	}
 	// On the landing roll the tower tells the crew to call ground when
@@ -4070,8 +4180,20 @@ func (it *controlled) handoff(ev TaxiOrArrival) {
 		// Into another station's sector of the same position (Ground to
 		// Apron, #722): handed over, on the ground only, not mid-clearance.
 		if was != "" && freq != "" && was != freq && pos == traffic.PosGround && !it.gates.Load() {
-			it.say(traffic.Transmission{Position: pos, Frequency: was, Callsign: it.Tail, Intent: traffic.IntentContact,
-				Params: map[string]string{traffic.ParamPosition: string(pos), traffic.ParamStation: station, traffic.ParamFreq: freq}})
+			// Pushing back: it stays with the station that cleared the push
+			// until it is done, then calls the next when ready for taxi
+			// (#1268; a conditional transfer, Doc 4444 12.3.1.4 b), its
+			// own transmission after the push's readback (CAP 413 2.58).
+			if ev.dep != nil && ev.dep.State == traffic.TaxiPushback {
+				it.view.Frequency = was
+				return
+			}
+			tx := traffic.Transmission{Position: pos, Frequency: was, Callsign: it.Tail, Intent: traffic.IntentContact,
+				Params: map[string]string{traffic.ParamPosition: string(pos), traffic.ParamStation: station, traffic.ParamFreq: freq}}
+			if ev.dep != nil && ev.dep.State == traffic.TaxiAwaitingTaxi {
+				tx.Params[traffic.ParamWhen] = "when ready for taxi"
+			}
+			it.say(tx)
 		}
 		return
 	}
@@ -4112,6 +4234,13 @@ func (it *controlled) handoff(ev TaxiOrArrival) {
 			it.say(traffic.EstablishedReport(it.Tail, it.view.Runway))
 		}
 		it.approachSaid = false // a go-around is cleared again
+		// At a field without a tower, the field in sight: the crew cancels
+		// IFR with approach before going to the advisory frequency (#1305).
+		if !it.ifrCancelled && it.unworked() && it.fieldInSight() {
+			it.ifrCancelled = true
+			it.say(traffic.CancelIFR(station, it.Tail))
+			it.say(traffic.IFRCancelled(it.Tail))
+		}
 	}
 	// Gone around: tower says "go around" and hears "going around" first,
 	// then hands it to approach once climbing away, and the crew calls in
@@ -4151,7 +4280,19 @@ func (it *controlled) handoff(ev TaxiOrArrival) {
 	if !it.atisSaid && it.cc.atisLetter != nil {
 		info, it.atisSaid = it.cc.atisLetter(it.ICAO), true
 	}
-	it.say(it.initial(traffic.CheckIn(pos, station, it.Tail, it.checkInReport(pos), info)))
+	checkIn := traffic.CheckIn(pos, station, it.Tail, it.checkInReport(pos), info)
+	// At a field without a tower that is its announcement inbound (#1305).
+	if ev.arr != nil && pos == traffic.PosTower && it.view.Rules != "VFR" {
+		if _, ok := it.cc.uncontrolled(it.ICAO); ok {
+			checkIn = withParams(checkIn, map[string]string{traffic.ParamCircuit: positionSaid(it.graph.Layout, ev.arr.Position)})
+		}
+	}
+	it.say(it.initial(checkIn))
+	// Nobody at the field to clear an IFR departure: approach releases it
+	// (#1305).
+	if ev.dep != nil && pos == traffic.PosTower && it.unworked() {
+		it.say(traffic.ReleasedForDeparture(it.Tail))
+	}
 	switch {
 	case ev.dep != nil && pos == traffic.PosDeparture && (it.gates.Load() || it.staffedNow(pos)):
 		// Staffed: no "identified, climb to"; it levels at the level of its
@@ -4357,7 +4498,37 @@ func (it *controlled) say(t traffic.Transmission) {
 			return
 		}
 	}
+	if t.Intent == traffic.IntentTaxi || t.Intent == traffic.IntentTaxiLimit {
+		it.sayMu.Lock()
+		it.taxiSaid = t.Text
+		it.sayMu.Unlock()
+	}
 	it.cc.radio.Transmit(it.ICAO, t)
+}
+
+// taxiInForce reports a taxi clearance (action "taxi", or "upto" node) that
+// is the one in force word for word, its limit the same: said again it is
+// only noise on the frequency, and a readback (#1269). A changed route,
+// runway or limit goes out, and so does a taxi after a hold position.
+func (it *controlled) taxiInForce(action string, node airport.NodeID) bool {
+	n := node
+	if action == "taxi" {
+		n = -1
+	}
+	var same bool
+	switch {
+	case it.dep != nil:
+		same = it.dep.TaxiInForce(n)
+	case it.arr != nil:
+		same = it.arr.TaxiInForce(n)
+	}
+	if !same {
+		return false
+	}
+	it.sayMu.Lock()
+	said := it.taxiSaid
+	it.sayMu.Unlock()
+	return said != "" && it.phrase(action, node).Text == said
 }
 
 // sayTwiceWithin: the same ATC call to one aircraft this soon again is a
@@ -4513,15 +4684,62 @@ func powerOut(st airport.Parking, spanM float64) bool {
 	return false
 }
 
-// wantsVisual: this arrival's crew asks for a visual approach (#766):
-// about one crew in five (by its call sign), in visibility of 8 km or
-// more under no ceiling below 3000 ft, not in cloud (Doc 4444 6.5.3.3).
-func (it *controlled) wantsVisual() bool {
-	if it.circuit != nil || it.cc.weather == nil {
+// weatherNow is the weather in use, nil when none is known.
+func (it *controlled) weatherNow() *nav.Weather {
+	if it.cc.weather == nil {
+		return nil
+	}
+	return it.cc.weather()
+}
+
+// goodVisibility: visibility of 8 km or more under no ceiling below 3000
+// ft, not in cloud (Doc 4444 6.5.3.3).
+func goodVisibility(w *nav.Weather) bool {
+	return w.VisibilityM >= 8000 && (w.CeilingFt <= 0 || w.CeilingFt >= 3000) && !w.InCloud
+}
+
+// fieldInSight: a crew can cancel IFR for the field ahead; unknown weather
+// or visibility counts as good, as for VFR flights (scheduler.visual).
+func (it *controlled) fieldInSight() bool {
+	w := it.weatherNow()
+	if w == nil {
+		return true
+	}
+	c := *w
+	if c.VisibilityM <= 0 {
+		c.VisibilityM = 8000
+	}
+	return goodVisibility(&c)
+}
+
+// unworked: an IFR flight of ours at a field without a tower, approach not
+// the player's: approach's calls for it are ours to say (#1305).
+func (it *controlled) unworked() bool {
+	if it.view.Rules == "VFR" || it.gates.Load() || it.staffedNow(traffic.PosApproach) {
 		return false
 	}
-	w := it.cc.weather()
-	if w == nil || w.VisibilityM < 8000 || w.CeilingFt > 0 && w.CeilingFt < 3000 || w.InCloud {
+	_, ok := it.cc.uncontrolled(it.ICAO)
+	return ok
+}
+
+// circuitReport is the crew's report of report, its position in the
+// circuit; with the side and runway a field without a tower needs (#1305).
+// The upwind has no side.
+func (it *controlled) circuitReport(report string) traffic.Transmission {
+	if _, ok := it.cc.uncontrolled(it.ICAO); !ok {
+		return traffic.CircuitReport(it.Tail, report)
+	}
+	if report != "upwind" {
+		report = string(it.circuit.Side) + " " + report
+	}
+	return withParams(traffic.CircuitReport(it.Tail, report), map[string]string{traffic.ParamRunway: it.circuit.Runway})
+}
+
+// wantsVisual: this arrival's crew asks for a visual approach (#766):
+// about one crew in five (by its call sign), in good visibility.
+func (it *controlled) wantsVisual() bool {
+	w := it.weatherNow()
+	if it.circuit != nil || w == nil || !goodVisibility(w) {
 		return false
 	}
 	h := fnv.New32a()

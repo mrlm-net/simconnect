@@ -7,14 +7,14 @@ This project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 ---
 
-## [0.130.0] - 2026-10-28
+## [0.146.0] - 2026-10-30
 
 ### Fixed
 
 - A clearance already in force was offered, and said, again (#1269). The user, live: the identical taxi clearance transmitted three times over, read back each time.
   - `TaxiController.Cleared("taxi")` now answers true while an **unlimited** taxi clearance is in force. With a limit in force (`ClearUpTo`, hold position) it stays false — there the clearance lifts the limit, which is a new instruction, not a repeat.
   - `ClearUpTo` refuses the node that is already the limit in force with `ErrAlreadyCleared`. A different node is a new limit, nearer or further on, and always goes through.
-  - `World`'s clearance action refuses any clearance `Cleared` reports as given, rather than transmitting a second identical instruction with its own readback. The offered list dropped it already; that was advice, this is the gate (a host clearing by name, a stale strip and a double click all arrive the same way).
+  - `World`'s clearance action refuses any once-only clearance `Cleared` reports as given (a taxi clearance in other words, a changed route or runway, still goes out; the same words answer 204 without being said, #1275), rather than transmitting a second identical instruction with its own readback. The offered list dropped it already; that was advice, this is the gate (a host clearing by name, a stale strip and a double click all arrive the same way).
 - A taxi clearance was offered to an aircraft standing on its stand (#1268). The user: "the sequence of commands … cannot give taxi when it hasn't called ground".
   - `taxi` and `upto` are gone from `TaxiAwaitingPushback` and `TaxiPushback`. The crew has asked for a push, a tug is attached, and it could not go if it were told to. They come on offer at `TaxiAwaitingTaxi`, where the tug is clear and the crew calls ready (`TaxiEvent.Request` "taxi").
   - A stand the aircraft taxis straight out of is unchanged: no push to ask for, so start-up and taxi are one call and one answer.
@@ -24,11 +24,208 @@ This project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 ### Added
 
-- `traffic.WithReportReady(t, what)` adds what the crew is to report next to a push approval: "CSA1, pushback and start up approved, report ready for taxi" (CAP 413 4.33, Doc 4444 12.3.4.4), read back "wilco". It composes with `WithFacing` either way round, and leaves a start-up approval and an empty report alone.
+- `traffic.WithReportReady(t, what)` adds what the crew is to report next to a push approval: "CSA1, pushback and start up approved, report ready for taxi", read back "wilco". It composes with `WithFacing` either way round, and leaves a start-up approval and an empty report alone.
   - It is the other half of the gate above. Withholding the taxi clearance on the stand is right, and on its own leaves a strip that went quiet with no reason given; said, the next call stops being a guess. The `World` says it with a push approval whenever the taxi clearance is still to come, the player's and the automatic ground's alike.
 - `traffic.ErrAlreadyCleared`: this exact clearance is the one in force.
 - `world.ControlView.Request` (`request`): what the crew is asking for right now, in the engine's own words — "pushback", "start_up", "taxi", or "" when they are waiting on nobody (`TaxiEvent.Request`, #462).
   - It is what the offered list cannot say. `Actions` names what a controller MAY give, and a departure cleared to push and start is now offered nothing at all — correctly, because ATC has had its say. A strip with no buttons and no reason reads as a stuck game; this is the other half, whose move it is.
+## [0.145.1] - 2026-10-30
+
+### Fixed
+
+- The World no longer gives a VFR arrival the wake turbulence caution when a player staffs the tower (#1310).
+
+## [0.145.0] - 2026-10-30
+
+### Added
+
+- At a field without a tower, a VFR circuit now also reports the upwind after a touch-and-go and the crosswind ("left crosswind runway 24"), and reports its legs again on the next circuit, also after a go-around. The first circuit's final is announced before a touch-and-go too. `ArrivalController.OnBase` and `OnCrosswind` tell when a circuit arrival has turned onto those legs (#1307).
+- At a towered field, the tower gives a VFR arrival "caution wake turbulence" with the traffic, when a heavier aircraft is ahead of it in the sequence or landed on its runway in the last 3 minutes, once per circuit (`WakeCaution`, `WakeCautionDue`). It is said after a sequence call that names the traffic, or else with the landing clearance. At a field without a tower nobody says it (#1307).
+
+### Fixed
+
+- The base report no longer goes missing when the downwind is extended; it follows the moved turn (#1307).
+- With no weather known, an IFR arrival at a field without a tower now cancels IFR, as unknown weather counts as good for VFR flights too (#1307).
+
+## [0.144.0] - 2026-10-30
+
+### Added
+
+- At a field without a tower, the World's traffic now also announces itself inbound ("10 miles south, inbound for landing") and reports the downwind and base with side and runway ("left base runway 24"). Approach releases IFR departures ("released for departure, report airborne"), and IFR arrivals cancel with approach in good visibility (visibility of 8 km or more, no ceiling below 3000 ft, not in cloud) before the advisory handoff. Both stay silent when a player works approach. Towered fields do not change (#1305).
+
+## [0.143.0] - 2026-10-30
+
+### Added
+
+- Settings for the scheduled traffic's timing (#1303). `World.SetScheduleTuning` and `GET`/`POST /api/schedule/tuning` change the wave hours, the night threshold, the morning wave, the night-stop limit, the turnaround window, the planning horizon, the leads and late limits, overnight remote stands, self-announce and the cargo share. They are saved in `DataDir/schedule-tuning.json`, which wins per value over the defaults, and bad values are refused with every problem named. `traffic.ManagerTiming`, `ManagerOptions.Timing`, `TrafficManager.SetTiming`.
+
+### Fixed
+
+- At an airport whose hours do not begin on the UTC hour (+05:30), the morning wave was taken to begin 30 minutes late. The night is now looked at by the quarter hour. Tests now cover its edges, the clocks going back and other time zones.
+
+## [0.142.0] - 2026-10-30
+
+### Added
+
+- Our traffic announces itself at fields without a tower (#1296). Before, a tower and ground named after the common frequency cleared it there. Now the crews say `SelfTaxiing`, `SelfDeparting`, `SelfPattern` (final) and `SelfClear` on the common frequency when the World decides those moves, and approach hands a flight over with "change to advisory frequency approved". No other tower, ground or delivery call is said. `traffic.RadioOptions.Uncontrolled`, `UncontrolledField`, `SelfAnnounceFor`, `AdvisoryFrequency`, `FieldCallName`. A player staffing tower, ground or delivery there keeps the usual dialogue. Towered airports do not change.
+
+## [0.141.0] - 2026-10-29
+
+### Added
+
+- Cargo traffic (#1300). The schedule had no cargo airline, so the cargo stands (#833) stayed empty. It now has six, from their hubs: European Air Transport (DHL, Leipzig), AeroLogic, Lufthansa Cargo, UPS, FedEx and ASL Airlines Ireland, with telephonies from the airline-codes table. They make a few flights a day at Prague, on cargo stands first. A cargo airline flies freighters only (`FSLTL_B748F_UPS`); the others never one, as before (`ModelsFor`).
+
+## [0.140.0] - 2026-10-29
+
+### Added
+
+- Aircraft parked overnight take remote stands (#1298). Night stops and arrivals staying the night take an airliner stand without a jetway first, then a GA or cargo one, and a jetway's stand last, which leaves the gates to the day's turnarounds. The jetways come from the simulator's jetway list: `traffic.StandRequirements.Overnight` and `Bridged`, `jetway.Helpers.Jetways`. Most airports type every airliner stand GATE, jetway or not (LKPR: all of them), so without the list nothing changes. With it, types boarding by their own airstairs (`NoJetway`) now also take an airliner stand without a jetway before the GA apron.
+
+## [0.139.0] - 2026-10-29
+
+### Added
+
+- Fields without a tower (#1296), most of the simulator's airports. There pilots announce themselves on the common frequency and nobody clears them; `FrequencyFor(tower)` there gives that frequency, so clients ran a controlled dialogue.
+  - `airport.Layout.Controlled()`: whether the field has a tower.
+  - `SelfAnnounceFrequency()`: the CTAF, else the UNICOM, else the MULTICOM; not one named for the lights only (AYBK's "ACTIVATE LIGHT ONLY").
+  - `ControlledFrequency(kind)`: a controller's frequency only. No tower, and ground or clearance only on the field's own frequency (KVUO: clearance by Portland), never the common frequency.
+  - `Frequency.Service`: `ctaf`, `unicom` or `multicom`.
+  - Self-announce calls to "<Field> Traffic" (`traffic.PosTraffic`, `IntentSelfAnnounce`): `SelfTaxiing`, `SelfDeparting` (a direction, or `PatternStay`), `SelfInbound`, `SelfPattern`, `SelfClear`.
+  - For IFR there: `ReleasedForDeparture` ("released for departure, report airborne"), `CancelIFR` and `IFRCancelled`.
+
+## [0.138.0] - 2026-10-29
+
+### Added
+
+- Aircraft parked overnight (#1294). In the night (from the schedule's waves: 23–04 local by default) the morning wave's departures stand on their stands, quiet, up to half the per-airport limit, and each calls delivery 10 minutes before its STD as the others do. An arrival landing late turns into a morning departure of its airline and type and stays on its stand through the night. Before, an arrival with no turn within 3 hours was removed 20 minutes after parking and departures appeared 10 minutes before their STD: live at LKPR after 23:00 three aircraft stood on the stands. `traffic.ManagerOptions.Night`, `MorningWave`, `NightStops`; `ManagedFlight.NightStop`.
+
+## [0.137.0] - 2026-10-29
+
+### Fixed
+
+- The ATC game's flights go on under automatic control when the game is over. Before, they stayed the player's: live, the game was on for 7 s and its RYR232 asked for its push at B15 for an hour and a half, nobody to answer (#1292).
+
+- Departures take the main entrance at the runway's end first (LKPR 24: A); the others side by side with it (Z) are only the overflow once its line is full, three heading for it (#1291). Since v0.111.0 the shorter line won, each departure heading for an entrance counting as 250 m more taxi: from the C stands Z is the shorter taxi, so with one departure heading for A the next ones all went to Z (live: TVS1517 and TVS322 via H1, H, Z with only BAW1334 for A). Before v0.111.0 every departure used A.
+
+- A push no longer waits for a neighbour parked on its stand unless its wing would sweep the neighbour's fuselage (#1289). At tight stands the 3 m margin held it until the neighbour's own push, while the neighbour's tug and fuel truck gave way to the held push: neither ever moved (live, LKPR C26 and C27: DLH1560 and TVS1517 for over 40 minutes, the fuel truck removed for not leaving). Pushed, the wing passed 14.6 m clear of the neighbour's fuselage.
+
+- MSFS 2024's water runway surfaces (water, pond, lake, river, waste water) read as `water`, not unknown (#1290), so seaplane runways are no longer taken for land runways.
+
+### Added
+
+- `World.LoadAirportsFile(path, kinds...)` holds only the airports of those kinds (#1290), and `world.AirportDataDir(root, ref)` gives an airport's data folder in simconnect-data (`<ICAO>/`, or `fields/<kind>/<ident>/`). `traffic.AirportRef.Kind` carries the list's `kind` (`towered`, `ifr`, `airfield`, `short`, `water`, `norunway`, `unknown`), with `traffic.AirportKind*` constants, and `SelfAnnounce` and `GroundLayout` its flags. Without kinds, everything is held, as before.
+
+- `engine.WithDispatchEvent()` (#855 E6): the connection is opened with a Win32 event SimConnect sets when a message waits, and the dispatcher waits on it instead of polling. A message is taken as it comes, not after a backed-off sleep of up to 50 ms, and an idle connection costs a poll every 50 ms. Off by default until checked live. With the manager: `manager.WithEngineOptions(engine.WithDispatchEvent())`.
+
+- Assist suggestions for arrivals (#1096): an alert for two arrivals on their STARs now suggests what the AI would say first to the one landing later: a stop of its descent above the other well out, else a speed for spacing ("number 2, for spacing reduce speed to 180 knots"). Before, an alert for arrivals came without a suggestion. Suggestions are worded in the airport's phraseology, as `World.Phrase` words a clearance.
+
+## [0.136.0] - 2026-10-28
+
+### Added
+
+- Staffed stations in network play (#1096 step 4): each player staffs their own. `PUT /api/stations/staffed?as=<player>` (or `X-ATC-Position`), or `World.SetStaffedBy(player, list)`, replaces only that player's stations, kept with `StaffedStation.By`. Without `as` the list replaces everything, as before.
+  - A player clears the aircraft on every station they staff, so a band-box works across positions: before, a client cleared only on its own position's frequency ("not on your frequency (tower)" for a ground aircraft of a tower player band-boxing ground).
+  - On a station a player staffs, only that player clears it; the position's own client is refused there.
+  - A single station staffed wins over its whole position staffed by another player.
+
+## [0.135.0] - 2026-10-28
+
+### Added
+
+- Staffed station modes (#1096 step 3): `StaffedStation.Mode` is acted on. On a staffed station, a predicted conflict is the player's:
+  - `assist` (the default): an alert with the AI's suggestion where it has one. `World.Alerts()` and `alerts` in `GET /api/separation` list them.
+  - `silent`: nothing.
+  - `safetynet`: an alert with a deadline. Still predicted when it passes, the AI resolves the conflict itself and marks it: log, `safetyNet` on the resolution, `Params["by"] = "safetynet"` on its calls.
+  - The deadline is at least 30 s after the alert, 1 minute after the player's last instruction, and 2 minutes before the earliest loss of separation predicted.
+  - New: `world.ModeAssist`, `ModeSilent`, `ModeSafetyNet` and `StaffedAlert`. `SetStaffed` keeps the mode normalised (`"safety-net"` → `"safetynet"`, unknown → `"assist"`).
+
+### Fixed
+
+- On a staffed station the conflict watch no longer instructs the player's aircraft (#1096): it stopped the descent of an arrival on a staffed approach and slowed it for spacing ("number 2, for spacing reduce speed to 220 knots"), gave staffed departures crossing restrictions, and gave traffic information on the player's frequency.
+
+## [0.134.0] - 2026-10-28
+
+### Added
+
+- `flight.GhostFleet.Owns(objectID)` and `Objects()`: the objects a fleet flies, for a recorder to leave replayed traffic out (#1285).
+
+### Fixed
+
+- `GhostFleet.Handle` takes only the objects of requests the fleet made (#1285): any object in its ID range it was not waiting for was removed, another fleet's on the same connection included, and the range check took one ID past its range.
+- A World linked as an actuator spawns no traffic of its own (#1284): its schedule (set, or replayed on a new connection), corridors and real-world traffic stay off while linked, and a scenario's cast is refused with `world.ErrActuator`; schedule settings made meanwhile apply once the link ends.
+- `World.Hold(true)` keeps the traffic out whatever asks for it meanwhile (#1283): a schedule set while held (`SetSchedule`, or the settings replayed on a new connection) and real-world traffic switched on are remembered for when the hold ends instead of starting the schedule; corridors spawn nothing; a scenario's cast is refused with `world.ErrHeld`. The hold is the World's now, so a new connection (`RunOn` again) keeps it. Holding again removes whatever came in meanwhile; it returned at once before.
+
+## [0.133.2] - 2026-10-28
+
+### Fixed
+
+- A fast arrival behind a slow one is spaced by the speeds both really fly (#1281): the landing prediction flies an arrival at its own speed (at most 180 kt) to the join point 8 NM out, then at the injected final's speeds, 15 kt above its approach speed slowing to it 1 NM out. Before, the last 10 NM were an average of the two, so a TBM9 18 NM out was predicted 1m20s early and the B738 behind it planned that much too close (live, OKBJZ and LOT229).
+- Direct to the final keeps a point halfway along the direct leg, so a delay is still lost by speed or a dog-leg before the final; a downwind extended before no longer leaves the whole delay over. An arrival on its final not yet inside `FreezeNM` with a delay is now slowed to its final approach speed, as an established one is; it was told nothing. One far more short than that speed gains is sent around at once when the separation minimum would be lost, not 20 s later and that much closer (offline: a B738 sent direct 20 NM behind a TBM9 joined ahead of it, 2.7 NM apart, and landed first).
+
+## [0.133.1] - 2026-10-28
+
+### Fixed
+
+- A vectored arrival flies its base straight and is turned to intercept within 1 NM of the turn, not 15–30 s after "for base" (#1279): the intercept heading, flown from where it is told, cut the base to about 0.5 NM and turned it in onto the final early, toward the traffic behind. A corner within 1.5 NM no longer counts as the intercept turn reached.
+
+## [0.133.0] - 2026-10-28
+
+### Added
+
+- `airspace.NewStore(records, opts...)` and `airspace.NewFetchStore(fetch, opts...)`: a Store over records the caller has, such as the simulator's nearest search decoded into `[]Airspace`, or one asking a fetch function for each box not inside one asked for before (#1260). `Area`, `At`, `Containing`, `ClassAt`, `StorePreferNewerSet` and `StoreSkipBroken` work as over the tiles; a record listed twice is kept once.
+
+## [0.132.0] - 2026-10-28
+
+### Added
+
+- A crew refuses a runway too short for its take-off (#1232): `ChangeRunway` to another runway whose full length is less than `RequiredTakeoffRun` returns `ErrRunwayTooShort`, and in the World the crew says so on the frequency ("CSA1, unable runway 12, request runway 24 for departure", `traffic.RunwayTooShort`, intent `unable_runway`) and keeps its runway; a host amending the clearance is told the error too. Departures the schedule creates are not checked at spawn, so traffic never stops on it.
+- `TaxiRequest.ISADeviationC`: the temperature above ISA lengthens the take-off run in the entry and runway checks; the World fills it from the weather (it was always 0 before).
+
+## [0.131.0] - 2026-10-28
+
+### Added
+
+- After a pushback into another ground station's sector (an apron, then ground), the crew is told "when ready for taxi contact <station> <frequency>" once the push is done, then asks that station for taxi (#1268). During the push it stays with the station that cleared it; before, it was handed over with a bare "contact" as it left the sector.
+
+## [0.130.1] - 2026-10-28
+
+### Fixed
+
+- A taxi clearance the same as the one in force (same route, runway and limit) is no longer said again, nor read back (#1269); it is logged and answered 204. A changed one, a hold position and a taxi after it still go out.
+
+### Added
+
+- `TaxiController.TaxiInForce` and `ArrivalController.TaxiInForce`: the taxi clearance in force having a given limit (none: -1).
+
+## [0.130.0] - 2026-10-28
+
+### Added
+
+- Reserved airlines WTD ("WANTED") and MCR ("MyCrew"), `traffic.ReservedAirlines`, occasionally scheduled from LKPR (about 1 in 75 flights there).
+  - Their codes are in neither Wikipedia's list of airline codes nor the shipped telephony table.
+  - They are kept over every table: the shipped telephony and airlines, the MyCrew API's set, a local override and a schedule config's airlines.
+  - They fly their own traffic models only (`FSLTL_WANTED_*`, `FSLTL_MYCREW_*`), switched on or not, never a flyable livery; without them installed, their flights are left out.
+- The Learjet 25 (LJ25): type, wake (L / RECAT F), performance and schedule limits; span, length, stall speed, cruise and ceiling published, the rest estimates.
+- A319 schedule limits.
+- `world.Options.ModelProviders`: a host's default provider switches; the switches set by `SetModelProviders` are kept in `DataDir/model-providers.json` over them.
+- `traffic.TitleOn` and `ModelProviderItem.On` (a provider's default in the `traffic.modelProviders` table).
+
+### Changed
+
+- Our aircraft default to the game's own models: MSFS on; FSLTL, AIG, MyCrew and other makers' aircraft off; the ground vehicles' providers (GSX) still on.
+  - The airport map and `worldtest` switch FSLTL on, so the tests fly the same models as before.
+- A flyable title is used only when its provider has nothing else and is switched on: a maker's FSLTL-format traffic package is no longer counted as a flyable add-on's because the same maker ships flyable liveries.
+  - Where nothing switched on fits, flyable titles are taken last.
+- A telephony designator written in mixed case is said as written ("MyCrew", not "Mycrew").
+
+## [0.129.2] - 2026-10-28
+
+### Fixed
+
+- A VFR circuit arrival fixed at its own time passed the arrival ahead of it, which could not lose the time (live, LKPR 24: OKYQK took number 2 from CSA1293 12 NM out, which was given 6 minutes and sent around for spacing).
+  - Fixed arrivals are planned before the ones not fixed, so fixing it put it ahead whatever the order.
+  - An arrival fixed by its controller now stays in the order behind one that was ahead of it, while that one cannot lose the time it would cost (as for a move up: up to 3 minutes, less near its final); the ones behind take the rest.
+  - Offline LKPR beds (no circuits): unchanged, no go-arounds for spacing.
 
 ## [0.129.1] - 2026-10-27
 

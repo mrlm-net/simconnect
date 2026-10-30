@@ -68,6 +68,12 @@ func (r *remoteDep) ClearUpTo(node airport.NodeID) error {
 	return err
 }
 
+func (r *remoteDep) TaxiInForce(node airport.NodeID) bool {
+	var o0 bool
+	r.c.dropped(r.c.call(r.t, "TaxiInForce", []any{node}, &o0))
+	return o0
+}
+
 func (r *remoteDep) Cancel() error {
 	err := r.c.call(r.t, "Cancel", []any{})
 	return err
@@ -253,6 +259,12 @@ func (r *remoteArr) ClearUpTo(node airport.NodeID) error {
 	return err
 }
 
+func (r *remoteArr) TaxiInForce(node airport.NodeID) bool {
+	var o0 bool
+	r.c.dropped(r.c.call(r.t, "TaxiInForce", []any{node}, &o0))
+	return o0
+}
+
 func (r *remoteArr) DirectToJoin() error {
 	err := r.c.call(r.t, "DirectToJoin", []any{})
 	return err
@@ -394,6 +406,18 @@ func (r *remoteArr) CircuitFinal() bool {
 func (r *remoteArr) OnDownwind() bool {
 	var o0 bool
 	r.c.dropped(r.c.call(r.t, "OnDownwind", []any{}, &o0))
+	return o0
+}
+
+func (r *remoteArr) OnBase() bool {
+	var o0 bool
+	r.c.dropped(r.c.call(r.t, "OnBase", []any{}, &o0))
+	return o0
+}
+
+func (r *remoteArr) OnCrosswind() bool {
+	var o0 bool
+	r.c.dropped(r.c.call(r.t, "OnCrosswind", []any{}, &o0))
 	return o0
 }
 

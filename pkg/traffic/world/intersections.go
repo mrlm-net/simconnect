@@ -288,7 +288,8 @@ func (cc *controlCenter) lowVisibility(g *airport.Graph, rwy string) bool {
 const holdShortQueueM = 250.0
 
 // holdShortQueue is the queue at each hold-short of icao's runway: the
-// departures of ours not yet off it whose route ends there.
+// departures of ours not yet off it whose route ends there, with the
+// overflow entrances' share (overflowEntrances).
 func (cc *controlCenter) holdShortQueue(g *airport.Graph, runway string) map[airport.NodeID]float64 {
 	cc.mu.Lock()
 	items := make([]*controlled, 0, len(cc.items))
@@ -316,5 +317,40 @@ func (cc *controlCenter) holdShortQueue(g *airport.Graph, runway string) map[air
 		}
 		out[v.Nodes[len(v.Nodes)-1]] += holdShortQueueM
 	}
-	return out
+	return overflowEntrances(g, runway, out)
+}
+
+// overflowQueueM: the extra taxi to an overflow entrance while the main
+// one's line is not full; more than any taxi at an airport.
+const overflowQueueM = 1e6
+
+// overflowEntrances makes the first of runway's entrances side by side at
+// its end (airport.EndEntrances; LKPR 24: A) the main one and the others
+// (LKPR 24: Z) overflow: queue (holdShortQueue's) gets overflowQueueM on
+// theirs until runwayQueuePerEntrance departures are heading for the main
+// one; then the shorter line wins, as before. Live, departures from the C
+// stands took Z as the shorter taxi, one after another, while A was free.
+func overflowEntrances(g *airport.Graph, runway string, queue map[airport.NodeID]float64) map[airport.NodeID]float64 {
+	es, err := g.EndEntrances(runway)
+	if err != nil || len(es) < 2 {
+		return queue
+	}
+	onMain := queue[es[0].HoldShort]
+	if es[0].ILSHoldShort >= 0 {
+		onMain += queue[es[0].ILSHoldShort]
+	}
+	if onMain >= runwayQueuePerEntrance*holdShortQueueM {
+		return queue
+	}
+	if queue == nil {
+		queue = map[airport.NodeID]float64{}
+	}
+	for _, e := range es[1:] {
+		for _, h := range []airport.NodeID{e.HoldShort, e.ILSHoldShort} {
+			if h >= 0 {
+				queue[h] += overflowQueueM
+			}
+		}
+	}
+	return queue
 }

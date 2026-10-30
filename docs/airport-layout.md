@@ -67,7 +67,7 @@ mgr.OnMessage(func(msg engine.Message) {
 
 | | |
 |---|---|
-| Frequencies | `Layout.Frequencies`: the airport's radio frequencies (kind, MHz, name) and `FrequencyFor(kind)` with ATC's fallbacks. |
+| Frequencies | `Layout.Frequencies`: the airport's radio frequencies (kind, MHz, name) and `FrequencyFor(kind)` with ATC's fallbacks; `Controlled()`, `SelfAnnounceFrequency()` and `ControlledFrequency(kind)` for fields without a tower ([Radio](traffic-radio.md#fields-without-a-tower)). |
 | IDs | 7 facility definition IDs from `DefaultLoaderDefinitionBase` (7100) and 112 request IDs from `DefaultLoaderRequestBase` (7200). Move them with `LoaderWithIDs(defBase, reqBase)` if they clash with your own. |
 | Concurrency | Up to 16 airports in flight at once. `Pending()` lists them. |
 | Timeout | `LoaderWithTimeout` (default 30 s). SimConnect sends **nothing** for an unknown ICAO code, so an unknown airport ends in `ErrTimeout` via `Expire`. |

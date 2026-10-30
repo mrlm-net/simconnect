@@ -118,7 +118,8 @@ const (
 
 // Store gives the airspaces of an area from a simconnect-data airspaces/
 // directory: it picks the tiles by the index's boxes and decodes each
-// tile once, when first needed. Safe for concurrent use.
+// tile once, when first needed. NewStore and NewFetchStore give the same
+// from records the caller has, or fetches (#1260). Safe for concurrent use.
 //
 //	s, err := airspace.Open(os.DirFS(filepath.Join(data, "airspaces")))
 //	list, err := s.Area(airspace.BoxAround(50.1, 14.26, 30000))
@@ -133,10 +134,18 @@ type Store struct {
 
 	// cells: the index by cellDeg cell of each box, built on first use
 	// (Area scanned all 56,419 entries per call); spread: the entries too
-	// wide for cells, checked every time.
-	cellsOnce sync.Once
-	cells     map[int32][]int32
-	spread    []int32
+	// wide for cells, checked every time. idxMu guards them and index,
+	// which supplied records grow (add).
+	idxMu  sync.Mutex
+	built  bool
+	cells  map[int32][]int32
+	spread []int32
+
+	// fetch, for a store over a fetch function: what it is asked for a box
+	// not inside one of fetched.
+	fetchMu sync.Mutex
+	fetch   Fetch
+	fetched []Box
 
 	shapeMu sync.Mutex
 	shapes  map[uint64]*Shape
@@ -163,14 +172,22 @@ func Open(fsys fs.FS, opts ...StoreOption) (*Store, error) {
 }
 
 // Index is the store's index.
-func (s *Store) Index() []IndexEntry { return s.index }
+func (s *Store) Index() []IndexEntry {
+	s.idxMu.Lock()
+	defer s.idxMu.Unlock()
+	return s.index
+}
 
 // Area returns the airspaces whose box overlaps box, by ID. The records
 // are shared with the store: do not change them.
 func (s *Store) Area(box Box) ([]*Airspace, error) {
+	if err := s.fetchFor(box); err != nil {
+		return nil, err
+	}
+	cand, index := s.candidatesOf(box)
 	var out []*Airspace
-	for _, i := range s.candidates(box) {
-		e := s.index[i]
+	for _, i := range cand {
+		e := index[i]
 		if !e.Box().Overlaps(box) {
 			continue
 		}
@@ -194,14 +211,24 @@ func (s *Store) Area(box Box) ([]*Airspace, error) {
 // candidates are the index entries that may overlap box, in index order:
 // those in its cells and the spread ones; all for a box over maxCells.
 func (s *Store) candidates(box Box) []int32 {
-	s.cellsOnce.Do(s.buildCells)
+	c, _ := s.candidatesOf(box)
+	return c
+}
+
+// candidatesOf is candidates and the index they are of.
+func (s *Store) candidatesOf(box Box) ([]int32, []IndexEntry) {
+	s.idxMu.Lock()
+	defer s.idxMu.Unlock()
+	if !s.built {
+		s.buildCells()
+	}
 	keys, ok := cellsOf(box)
 	if !ok {
 		all := make([]int32, len(s.index))
 		for i := range all {
 			all[i] = int32(i)
 		}
-		return all
+		return all, s.index
 	}
 	seen := map[int32]bool{}
 	out := append([]int32(nil), s.spread...)
@@ -214,20 +241,27 @@ func (s *Store) candidates(box Box) []int32 {
 		}
 	}
 	slices.Sort(out)
-	return out
+	return out, s.index
 }
 
+// buildCells puts the index in its cells; s.idxMu is held.
 func (s *Store) buildCells() {
-	s.cells = map[int32][]int32{}
-	for i, e := range s.index {
-		keys, ok := cellsOf(e.Box())
-		if !ok {
-			s.spread = append(s.spread, int32(i))
-			continue
-		}
-		for _, k := range keys {
-			s.cells[k] = append(s.cells[k], int32(i))
-		}
+	s.cells, s.spread, s.built = map[int32][]int32{}, nil, true
+	for i := range s.index {
+		s.cell(int32(i))
+	}
+}
+
+// cell puts index entry i in its cells, or the spread ones; s.idxMu is
+// held.
+func (s *Store) cell(i int32) {
+	keys, ok := cellsOf(s.index[i].Box())
+	if !ok {
+		s.spread = append(s.spread, i)
+		return
+	}
+	for _, k := range keys {
+		s.cells[k] = append(s.cells[k], i)
 	}
 }
 

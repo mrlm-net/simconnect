@@ -16,7 +16,7 @@ import (
 )
 
 func New(name string, config *Config) *SimConnect {
-	sc := &SimConnect{connection: 0, library: dll.New(config.DLLPath), name: name}
+	sc := &SimConnect{connection: 0, library: dll.New(config.DLLPath), name: name, wantEvent: config.DispatchEvent}
 	if config.TraceCalls {
 		sc.trace = &callTrace{}
 	}
@@ -30,6 +30,10 @@ type SimConnect struct {
 	name       string
 	sync       sync.RWMutex
 	trace      *callTrace // Config.TraceCalls; nil off
+	// wantEvent: Config.DispatchEvent; event the dispatch event of the
+	// connection open (0 none).
+	wantEvent bool
+	event     uintptr
 }
 
 type API interface {

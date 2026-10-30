@@ -180,7 +180,7 @@ func (s *scheduler) setReal(on bool) {
 				s.mgr.Remove(f.Callsign, now)
 			}
 		}
-		s.mgr.SetEnabled(true)
+		s.enable(true)
 	} else if changed {
 		s.mgr.Replan() // the generator back: the hours ahead asked again
 	}

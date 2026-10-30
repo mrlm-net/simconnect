@@ -494,11 +494,21 @@ func (g *scheduler) fleetType(al Airline, dist, runwayM float64) (string, bool) 
 }
 
 func (g *scheduler) limits(t string) TypeLimits {
-	if l, ok := g.cfg.Types[t]; ok {
+	return g.cfg.limits(t)
+}
+
+// limits are type t's limits, defaultTypeLimits when not listed.
+func (c ScheduleConfig) limits(t string) TypeLimits {
+	if l, ok := c.Types[t]; ok {
 		return l
 	}
-	return TypeLimits{MinNM: 100, MaxNM: 2500, RunwayM: 2000}
+	return defaultTypeLimits
 }
+
+// defaultTypeLimits are a type's not in ScheduleConfig.Types (the cargo
+// airlines' widebodies, #1300: listed, they would be the fleet of every
+// airline only known from its stands, fleetForStand).
+var defaultTypeLimits = TypeLimits{MinNM: 100, MaxNM: 2500, RunwayM: 2000}
 
 // callsign is a flight number of airline not used yet in this schedule.
 func (g *scheduler) callsign(airline string) string {

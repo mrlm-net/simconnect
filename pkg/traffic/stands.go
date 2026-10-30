@@ -60,6 +60,17 @@ type StandRequirements struct {
 	// without one first, its airline's and then any, a gate only when no
 	// other is free.
 	NoJetway bool
+	// Overnight: an aircraft parked through the night (#1294) takes the
+	// stands as NoJetway does, remote ones first (#1298): the gates for
+	// the day's turnarounds.
+	Overnight bool
+	// Bridged are the stands with a jetway, where known (the simulator's
+	// jetway list: jetway.Helpers.Jetways). NoJetway and Overnight take an
+	// airliner stand without one first, then a GA or cargo one, a jetway's
+	// last. Most airports type their airliner stands GATE, jetway or not,
+	// so without it Overnight changes nothing and NoJetway goes by the
+	// types (airport.Parking.IsGate).
+	Bridged []int
 	// Prefer are stands taken first, the airline's and then open ones,
 	// before any other: the gates whose jetway can dock to our traffic
 	// (#572; live, airlines' own gates without one won).
@@ -315,11 +326,14 @@ func (a *StandAllocator) Assign(req StandRequirements) (int, error) {
 	}
 	a.mu.Unlock()
 	groups := [][]int{own, open}
-	if req.NoJetway {
-		remote := func(gate bool, g []int) []int {
-			return slices.DeleteFunc(slices.Clone(g), func(i int) bool { return l.Parking[i].IsGate() != gate })
+	if remote := a.remoteness(req); remote != nil {
+		by := func(r int, g []int) []int {
+			return slices.DeleteFunc(slices.Clone(g), func(i int) bool { return remote(i) != r })
 		}
-		groups = [][]int{remote(false, own), remote(false, open), remote(true, own), remote(true, open)}
+		groups = nil
+		for r := range 3 {
+			groups = append(groups, by(r, own), by(r, open))
+		}
 	} else if len(req.Prefer) > 0 {
 		split := func(pref bool, g []int) []int {
 			return slices.DeleteFunc(slices.Clone(g), func(i int) bool { return slices.Contains(req.Prefer, i) != pref })
@@ -347,6 +361,35 @@ func (a *StandAllocator) Assign(req StandRequirements) (int, error) {
 		}
 	}
 	return -1, ErrNoStand
+}
+
+// remoteness ranks a stand for NoJetway and Overnight: 0 an airliner
+// stand (GATE type) without a jetway, 1 a stand of another type (GA,
+// cargo), 2 a jetway's. Without the jetway list (Bridged) NoJetway takes
+// the types alone (0 not GATE, 2 GATE) and Overnight cannot tell; nil when
+// neither asks.
+func (a *StandAllocator) remoteness(req StandRequirements) func(int) int {
+	l := a.g.Layout
+	switch {
+	case (req.NoJetway || req.Overnight) && len(req.Bridged) > 0:
+		return func(i int) int {
+			switch {
+			case slices.Contains(req.Bridged, i):
+				return 2
+			case l.Parking[i].IsGate():
+				return 0
+			}
+			return 1
+		}
+	case req.NoJetway:
+		return func(i int) int {
+			if l.Parking[i].IsGate() {
+				return 2
+			}
+			return 0
+		}
+	}
+	return nil
 }
 
 // AssignNear reserves the free stand nearest pos within maxMeters that

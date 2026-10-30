@@ -36,7 +36,19 @@ A `StaffedStation` is a whole position (`Position`: "delivery", "ground", "tower
 
 The player gives clearances through the same calls as any host: `World.Clear(id, action)` (`POST /api/control/{id}/{action}`), `World.Approach(icao, callsign, action)` for the arrivals' sequence, `World.ApproachDescend(icao, callsign, ft)` for a lower level on the STAR (said against the transition altitude, never a climb), and `World.Phrase(id, action)` for what a clearance would say. Each is said on the radio with its readback, as the automatic controllers' are.
 
-**Not yet.** `StaffedStation.Mode` (what the AI does on a staffed station: assist, silent, safety net) and `AutoHandoff` are accepted and kept but not acted on yet: today a staffed station behaves as "the AI gives nothing there".
+**Modes.** `StaffedStation.Mode` is what the AI does on the station when an aircraft on it is predicted to lose separation. In every mode the routine clearances, speeds, levels and vectors stay the player's, and the AI gives no traffic information there either.
+
+- `assist` (also `""`, the default): an alert. `World.Alerts()` (`alerts` in `GET /api/separation`) lists each conflict of the player's aircraft with its pair, the time to the loss of separation, the staffed callsigns and their modes. `Suggested` is what the AI would say first, worded as on the radio: to an en-route aircraft or a departure its resolution (a level, a heading, a crossing restriction); to the arrival landing later of two on their STARs, a stop of its descent above the other well out, else a speed for spacing ("number 2, for spacing reduce speed to 180 knots"). The AI does nothing about it.
+- `silent`: no alert, nothing from the AI.
+- `safetynet` (`safety-net` too): an alert with a `Deadline`, at least 30 s after the alert, 1 minute after the player's last instruction to either aircraft, and 2 minutes before the earliest loss predicted. Is the conflict still predicted then, the AI resolves it as for its own aircraft: a level, a crossing restriction, a speed, a vector. The alert shows `SafetyNet`, the log says so, the resolution in `GET /api/separation` is marked `safetyNet`, and the safety net's calls carry `Params["by"] = "safetynet"` so a game can show who said them.
+
+An aircraft taken over by hand (its manual toggle, or a clearance from the user off the staffed stations) has no station mode: silent.
+
+**Network play.** Each player staffs their own stations. `PUT /api/stations/staffed?as=tower` (or the `X-ATC-Position` header), or `World.SetStaffedBy("tower", list)` in Go, sets the stations of the player playing as `tower` and leaves the other players' as they are; an empty list gives that player's stations back to the AI. Each entry is kept with `By`, the player. Without `as` (the host), the list replaces everything, as before.
+
+- A player clears the aircraft on every station they staff, whatever position they play as: a tower player band-boxing ground gives the ground clearances too.
+- On a station a player staffs, only that player clears. The position's own client is refused there as well.
+- A single station staffed by one player (Ground North) wins over its whole position staffed by another (ground).
 
 ## One aircraft by hand
 

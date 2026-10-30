@@ -2,6 +2,7 @@ package traffic
 
 import (
 	"hash/fnv"
+	"slices"
 	"sort"
 	"strings"
 )
@@ -17,11 +18,13 @@ import (
 //  3. the type in any livery, airline liveries before house and white ones.
 //
 // Titles are matched as MSFS lists them ("FSLTL_FAIB_B738_TVS-Smartwings",
-// "FSLTL A320 DLH Lufthansa", "A321 :: 01 Lufthansa"); FSLTL stubs, VIP,
-// business-jet and freighter versions are left out. The type of a title is
-// what ProfileFor makes of it. At most max titles (0: all).
+// "FSLTL A320 DLH Lufthansa", "A321 :: 01 Lufthansa"); FSLTL stubs, VIP
+// and business-jet versions are left out. A cargo airline (Airline.Cargo)
+// flies freighters only ("FSLTL_B738F_FDX"), any other airline none. The
+// type of a title is what ProfileFor makes of it. At most max titles (0:
+// all).
 func ModelsFor(models []string, airline, name, typ string, max int) []string {
-	return pickTitles(preferRanked(rankModels(models, airline, name, typ)), "", max)
+	return pickTitles(preferRanked(rankModels(models, airline, name, typ), airline), "", max)
 }
 
 // ModelsForFlight is ModelsFor with the best titles taken in turn by
@@ -29,15 +32,25 @@ func ModelsFor(models []string, airline, name, typ string, max int) []string {
 // airline's type) each flight gets one of its own — the same one every time
 // it is asked for — so a fleet shows its variety instead of one aircraft.
 func ModelsForFlight(models []string, airline, name, typ, callsign string, max int) []string {
-	return pickTitles(preferRanked(rankModels(models, airline, name, typ)), callsign, max)
+	return pickTitles(preferRanked(rankModels(models, airline, name, typ), airline), callsign, max)
 }
 
-// preferRanked keeps the titles of providers switched on (PreferProviders),
-// all of them when none is.
-func preferRanked(in []rankedModel) []rankedModel {
+// preferRanked keeps the titles used (PreferProviders), all of them when
+// none is, flyable add-ons' only when there is nothing else. A reserved
+// airline's (ReservedAirlines) flies its own traffic models only, its
+// provider switched on or not: none installed, none.
+func preferRanked(in []rankedModel, airline string) []rankedModel {
 	var out []rankedModel
+	if reservedAirline(airline) {
+		for _, m := range in {
+			if m.rank < rankOtherLivery && !titleFlyable(m.title) {
+				out = append(out, m)
+			}
+		}
+		return out
+	}
 	for _, m := range in {
-		if ProviderOn(ModelProvider(m.title)) {
+		if TitleOn(m.title) {
 			out = append(out, m)
 		}
 	}
@@ -47,7 +60,12 @@ func preferRanked(in []rankedModel) []rankedModel {
 			titles = append(titles, m.title)
 		}
 		reportFallback(titles)
-		return in
+		keep := notFlyable(titles)
+		for _, m := range in {
+			if slices.Contains(keep, m.title) {
+				out = append(out, m)
+			}
+		}
 	}
 	return out
 }
@@ -84,10 +102,11 @@ func pickTitles(out []rankedModel, key string, max int) []string {
 func rankModels(models []string, airline, name, typ string) []rankedModel {
 	want := ProfileFor(typ)
 	size := want.ICAOCode
+	cargo := cargoAirline(airline)
 	type cand = rankedModel
 	var out []cand
 	for _, t := range models {
-		if skipModel(t) {
+		if skipModel(t) || freighter(t) != cargo {
 			continue
 		}
 		p := ProfileFor(t)
@@ -112,7 +131,7 @@ func rankModels(models []string, airline, name, typ string) []rankedModel {
 		case p.Type == typ && genericLivery(t):
 			out = append(out, cand{t, 8})
 		case p.Type == typ && hasToken(t, typ):
-			out = append(out, cand{t, 6}) // named by its designator
+			out = append(out, cand{t, rankOtherLivery}) // named by its designator
 		case p.Type == typ:
 			out = append(out, cand{t, 7})
 		}
@@ -125,6 +144,9 @@ func rankModels(models []string, airline, name, typ string) []rankedModel {
 	})
 	return out
 }
+
+// rankOtherLivery: ranks from here are not in the airline's livery.
+const rankOtherLivery = 6
 
 // modelTokens splits a title into its words: "FSLTL_FAIB_B738_TVS-Smartwings"
 // → FSLTL FAIB B738 TVS SMARTWINGS.
@@ -163,16 +185,32 @@ func skipModel(t string) bool {
 		return true // the model rules (#1024)
 	}
 	for _, w := range modelTokens(t) {
-		// Freighter designators: B738F, A332F.
-		if len(w) == 5 && w[4] == 'F' && ProfileFor(w[:4]).Type == w[:4] {
-			return true
-		}
 		switch w {
-		case "STUB", "VIP", "BBJ", "CARGO", "FREIGHTER", "BELUGAXL", "MILITARY":
+		case "STUB", "VIP", "BBJ", "BELUGAXL", "MILITARY":
 			return true
 		}
 	}
 	return strings.Contains(strings.ToUpper(t), "AIR FORCE") || strings.Contains(strings.ToUpper(t), "AIRFORCE")
+}
+
+// freighter reports whether title t is a freighter: a designator with an
+// F (B738F, A332F, B77LF) or CARGO or FREIGHTER among its words.
+func freighter(t string) bool {
+	for _, w := range modelTokens(t) {
+		if len(w) == 5 && w[4] == 'F' && ProfileFor(w[:4]).Type == w[:4] {
+			return true
+		}
+		if w == "CARGO" || w == "FREIGHTER" {
+			return true
+		}
+	}
+	return false
+}
+
+// cargoAirline reports whether code is a cargo airline's (Airline.Cargo
+// in the airline table).
+func cargoAirline(code string) bool {
+	return code != "" && slices.ContainsFunc(airlinesNow.Load(), func(a Airline) bool { return a.Cargo && strings.EqualFold(a.ICAO, code) })
 }
 
 func genericLivery(t string) bool {

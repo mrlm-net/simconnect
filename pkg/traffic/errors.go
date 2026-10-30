@@ -46,6 +46,11 @@ var (
 	// ErrEntryTooShort is returned by TaxiController.Start for a runway entry
 	// with less runway ahead than the aircraft needs (RequiredTakeoffRun).
 	ErrEntryTooShort = errors.New("traffic: not enough runway ahead of the entry for this aircraft")
+
+	// ErrRunwayTooShort is returned by TaxiController.ChangeRunway for a
+	// runway shorter than the aircraft needs (RequiredTakeoffRun) from its
+	// full length (#1232).
+	ErrRunwayTooShort = errors.New("traffic: runway too short for this aircraft's take-off")
 )
 
 // ErrNotOnRoute is returned by ClearUpTo for a node that is not ahead on the

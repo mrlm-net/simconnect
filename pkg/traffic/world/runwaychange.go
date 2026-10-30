@@ -198,6 +198,10 @@ func (cc *controlCenter) changeDepartureRunway(g *airport.Graph, it *controlled,
 	if errors.Is(err, traffic.ErrTooLate) {
 		return // lined up: it goes from the runway it is on
 	}
+	if errors.Is(err, traffic.ErrRunwayTooShort) {
+		it.unableRunway(runway, err)
+		return
+	}
 	if err != nil {
 		cc.log.printf("%-6s runway change to %s refused: %v", it.Tail, runway, err)
 		return

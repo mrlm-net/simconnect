@@ -36,9 +36,41 @@ for now := range time.Tick(time.Second) {
 | Departure airborne | Flies on along its plan and is removed once it leaves the area (see [Leaving](#enroute-traffic-and-overflights)), at the latest `RemoveDepartedAfter` (30 min) after it leaves the controllers. |
 | Too late | A departure is cancelled 15 min (`DepartureLate`) after its STD without an aircraft. An arrival is cancelled 10 min (`ArrivalLate`) after it should have appeared. A departure waits as long as its inbound aircraft is still on its way. |
 
+### Overnight
+
+With `Night` (the World gives it from the schedule's waves: an hour with at most a tenth of the peak's movements is night, 23–04 local by default), the airport keeps aircraft overnight (#1294):
+
+- From `Horizon` before the night, the Source is also asked for the **morning wave** after it (`MorningWave`, 2 h from the first busy hour).
+- An arrival whose next turn (`MinTurn` after its STA) falls in the night pairs with a morning-wave departure of its airline and type: it **stays on its stand overnight** and leaves in the morning.
+- In the night, the morning wave's other departures are spawned at once, **parked on their stands** (`ManagedFlight.NightStop`), up to `NightStops` an airport (default half `MaxPerAirport`, negative none), earliest first. Each stays quiet and calls delivery `DepartureLead` before its STD, as any other departure does; its boarding counts from its STD for `CheckStuck`.
+- Both take **remote stands** first and leave the jetways to the day's turnarounds (#1298): an airliner stand without a jetway, then a GA or cargo one, a jetway's last (`StandRequirements.Overnight`). Which stands have a jetway comes from the simulator's jetway list (`Bridged`, `jetway.Helpers.Jetways`). Most airports type every airliner stand GATE, jetway or not, so without the list (jetways off) the stand is chosen as for any other flight.
+
+The World's settings for all of this are in [Changing the timing](#changing-the-timing).
+
 The limits are `MaxAircraft` in total (default 24) and `MaxPerAirport` (default 16). Spawns are spaced: arrivals `ArrivalSpacing` (3 min) apart, departures `DepartureSpacing` (1 min). The Source is asked `Horizon` (2 h) ahead, an hour at a time. Flights already too late when they are added are left out, so a schedule started mid-day does not show the morning as cancelled. A failed spawn is tried again after `RetryAfter` (30 s), up to `MaxAttempts` (3); one unanswered for `SpawnTimeout` (2 min) counts as failed. Done and cancelled flights stay on the boards for `Keep` (1 h).
 
 `Add(flights)` adds flights beside the Source's (flights at chosen times); a flight already known by kind and call sign keeps its state. `SetAirports`, `SetEnabled` and `SetLimits` change the managed airports, spawning and the limits while it runs; `Replan` asks the Source again for the hours ahead.
+
+## Changing the timing
+
+`World.SetScheduleTuning` (`POST /api/schedule/tuning`) changes the scheduled traffic's timing (#1303). What is set is saved in `DataDir/schedule-tuning.json` and wins per value over the default; what is left out stays the default. Each call replaces the whole override, and an empty one takes everything back. `GET /api/schedule/tuning` gives `local` (the override) and `effective` (every value in use).
+
+| Value | Default | Triggers |
+|---|---|---|
+| `waves` | 24 values, 0–1 | Movements by local hour against the peak |
+| `nightWave` | 0.1 | An hour at or below it is night: 23–04 local, morning at 05:00 |
+| `morningWaveMin` | 120 | The wave after the night that night stops and overnight arrivals leave in |
+| `nightStops` | 0: half `MaxPerAirport` | Departures parked per airport; negative none |
+| `minTurnMin`, `maxTurnMin` | 40, 180 | An arrival's turnaround after its STA; a negative `minTurnMin` never. A longer stay counts as overnight |
+| `horizonMin` | 120 | How far ahead the timetable is planned; a night is prepared from this long before it |
+| `departureLeadMin` | 10 | A departure appears, or a night stop calls delivery, this long before its STD |
+| `arrivalLeadMin`, `vfrLeadMin` | 25, 8 | An arrival appears this long before its STA |
+| `departureLateMin`, `arrivalLateMin` | 15, 10 | A flight not started this long after that is cancelled |
+| `overnightRemote` | true | Aircraft parked overnight take stands without a jetway first |
+| `selfAnnounce` | true | Our crews announce themselves at a field without a tower; false keeps its tower and ground on the common frequency |
+| `cargoShare` | 1 | Scales the cargo airlines' weight, 0–10; 0 none |
+
+Values the triggers cannot work with are refused with every problem named, and nothing changes: a wave outside 0–1, `minTurnMin` after `maxTurnMin`, a lead beyond the horizon. A file with such values is left out whole at the start, with a warning. A change applies from then on and to the hours ahead, asked again; flights already paired or parked stay as they are. `TrafficManager.SetTiming` is the manager's own side (`ManagerTiming`, `ManagerOptions.Timing`).
 
 ## The Spawner
 
@@ -60,7 +92,7 @@ type Spawner interface {
 2. Another type of the same size in the airline's livery, same maker first.
 3. The type in any livery.
 
-Within each of the first two, titles with the airline's ICAO code come before those that only carry its name, which may be a sister airline's ("TVP-Smartwings Poland" for Smartwings, TVS). Stubs, VIP, business-jet, freighter and military versions are left out.
+Within each of the first two, titles with the airline's ICAO code come before those that only carry its name, which may be a sister airline's ("TVP-Smartwings Poland" for Smartwings, TVS). Stubs, VIP, business-jet and military versions are left out. A cargo airline (`Airline.Cargo`) flies freighters only (`FSLTL_B77LF_FDX`: a designator with an F, or CARGO or FREIGHTER in the title); every other airline never gets one.
 
 `ModelsForFlight(models, airline, name, type, callsign, max)` ranks the same way, but takes the equally good best titles in turn by call sign. Each flight always gets the same one, and a fleet with several liveries or versions installed shows them all instead of one aircraft. The map spawns with it.
 

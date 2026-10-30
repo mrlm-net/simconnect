@@ -66,6 +66,7 @@ Each has `Enter` and `Exit`, when it crosses into and out of the area at its cru
 `DefaultScheduleConfig()` ships with:
 
 - 17 airlines, including CSA and Smartwings at Prague, Lufthansa, KLM, Ryanair, Wizz Air and the Gulf carriers.
+- 6 cargo airlines (`"cargo": true`, #1300) from their hubs: European Air Transport (DHL, Leipzig), AeroLogic, Lufthansa Cargo, UPS, FedEx and ASL Airlines Ireland. A few flights a day at Prague; they fly freighters and park on cargo stands first.
 - About 80 airports with their position, size and longest runway.
 - The waves.
 - Range and runway limits for the known types.

@@ -80,3 +80,21 @@ func TestDepartureInterval(t *testing.T) {
 		t.Error("runway occupancy: heavies longer, take-offs shorter than landings")
 	}
 }
+
+// TestWakeCautionDue: only behind a heavier category (#1307).
+func TestWakeCautionDue(t *testing.T) {
+	for _, c := range []struct {
+		leader, follower WakeCategory
+		want             bool
+	}{
+		{WakeMedium, WakeLight, true}, {WakeHeavy, WakeLight, true}, {WakeSuper, WakeHeavy, true}, {WakeHeavy, WakeMedium, true},
+		{WakeLight, WakeLight, false}, {WakeMedium, WakeMedium, false}, {WakeLight, WakeMedium, false}, {WakeMedium, WakeHeavy, false},
+	} {
+		if got := WakeCautionDue(c.leader, c.follower); got != c.want {
+			t.Errorf("%s then %s: %v", c.leader, c.follower, got)
+		}
+	}
+	if got := WakeCaution("OKABC", "the Airbus A320").Text; got != "OKABC, caution wake turbulence, the Airbus A320" {
+		t.Error(got)
+	}
+}

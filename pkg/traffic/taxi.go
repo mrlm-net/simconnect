@@ -78,6 +78,9 @@ type TaxiRequest struct {
 	// Entry is the runway entry taxiway assigned by ATC ("24 at B"); ""
 	// departs from the full length (airport.Graph.RouteToRunwayEntry).
 	Entry string
+	// ISADeviationC is the temperature above ISA at the airport (from the
+	// weather; 0 unknown): a warm day needs more runway (RequiredTakeoffRun).
+	ISADeviationC float64
 
 	// Injected departure (TaxiWithInjector): HoldForClearances stops at
 	// every gate until its clearance — ClearPushback, ClearToTaxi,
@@ -845,9 +848,19 @@ func meters(origin, q airport.LatLon) (x, z float64) {
 	return x, z
 }
 
+// takeoffRun is the runway the aircraft needs to take off
+// (RequiredTakeoffRun) at the airport's elevation and req's temperature.
+func (req TaxiRequest) takeoffRun() float64 {
+	p := req.Takeoff
+	if p == (TakeoffProfile{}) {
+		p = DefaultTakeoffProfile()
+	}
+	return RequiredTakeoffRun(p, TakeoffConditions{ElevationFt: convert.MetersToFeet(req.Graph.Layout.Altitude), ISADeviationC: req.ISADeviationC})
+}
+
 // entryLongEnough refuses an intersection departure (TaxiRequest.Entry)
 // whose runway ahead is shorter than the aircraft needs: RequiredTakeoffRun
-// for its take-off profile at the airport's elevation.
+// at the airport's elevation and temperature.
 func entryLongEnough(req TaxiRequest, route *airport.Route) error {
 	if req.Entry == "" || len(route.Nodes) == 0 {
 		return nil
@@ -861,11 +874,7 @@ func entryLongEnough(req TaxiRequest, route *airport.Route) error {
 		if !e.HeldAt(last) && e.Node != last {
 			continue
 		}
-		p := req.Takeoff
-		if p == (TakeoffProfile{}) {
-			p = DefaultTakeoffProfile()
-		}
-		need := RequiredTakeoffRun(p, TakeoffConditions{ElevationFt: convert.MetersToFeet(req.Graph.Layout.Altitude)})
+		need := req.takeoffRun()
 		if e.Remaining < need {
 			return fmt.Errorf("%w: runway %s at %s leaves %.0f m, the aircraft needs %.0f m", ErrEntryTooShort, req.Runway, req.Entry, e.Remaining, need)
 		}

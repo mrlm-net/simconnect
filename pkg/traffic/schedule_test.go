@@ -74,7 +74,7 @@ func TestScheduleFlightsFit(t *testing.T) {
 		case f.Destination:
 			arrs++
 		}
-		lim := cfg.Types[f.Type]
+		lim := cfg.limits(f.Type)
 		dist := calc.HaversineNM(o.Position.Lat, o.Position.Lon, d.Position.Lat, d.Position.Lon)
 		if dist < lim.MinNM || dist > lim.MaxNM {
 			t.Errorf("%s %s %s→%s: %.0f NM outside %v", f.Callsign, f.Type, f.Origin, f.Destination, dist, lim)

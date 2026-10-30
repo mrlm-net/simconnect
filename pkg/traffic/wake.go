@@ -42,6 +42,20 @@ func (w *WakeCategory) UnmarshalText(b []byte) error {
 	return nil
 }
 
+// WakeCautionDue: a flight behind leader needs a caution of possible wake
+// turbulence (#1307): leader is of a heavier category. The controller gives it
+// where no wake separation is applied, to VFR arrivals landing behind a
+// preceding SUPER, HEAVY or MEDIUM aircraft; the pilot stays responsible for
+// the spacing and asks for more if needed (Fiji CAA AIC 11/22, 3.1, 3.1.2).
+func WakeCautionDue(leader, follower WakeCategory) bool {
+	return wakeRank(leader) > wakeRank(follower)
+}
+
+// wakeRank orders the ICAO categories, light first.
+func wakeRank(w WakeCategory) int {
+	return strings.IndexByte("LMHJ", byte(w))
+}
+
 // RecatCategory is the RECAT-EU wake category, A (super heavy) to F
 // (light).
 type RecatCategory byte
@@ -97,7 +111,7 @@ var wakeTypes = map[string]Wake{
 	"AT45": {WakeMedium, RecatE}, "AT46": {WakeMedium, RecatE}, "AT72": {WakeMedium, RecatE}, "AT75": {WakeMedium, RecatE}, "AT76": {WakeMedium, RecatE},
 	"DH8A": {WakeMedium, RecatE}, "DH8C": {WakeMedium, RecatE}, "DH8D": {WakeMedium, RecatE}, "SF34": {WakeMedium, RecatE}, "SU95": {WakeMedium, RecatE},
 	"C208": {WakeLight, RecatF}, "C172": {WakeLight, RecatF}, "SR22": {WakeLight, RecatF}, "PC12": {WakeLight, RecatF}, "BE20": {WakeLight, RecatF},
-	"C25A": {WakeLight, RecatF}, "C25B": {WakeLight, RecatF}, "SF50": {WakeLight, RecatF}, "TBM9": {WakeLight, RecatF},
+	"C25A": {WakeLight, RecatF}, "C25B": {WakeLight, RecatF}, "LJ25": {WakeLight, RecatF}, "SF50": {WakeLight, RecatF}, "TBM9": {WakeLight, RecatF},
 	"C152": {WakeLight, RecatF}, "P28A": {WakeLight, RecatF}, "DA40": {WakeLight, RecatF},
 	// MTOW 7 t or less as well (live, OKFHP: a King Air 350 taken for a medium).
 	"B350": {WakeLight, RecatF}, "DA62": {WakeLight, RecatF}, "BE58": {WakeLight, RecatF}, "C510": {WakeLight, RecatF},

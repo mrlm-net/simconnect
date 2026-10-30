@@ -42,8 +42,12 @@ type FleetInjector interface {
 
 // FleetOptions tune a GhostFleet; zero values take the defaults.
 type FleetOptions struct {
-	IDBase uint32 // DefaultFleetBase
-	Budget int    // DefaultFleetBudget
+	// IDBase: DefaultFleetBase. The fleet's requests are IDBase+1 …
+	// IDBase+FleetIDs-1, cycled; IDBase itself is its removals'. Another
+	// fleet or client on the connection needs other IDs; the fleet answers
+	// (Handle) only objects from requests it made (#1285).
+	IDBase uint32
+	Budget int // DefaultFleetBudget
 	// Fallback is the model to create an aircraft as when its own title is
 	// refused ("" none: it is left out).
 	Fallback func(a *SceneAircraft) string
@@ -69,9 +73,13 @@ type GhostFleet struct {
 	player *Player
 	opt    FleetOptions
 
-	mu      sync.Mutex
-	live    map[string]*fleetGhost // by aircraft key
-	byReq   map[uint32]string
+	mu    sync.Mutex
+	live  map[string]*fleetGhost // by aircraft key
+	byReq map[uint32]string
+	// asked: requests made and not answered yet, due or not any more: an
+	// object assigned for one is the fleet's (taken over, or removed);
+	// any other is left alone (#1285).
+	asked   map[uint32]bool
 	nextReq uint32
 	placed  time.Time
 	stopped bool
@@ -85,7 +93,7 @@ func NewGhostFleet(client GhostClient, inj FleetInjector, scene *Scene, player *
 	if o.Budget <= 0 {
 		o.Budget = DefaultFleetBudget
 	}
-	return &GhostFleet{client: client, inj: inj, scene: scene, player: player, opt: o, live: map[string]*fleetGhost{}, byReq: map[uint32]string{}}
+	return &GhostFleet{client: client, inj: inj, scene: scene, player: player, opt: o, live: map[string]*fleetGhost{}, byReq: map[uint32]string{}, asked: map[uint32]bool{}}
 }
 
 // sceneTime is the scene's simulation time at now: the Player's track's
@@ -199,6 +207,7 @@ func (f *GhostFleet) dueLocked(now time.Time) []SceneSample {
 func (f *GhostFleet) reqLocked() uint32 {
 	r := f.opt.IDBase + 1 + f.nextReq%(FleetIDs-1)
 	f.nextReq++
+	f.asked[r] = true
 	return r
 }
 
@@ -231,12 +240,14 @@ func (f *GhostFleet) Handle(msg engine.Message) bool {
 		}
 		req, obj := uint32(m.DwRequestID), uint32(m.DwObjectID)
 		f.mu.Lock()
+		made := f.asked[req]
+		delete(f.asked, req)
 		key, ours := f.byReq[req]
 		g := f.live[key]
 		stopped := f.stopped
 		f.mu.Unlock()
-		if !ours && !(req > f.opt.IDBase && req <= f.opt.IDBase+FleetIDs) {
-			return false
+		if !made {
+			return false // not of a request of the fleet's: another's
 		}
 		if !ours || g == nil || stopped {
 			// Created after it stopped being due: gone again.
@@ -262,6 +273,32 @@ func (f *GhostFleet) Handle(msg engine.Message) bool {
 		f.Tick(now)
 	}
 	return false
+}
+
+// Owns reports whether objectID is an aircraft the fleet flies (#1285):
+// for a recorder to leave the replayed traffic out.
+func (f *GhostFleet) Owns(objectID uint32) bool {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	for _, g := range f.live {
+		if g.obj == objectID && objectID != 0 {
+			return true
+		}
+	}
+	return false
+}
+
+// Objects are the object IDs of the aircraft the fleet flies now.
+func (f *GhostFleet) Objects() []uint32 {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	var out []uint32
+	for _, g := range f.live {
+		if g.obj != 0 {
+			out = append(out, g.obj)
+		}
+	}
+	return out
 }
 
 // Stop removes every aircraft of the fleet.

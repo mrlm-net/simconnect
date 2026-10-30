@@ -69,12 +69,15 @@ func (q *sequences) approachActionAt(icao, callsign, action string, at *airport.
 type spacing struct {
 	delay    time.Duration
 	withinNM float64
+	// mark: what is said for it, as the conflict watch marks it (the
+	// safety net, #1096); nil as it is.
+	mark func(traffic.Transmission) traffic.Transmission
 }
 
 // approachSpace has callsign lose delay within withinNM, before it meets
-// the arrival ahead.
-func (q *sequences) approachSpace(icao, callsign string, delay time.Duration, withinNM float64) error {
-	return q.approachDo(icao, callsign, "slow", nil, 0, 0, spacing{delay, withinNM})
+// the arrival ahead, what it is told passed through mark (nil none).
+func (q *sequences) approachSpace(icao, callsign string, delay time.Duration, withinNM float64, mark func(traffic.Transmission) traffic.Transmission) error {
+	return q.approachDo(icao, callsign, "slow", nil, 0, 0, spacing{delay, withinNM, mark})
 }
 
 // approachDo is approachActionAt, a "slow" for spacing with sp.
@@ -223,6 +226,9 @@ func (q *sequences) approachDo(icao, callsign, action string, at *airport.LatLon
 			tx := traffic.Sequenced(callsign, n, 0, a)
 			if n > 0 && q.spacingTold(callsign) {
 				tx = traffic.SpacingTold(tx)
+			}
+			if sp.mark != nil {
+				tx = sp.mark(tx)
 			}
 			// In radio order: after its arrival clearance (live, TVS554 told to
 			// slow 21 s before it was cleared its STAR).

@@ -755,18 +755,26 @@ func (c *ArrivalController) TurningFinal() bool {
 	// from its base heading with no call, the clearance due only at the
 	// final's last two points).
 	at := c.finalTurn()
-	if k > at {
-		return true
-	}
 	// Turning in off a downwind (more than a right angle), the clearance
-	// and its heading come at the turn, not interceptLeadNM before it on
+	// and its heading come at the turn, not interceptOnBaseNM before it on
 	// the downwind (live, OKZSU cleared 31 s after "fly heading 060, for
 	// spacing").
-	w, lead := c.corners[at], interceptLeadNM
+	w, lead := c.corners[at], interceptOnBaseNM
 	if at > 0 && math.Abs(headingDiff(c.legBearing(at-1), c.legBearing(at))) > 90 {
 		lead = interceptAtTurnNM
 	}
-	return k == at && calc.HaversineNM(c.last.Position.Lat, c.last.Position.Lon, w.Latitude, w.Longitude) <= lead && c.headingFor(k)
+	near := calc.HaversineNM(c.last.Position.Lat, c.last.Position.Lon, w.Latitude, w.Longitude) <= lead
+	if k > at {
+		// A corner within 1.5 NM counts passed (cornerAhead): the turn is
+		// not yet the intercept's until within lead of it or turning there,
+		// the base flown straight to its end.
+		if k > at+1 || at == 0 || near {
+			return true
+		}
+		p := c.corners[at-1]
+		return c.turnedPast(p, w, c.corners[at+1])
+	}
+	return k == at && near && c.headingFor(k)
 }
 
 // interceptAtTurnNM: turning in off a downwind, the approach clearance
@@ -796,9 +804,14 @@ func (c *ArrivalController) headingFor(k int) bool {
 // bearing to it.
 const headingForDeg = 70.0
 
-// interceptLeadNM: on vectors, the approach clearance with the heading to
-// intercept comes this far before the turn onto the final course.
-const interceptLeadNM = 3.0
+// interceptOnBaseNM: on vectors, the approach clearance with the heading to
+// intercept comes this far before the turn onto the intercept, about the
+// anticipation of that turn: the base is flown straight to there. Said 3 NM
+// before (once interceptLeadNM), it came 15–30 s after "for base" and the
+// heading flown from there (InterceptOnHeading) cut the base short, onto
+// the final ahead of the traffic behind (the user, live LKPR: KAL606,
+// RYR1865, RYR1754).
+const interceptOnBaseNM = 1.0
 
 // finalTurn is the index of the corner where the straight legs along the
 // final course begin (within finalAlignedDeg of it). c.mu held, corners 3+.
@@ -939,7 +952,9 @@ func nextWaypoint(pos airport.LatLon, wps []types.SIMCONNECT_DATA_WAYPOINT) int 
 
 // DirectToJoin sends an arrival on its procedure straight to the join point
 // on the final, leaving out the rest of its STAR (a shortcut a controller
-// gives to fill a gap): its waypoints become the align and join points.
+// gives to fill a gap): its waypoints become the align and join points,
+// with a point halfway to the align point when that is 2×MinStretchLegNM
+// or more away, for a delay still to be absorbed.
 // It returns ErrNotOnProcedure on the final or off a procedure and
 // ErrHolding while holding (LeaveHold first).
 func (c *ArrivalController) DirectToJoin() error {
@@ -953,15 +968,35 @@ func (c *ArrivalController) DirectToJoin() error {
 	}
 	wps := c.proc.Waypoints
 	final := wps[len(wps)-2:]
-	if c.procWaypoint(wps) >= len(wps)-2 {
+	next := c.procWaypoint(wps)
+	if next >= len(wps)-2 {
 		return nil // already on its way to the final
 	}
-	if err := c.fleet.SetWaypoints(c.objectID, c.defBase+arrDefWaypoints, final); err != nil {
+	// A point halfway along the direct leg, at the level and speed it flew
+	// to: the way to the final stays a leg of its STAR, so a delay is still
+	// lost on it by speed or a dog-leg (AbsorbDelay), not on the final
+	// (offline LKPR: a B738 sent direct 20 NM behind a TBM9 joined ahead of
+	// it, 5 min early, with nothing left to absorb it on).
+	route := append([]types.SIMCONNECT_DATA_WAYPOINT(nil), final...)
+	var mid []types.SIMCONNECT_DATA_WAYPOINT
+	pos, align := c.last.Position, airport.LatLon{Lat: final[0].Latitude, Lon: final[0].Longitude}
+	if pos != (airport.LatLon{}) && calc.HaversineNM(pos.Lat, pos.Lon, align.Lat, align.Lon) >= 2*MinStretchLegNM {
+		to := wps[next]
+		p := airport.LatLon{Lat: (pos.Lat + align.Lat) / 2, Lon: (pos.Lon + align.Lon) / 2}
+		mid = []types.SIMCONNECT_DATA_WAYPOINT{procedureWaypoint(p, math.Max(to.Altitude, final[0].Altitude), to.KtsSpeed)}
+		route = append(mid, route...)
+	}
+	if err := c.fleet.SetWaypoints(c.objectID, c.defBase+arrDefWaypoints, route); err != nil {
 		return err
 	}
-	c.proc.Waypoints, c.procNext = append([]types.SIMCONNECT_DATA_WAYPOINT(nil), final...), 0
+	c.proc.Waypoints, c.procNext = route, 0
+	// Its downwind and dog-leg are gone with the STAR: a new one on the
+	// direct leg, not all left over as extended already.
+	c.tromboneNM, c.dogLeg = 0, nil
 	if n := len(c.corners); n >= 2 { // the corners too: the map draws them
-		c.corners, c.cornerNames, c.cornerNext = c.corners[n-2:], c.cornerNames[n-2:], 0
+		c.corners = append(append([]types.SIMCONNECT_DATA_WAYPOINT(nil), mid...), c.corners[n-2:]...)
+		c.cornerNames = append(make([]string, len(mid)), c.cornerNames[n-2:]...)
+		c.cornerNext = 0
 	}
 	c.note("direct to the join point", nil)
 	return nil

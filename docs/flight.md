@@ -154,7 +154,8 @@ scene.Stop().WriteFile(id + ".traffic.jsonl.gz")
 - **Spawning.** Each aircraft is created as a NonATC AI aircraft (its title, its callsign as the tail) when its time in the scene comes, taken over by the Injector and flown as its Track was (`Ghost`). If no object comes within 5 s (its title was refused), it is created once more as `FleetOptions.Fallback`'s model.
 - **Removal.** An aircraft is removed when its track ends, when it falls out of `Budget` (default 20, nearest the player first, or nearest `Centre`), or on `Stop`.
 - **Seek.** A seek is just another moment: the aircraft due then are created and the rest removed. An object that arrives after its aircraft stopped being due is removed at once.
-- **IDs.** Request IDs start at `FleetOptions.IDBase` (`DefaultFleetBase` 0x7E00, 256 of them).
+- **IDs.** Its requests are `IDBase+1` to `IDBase+FleetIDs-1` (`DefaultFleetBase` 0x7E00, `FleetIDs` 256, cycled); `IDBase` itself is its removals'. `Handle` takes only the objects of requests the fleet made, removing those no longer due; any other object is left alone, so two fleets on one connection do not remove each other's (#1285). Give a second fleet another `IDBase` all the same.
+- **Its aircraft.** `Owns(objectID)` and `Objects()` tell the objects it flies, for a recorder to leave the replayed traffic out.
 - **Running it.** Feed it every message (`Handle`); it brings the fleet to the present at most every frame. Call `Tick` after a seek for an immediate change.
 
 ```go

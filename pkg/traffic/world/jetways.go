@@ -550,6 +550,16 @@ func (cc *controlCenter) jetwayGates(icao string) []int {
 	return svc.Dockable(icao)
 }
 
+// jetwayStands are icao's stands with a jetway, from the simulator's
+// jetway list (the stand allocator's Bridged); none before it is read.
+func (cc *controlCenter) jetwayStands(icao string) []int {
+	svc := cc.jetwayBuilt()
+	if svc == nil {
+		return nil
+	}
+	return svc.Jetways(icao)
+}
+
 // jetwayParked reports that it stands still on its gate for a jetway: an
 // arrival parked, a departure waiting for its push.
 func (cc *controlCenter) jetwayParked(it *controlled) bool {
