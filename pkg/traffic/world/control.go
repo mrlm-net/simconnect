@@ -382,8 +382,13 @@ type ControlView struct {
 	// ClearedEarly are the clearances a player gave it ahead of its crew: not
 	// called for yet, or before its IFR clearance (#1308). They are taken, as
 	// a controller can expedite; a host decides what they mean.
-	ClearedEarly   []string `json:"clearedEarly,omitempty"`
-	HoldingShortOf string   `json:"holdingShortOf,omitempty"`
+	ClearedEarly []string `json:"clearedEarly,omitempty"`
+	// SayingUntil: what is booked on the radio to or from it has been said by
+	// then, on the World's clock (#1312). A clearance is taken at once and
+	// said when the frequency clears: until this time it is queued; absent or
+	// past, nothing is.
+	SayingUntil    *time.Time `json:"sayingUntil,omitempty"`
+	HoldingShortOf string     `json:"holdingShortOf,omitempty"`
 	// TaxiRemainingM: a departure's taxi still to go to its runway (m).
 	TaxiRemainingM float64        `json:"taxiRemainingM,omitempty"`
 	AtLimit        bool           `json:"atLimit"`
@@ -1653,6 +1658,7 @@ func (it *controlled) update(ev TaxiOrArrival) {
 			v.Error = e.Err.Error()
 		}
 		v.Request = it.called
+		v.SayingUntil = it.sayingUntil()
 		v.Actions = askedFor(departureActions(e.State, e.HoldingShortOf, it.dep), v.State, it.delivered, it.called)
 		if it.clearanceDue != nil {
 			v.Actions = append([]string{"clearance"}, v.Actions...)
@@ -1699,6 +1705,7 @@ func (it *controlled) update(ev TaxiOrArrival) {
 		if e.Err != nil {
 			v.Error = e.Err.Error()
 		}
+		v.SayingUntil = it.sayingUntil()
 		v.Actions = arrivalActions(e.State)
 		if it.arrivalDue != nil {
 			v.Actions = append([]string{"clearance"}, v.Actions...)
@@ -2677,6 +2684,11 @@ func registerControl(mux *http.ServeMux, st *state) {
 			it.mu.Unlock()
 			tlog.printf("%-6s %s: clearance %s ahead of its crew", it.Tail, it.Kind, clr)
 		}
+		defer func() {
+			it.mu.Lock()
+			it.view.SayingUntil = it.sayingUntil()
+			it.mu.Unlock()
+		}()
 		switch action {
 		case "remove":
 			tlog.printf("%-6s %s: removed", it.Tail, it.Kind)
@@ -4569,6 +4581,7 @@ func (it *controlled) say(t traffic.Transmission) {
 		it.lastATC, it.lastATCAt = t.Text, now
 		it.sayMu.Unlock()
 		if dup {
+			it.cc.log.printf("%-6s the same call again within %s, said once: %s", it.Tail, sayTwiceWithin, t.Text)
 			return
 		}
 	}
@@ -4603,6 +4616,16 @@ func (it *controlled) taxiInForce(action string, node airport.NodeID) bool {
 	said := it.taxiSaid
 	it.sayMu.Unlock()
 	return said != "" && it.phrase(action, node).Text == said
+}
+
+// sayingUntil is when what is booked on the radio for it has been said, nil
+// when nothing is (ControlView.SayingUntil).
+func (it *controlled) sayingUntil() *time.Time {
+	at := it.cc.radio.AircraftClearAt(it.ICAO, it.Tail)
+	if !at.After(it.cc.clock.Now()) {
+		return nil
+	}
+	return &at
 }
 
 // sayTwiceWithin: the same ATC call to one aircraft this soon again is a
