@@ -709,7 +709,17 @@ func SayAgain(pos Position, cs string) Transmission {
 // clearance by its decision point, or an approach not stable: "CSA1, going
 // around".
 func GoingAround(cs string) Transmission {
-	return pilotTx(PosTower, cs, IntentPilotGoAround, nil, cs+", going around")
+	return GoingAroundFor(cs, "")
+}
+
+// GoingAroundFor is GoingAround with why, if any: "CSA1, going around, no
+// landing clearance".
+func GoingAroundFor(cs, why string) Transmission {
+	text := cs + ", going around"
+	if why != "" {
+		text += ", " + why
+	}
+	return pilotTx(PosTower, cs, IntentPilotGoAround, nil, text)
 }
 
 // RejectingTakeoff is a crew rejecting its take-off on its own (#621):
