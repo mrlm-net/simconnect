@@ -12,6 +12,7 @@ import (
 	"slices"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	"github.com/mrlm-net/simconnect/pkg/airport"
@@ -32,10 +33,14 @@ type scheduler struct {
 	// watch's): predicted as it flies, not along its route.
 	engaged func(cs string, now time.Time) bool
 
-	st  *state
-	cc  *controlCenter
-	cfg traffic.ScheduleConfig
-	mgr *traffic.TrafficManager
+	st *state
+	cc *controlCenter
+	// base: the timetable's data; tuned: with the tuning (ScheduleTuning),
+	// timing the manager's before it.
+	base   traffic.ScheduleConfig
+	tuned  atomic.Pointer[tunedSchedule]
+	timing traffic.ManagerTiming
+	mgr    *traffic.TrafficManager
 
 	created time.Time // wall time, for weatherWait
 
@@ -96,9 +101,10 @@ type ScheduleTiming struct {
 }
 
 func newScheduler(st *state, cc *controlCenter) *scheduler {
-	s := &scheduler{st: st, cc: cc, created: traffic.Now(), cfg: traffic.DefaultScheduleConfig(), density: 1, seed: uint64(traffic.Now().Unix()), airlines: map[string]traffic.Airline{},
+	s := &scheduler{st: st, cc: cc, created: traffic.Now(), base: traffic.DefaultScheduleConfig(), density: 1, seed: uint64(traffic.Now().Unix()), airlines: map[string]traffic.Airline{},
 		enroute: map[string]*enrouteAC{}, pending: map[uint32]*enrouteAC{}}
-	for _, a := range s.cfg.Airlines {
+	s.tuned.Store(ScheduleTuning{}.tuned(s.base))
+	for _, a := range s.base.Airlines {
 		s.airlines[a.ICAO] = a
 	}
 	t := st.core.hooks.Schedule
@@ -108,12 +114,17 @@ func newScheduler(st *state, cc *controlCenter) *scheduler {
 		Picture: cc.world, Overflights: s.overflights, OverflightsReady: s.areaKnown, Conditions: s.conditions, RunwayQueue: cc.runwayQueue,
 		Night: s.night}) // other traffic respected by default
 	s.mgr.SetEnabled(false)
+	s.timing = s.mgr.Options().Timing()
+	s.applyTuning(st.tuning.get())
 	return s
 }
 
-// nightWave: an hour with at most this many movements against the peak
-// (ScheduleConfig.Waves) is night at an airport (by default 23–04 local).
-const nightWave = 0.1
+// config is the timetable's data with the tuning (#1303).
+func (s *scheduler) config() traffic.ScheduleConfig { return s.tuned.Load().cfg }
+
+// overnight: parked through the night, on a remote stand if the tuning
+// wants that (#1298).
+func (s *scheduler) overnight(through bool) bool { return through && s.tuned.Load().overnightRemote }
 
 // night is an airport's night (ManagerOptions.Night, #1294): ok when t
 // falls in it, on the timetable's clock (offset), with when its morning
@@ -127,17 +138,26 @@ func (s *scheduler) night(icao string, t time.Time) (time.Time, bool) {
 	off := s.offset
 	s.mu.Unlock()
 	p := airport.LatLon{Lat: l.Latitude, Lon: l.Longitude}
-	quiet := func(at time.Time) bool { return s.cfg.Waves[traffic.LocalHour(icao, p, at.Add(off))] <= nightWave }
+	tu := s.tuned.Load()
+	return nightAt(t, tu.nightWave, tu.cfg.Waves, func(at time.Time) int { return traffic.LocalHour(icao, p, at.Add(off)) })
+}
+
+// nightAt: ok when t falls in the night, an hour (hour, local) with waves at
+// or below threshold, with when the morning wave begins. Looked at by the
+// quarter hour: not every airport's hours begin on the UTC hour (+05:30).
+// A night all day has no morning.
+func nightAt(t time.Time, threshold float64, waves [24]float64, hour func(time.Time) int) (time.Time, bool) {
+	quiet := func(at time.Time) bool { return waves[hour(at)] <= threshold }
 	if !quiet(t) {
 		return time.Time{}, false
 	}
-	for h, i := t.Truncate(time.Hour), 0; i < 24; i++ {
-		h = h.Add(time.Hour)
+	for h, i := t.Truncate(15*time.Minute), 0; i < 24*4; i++ {
+		h = h.Add(15 * time.Minute)
 		if !quiet(h) {
 			return h, true
 		}
 	}
-	return time.Time{}, false // night all day: no morning
+	return time.Time{}, false
 }
 
 // conditions are the weather on final of an airport's arrival runway: the
@@ -198,7 +218,7 @@ func (s *scheduler) source(from, to time.Time, focus []string) []traffic.Flight 
 			opts.Used[cs] = true
 		}
 		s.mu.Unlock()
-		ifr := traffic.Schedule(s.cfg, opts, from.Add(off), to.Add(off))
+		ifr := traffic.Schedule(s.config(), opts, from.Add(off), to.Add(off))
 		s.mu.Lock()
 		if s.usedCS == nil {
 			s.usedCS = map[string]time.Time{}
@@ -209,7 +229,7 @@ func (s *scheduler) source(from, to time.Time, focus []string) []traffic.Flight 
 		s.mu.Unlock()
 		// Business jets and turboprops at the large airports, IFR between
 		// airports (#619).
-		ifr = append(ifr, traffic.BusinessFlights(s.cfg, traffic.BusinessOptions{Focus: focus, Layouts: opts.Layouts, Density: density,
+		ifr = append(ifr, traffic.BusinessFlights(s.config(), traffic.BusinessOptions{Focus: focus, Layouts: opts.Layouts, Density: density,
 			Seed: opts.Seed ^ 0xb1}, from.Add(off), to.Add(off))...)
 		for i := range ifr {
 			ifr[i].STD, ifr[i].STA = ifr[i].STD.Add(-off), ifr[i].STA.Add(-off)
@@ -337,7 +357,7 @@ func (s *scheduler) overflights(from, to time.Time) []traffic.Flight {
 	if perHour <= 0 {
 		perHour = defaultOverflightsPerHour
 	}
-	return traffic.Overflights(s.cfg, traffic.OverflightOptions{Centre: c, RadiusNM: overflightRadiusNM, PerHour: perHour, Density: density,
+	return traffic.Overflights(s.config(), traffic.OverflightOptions{Centre: c, RadiusNM: overflightRadiusNM, PerHour: perHour, Density: density,
 		Seed: seed ^ uint64(from.Unix()/3600) ^ 0x0f, Exclude: focus}, from, to)
 }
 
@@ -409,7 +429,7 @@ func (s *scheduler) spawnWith(f traffic.ManagedFlight, pre *planned, model strin
 		req.parked = f.Observed != nil && !f.Observed.Seeded && f.STD.Sub(s.cc.clock.Now()) > s.mgr.Options().DepartureLead
 		if f.NightStop {
 			// On its stand through the night: it calls when the others do (#1294).
-			req.parked, req.callAt, req.overnight = true, f.STD.Add(-s.mgr.Options().DepartureLead), true
+			req.parked, req.callAt, req.overnight = true, f.STD.Add(-s.mgr.Options().DepartureLead), s.overnight(true)
 		}
 	} else if f.TurnTo != "" {
 		// Its stand away from neighbours due off when its turnaround is.
@@ -417,7 +437,7 @@ func (s *scheduler) spawnWith(f traffic.ManagedFlight, pre *planned, model strin
 			if d.Callsign == f.TurnTo && d.Departure() {
 				req.offBlock = d.STD
 				// Turning around overnight (#1294): longer than any day's turn.
-				req.overnight = d.STD.Sub(f.STA) > s.mgr.Options().MaxTurn
+				req.overnight = s.overnight(d.STD.Sub(f.STA) > s.mgr.Options().MaxTurn)
 			}
 		}
 	}
@@ -459,7 +479,7 @@ func (s *scheduler) spawnWith(f traffic.ManagedFlight, pre *planned, model strin
 	assigned := false
 	if f.Departure() && req.Stand < 0 {
 		m, _, _ := strings.Cut(req.Model, liverySep)
-		sr := traffic.StandRequirements{Owner: f.Callsign, Airline: airlineOf(f.Callsign), HalfSpan: traffic.ProfileFor(m).Motion.SpanMeters / 2, OffBlock: f.STD, NoJetway: traffic.NoJetway(m), Overnight: f.NightStop, Bridged: cc.jetwayStands(g.Layout.ICAO), Prefer: cc.jetwayGates(g.Layout.ICAO), Other: f.Destination}
+		sr := traffic.StandRequirements{Owner: f.Callsign, Airline: airlineOf(f.Callsign), HalfSpan: traffic.ProfileFor(m).Motion.SpanMeters / 2, OffBlock: f.STD, NoJetway: traffic.NoJetway(m), Overnight: s.overnight(f.NightStop), Bridged: cc.jetwayStands(g.Layout.ICAO), Prefer: cc.jetwayGates(g.Layout.ICAO), Other: f.Destination}
 		// A real aircraft on the stand where it is seen (#841).
 		s, err := -1, traffic.ErrNoStand
 		if o := f.Observed; o != nil && o.OnGround {

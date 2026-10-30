@@ -7,6 +7,16 @@ This project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 ---
 
+## [0.143.0] - 2026-10-30
+
+### Added
+
+- Settings for the scheduled traffic's timing (#1303). `World.SetScheduleTuning` and `GET`/`POST /api/schedule/tuning` change the wave hours, the night threshold, the morning wave, the night-stop limit, the turnaround window, the planning horizon, the leads and late limits, overnight remote stands, self-announce and the cargo share. They are saved in `DataDir/schedule-tuning.json`, which wins per value over the defaults, and bad values are refused with every problem named. `traffic.ManagerTiming`, `ManagerOptions.Timing`, `TrafficManager.SetTiming`.
+
+### Fixed
+
+- At an airport whose hours do not begin on the UTC hour (+05:30), the morning wave was taken to begin 30 minutes late. The night is now looked at by the quarter hour. Tests now cover its edges, the clocks going back and other time zones.
+
 ## [0.142.0] - 2026-10-30
 
 ### Added

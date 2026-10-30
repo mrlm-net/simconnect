@@ -132,7 +132,7 @@ func (s *scheduler) spawnCorridor(kind traffic.CorridorKind, c CorridorSettings,
 		typ string
 	}
 	var picks []pick
-	for _, a := range s.cfg.Airlines {
+	for _, a := range s.config().Airlines {
 		for t := range a.Fleet {
 			if p := nav.PerformanceFor(t); p.CruiseTASKts >= 400 && float64(p.MaxFL)*100 >= c.LevelFt+2000 {
 				picks = append(picks, pick{a, t})

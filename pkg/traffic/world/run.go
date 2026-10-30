@@ -274,6 +274,7 @@ type state struct {
 	modelRules  *modelRuleStore
 	providers   *providerStore
 	standRules  *standRuleStore
+	tuning      *tuningStore // the traffic's timing, local (schedule_tuning.go, #1303)
 	doorOffsets *doorOffsetStore // jetway door offsets, local (jetways.go)
 }
 
@@ -521,8 +522,8 @@ func (st *state) startWorld(cc *controlCenter) (stopWorld func()) {
 			cc.log.printf("%-6s arrival: direct to the final failed: %v", tail, err)
 		}
 	}
-	cc.saidCallsign = sched.cfg.SaidCallsign // telephony as the schedule has it (#462)
-	cc.namedAirport = sched.cfg.AirportName
+	cc.saidCallsign = sched.base.SaidCallsign // telephony as the schedule has it (#462)
+	cc.namedAirport = sched.base.AirportName
 	cc.atisLetter = st.atisLetter
 	stop := make(chan struct{}) // this connection only
 	go func() {
@@ -1208,6 +1209,7 @@ func (w *World) Register(mux *http.ServeMux) {
 	registerDeicing(mux, st)
 	registerWorld(mux, st)
 	registerSchedule(mux, st)
+	registerScheduleTuning(mux, st)
 	registerReal(mux, st)
 	registerTCAS(mux, st)
 	registerSequence(mux, st)
