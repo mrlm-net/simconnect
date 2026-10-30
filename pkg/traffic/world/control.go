@@ -4069,6 +4069,10 @@ func (it *controlled) handoff(ev TaxiOrArrival) {
 	switch {
 	case ev.dep != nil:
 		own := ev.dep.HoldingShortOf != "" && strings.Contains(ev.dep.HoldingShortOf, it.view.Runway)
+		// VFR leaving a field without a tower: no one to check in with (#1314).
+		if _, nobody := it.cc.uncontrolled(it.ICAO); nobody && it.view.Rules == "VFR" && ev.dep.State == traffic.TaxiComplete {
+			return
+		}
 		pos = traffic.DeparturePosition(ev.dep.State, own)
 		if pos == traffic.PosDelivery && it.delivered {
 			pos = traffic.PosGround // VFR: no clearance, ground from the start (#568)

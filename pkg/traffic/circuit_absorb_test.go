@@ -1,10 +1,13 @@
 package traffic
 
 import (
+	"errors"
+	"math"
 	"testing"
 	"time"
 
 	"github.com/mrlm-net/simconnect/pkg/airport"
+	"github.com/mrlm-net/simconnect/pkg/calc"
 )
 
 // TestCircuitExtendDownwind: a VFR arrival in the LKPR 24 circuit asked to
@@ -263,11 +266,102 @@ func TestCircuitOnBase(t *testing.T) {
 		if err != nil || a.ExtraNM <= 0 {
 			t.Fatalf("%s: extending: %+v %v", side, a, err)
 		}
-		if at(base.Position, onBase) {
-			t.Errorf("%s: extended, turning short of the moved turn is no base", side)
-		}
 		if out := offsetHeading(base.Position, c.heading+180, a.ExtraNM*1852/2); !at(out, onBase) {
 			t.Errorf("%s: extended by %.1f NM, round the moved turn", side, a.ExtraNM)
 		}
+	}
+}
+
+// TestCircuitOnBaseTurnedInEarly: told to turn in short of its extended
+// downwind's corner it is on its base all the same; outside the downwind's
+// line, joining, it is not (#1314).
+func TestCircuitOnBaseTurnedInEarly(t *testing.T) {
+	g := lkprGraph(t)
+	p := ProfileFor("C172")
+	c, err := NewCircuit(g.Layout, "24", CircuitConfig{Side: CircuitLeft}, p)
+	if err != nil {
+		t.Fatal(err)
+	}
+	entry, _ := c.JoinDownwind()
+	base, _ := c.Point(LegBase)
+	ec := &eventClient{}
+	ctl := NewArrivalController(NewFleet(ec), ArrivalWithInjector(NewInjector(ec)))
+	st, _ := g.Layout.ParkingIndex("C22")
+	if err := ctl.Start(ArrivalRequest{Graph: g, Runway: "24", Parking: st, Model: "Asobo PassiveAircraft C172", Tail: "OKBAS",
+		InjectApproach: true, Circuit: &c}); err != nil {
+		t.Fatal(err)
+	}
+	go func() {
+		for range ctl.Events() {
+		}
+	}()
+	ctl.Handle(assignedMsg(DefaultArrivalRequestBase, 78))
+	ctl.Handle(arrivalPositionMsg(DefaultArrivalRequestBase+arrReqMonitor, 78, entry.Position, entry.AltFt, 0, CircuitKts(p), false))
+	at := func(pos airport.LatLon, hdg float64) bool {
+		ctl.mu.Lock()
+		ctl.last.Position, ctl.last.Heading = pos, hdg
+		ctl.tromboneNM = 6
+		ctl.mu.Unlock()
+		return ctl.OnBase()
+	}
+	onBase := c.heading + 90
+	shift := func(bearing, m float64) airport.LatLon {
+		lat, lon := calc.DisplaceByHeading(base.Position.Lat, base.Position.Lon, bearing, m)
+		return airport.LatLon{Lat: lat, Lon: lon}
+	}
+	if !at(shift(c.heading+180, 3000), onBase) {
+		t.Error("turned in 3 km further out, short of the 6 NM corner: not on its base")
+	}
+	if at(shift(onBase+180, 2000), onBase) {
+		t.Error("outside the downwind's line, joining: on its base")
+	}
+}
+
+// TestCircuitNoExtendInTheTurn: its turn in started, the downwind is not
+// extended; well before it, it is (#1314).
+func TestCircuitNoExtendInTheTurn(t *testing.T) {
+	g := lkprGraph(t)
+	p := ProfileFor("C172")
+	c, err := NewCircuit(g.Layout, "24", CircuitConfig{}, p)
+	if err != nil {
+		t.Fatal(err)
+	}
+	ec := &eventClient{}
+	ctl := NewArrivalController(NewFleet(ec), ArrivalWithInjector(NewInjector(ec)))
+	st, _ := g.Layout.ParkingIndex("C22")
+	if err := ctl.Start(ArrivalRequest{Graph: g, Runway: "24", Parking: st, Model: "Asobo PassiveAircraft C172", Tail: "OKABC",
+		InjectApproach: true, Circuit: &c}); err != nil {
+		t.Fatal(err)
+	}
+	go func() {
+		for range ctl.Events() {
+		}
+	}()
+	ctl.Handle(assignedMsg(DefaultArrivalRequestBase, 78))
+	entry, _ := c.JoinDownwind()
+	ctl.Handle(arrivalPositionMsg(DefaultArrivalRequestBase+arrReqMonitor, 78, entry.Position, entry.AltFt, 0, CircuitKts(p), false))
+	if _, err := ctl.AbsorbDelay(time.Minute); err != nil {
+		t.Fatal(err)
+	}
+	// At the first point of its rounded turn in.
+	ctl.mu.Lock()
+	wps := ctl.proc.Waypoints
+	away := c.heading + 180
+	at := -1
+	for i := 0; i+1 < len(wps); i++ {
+		leg := calc.BearingDegrees(wps[i].Latitude, wps[i].Longitude, wps[i+1].Latitude, wps[i+1].Longitude)
+		if math.Abs(headingDiff(leg, away)) < 5 {
+			at = i + 1 // the end of the downwind's last straight
+		}
+	}
+	if at < 0 {
+		ctl.mu.Unlock()
+		t.Fatal("no turn in the route")
+	}
+	ctl.last.Position, ctl.last.Heading = airport.LatLon{Lat: wps[at].Latitude, Lon: wps[at].Longitude}, away
+	ctl.procNext = at
+	ctl.mu.Unlock()
+	if a, err := ctl.AbsorbDelay(time.Minute); !errors.Is(err, ErrNotOnProcedure) {
+		t.Errorf("in its turn in: extended: %+v, %v", a, err)
 	}
 }
