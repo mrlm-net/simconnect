@@ -124,7 +124,9 @@ func TestPositions(t *testing.T) {
 		want    Position
 	}{
 		{ArrivalSpawning, false, PosApproach}, {ArrivalApproaching, false, PosApproach}, {ArrivalApproaching, true, PosTower},
-		{ArrivalRollout, false, PosTower}, {ArrivalVacating, false, PosTower}, {ArrivalAwaitingTaxi, false, PosGround},
+		{ArrivalRollout, false, PosTower},
+		// Off the runway is ground's, without waiting for it to stop.
+		{ArrivalVacating, false, PosGround}, {ArrivalAwaitingTaxi, false, PosGround},
 		{ArrivalHoldingShort, false, PosGround}, {ArrivalParked, false, PosGround},
 	} {
 		if got := ArrivalPosition(c.s, c.onFinal); got != c.want {

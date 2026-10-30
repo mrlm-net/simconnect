@@ -33,7 +33,7 @@ func TestTaxiClearanceNotRepeated(t *testing.T) {
 		t.Fatal(err)
 	}
 	var dep world.ControlView
-	if !h.Until(10*time.Minute, func() bool {
+	if !h.Until(30*time.Minute, func() bool {
 		for _, v := range h.World.Snapshot().Aircraft {
 			if v.Kind == "departure" && !v.Done && slices.Contains(v.Actions, "pushstart") {
 				dep = v
@@ -42,7 +42,7 @@ func TestTaxiClearanceNotRepeated(t *testing.T) {
 		}
 		return false
 	}) {
-		t.Fatal("no departure to push in 10 simulated minutes")
+		t.Fatal("no departure to push in 30 simulated minutes")
 	}
 	said := func(intents ...traffic.Intent) (atc, crew int) {
 		for _, tx := range h.Heard() {

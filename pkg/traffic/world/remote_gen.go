@@ -259,6 +259,11 @@ func (r *remoteArr) ClearUpTo(node airport.NodeID) error {
 	return err
 }
 
+func (r *remoteArr) VacateAt(x airport.RunwayExit) error {
+	err := r.c.call(r.t, "VacateAt", []any{x})
+	return err
+}
+
 func (r *remoteArr) TaxiInForce(node airport.NodeID) bool {
 	var o0 bool
 	r.c.dropped(r.c.call(r.t, "TaxiInForce", []any{node}, &o0))

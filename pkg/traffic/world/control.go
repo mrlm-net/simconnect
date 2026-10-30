@@ -1867,7 +1867,7 @@ func actionParams(actions []string) map[string]string {
 	for _, a := range actions {
 		p := ""
 		switch a {
-		case "upto":
+		case "upto", "vacate":
 			p = "node"
 		case "climb":
 			p = "level"
@@ -1882,11 +1882,86 @@ func actionParams(actions []string) map[string]string {
 	return out
 }
 
+// vacateAt sends the arrival off the runway by the exit the player picked,
+// named by any node on it (#1308 follow-up: "vacate where").
+//
+// A NODE, NOT AN EXIT, IS WHAT A HOST CAN SEND. The exits are the engine's own
+// geometry — a runway node, a path off it, a side and a taxiway name — and a
+// map click is a point. So the pick is matched against the exits of the runway
+// it is landing on, by any node on the exit's path: a player clicking the
+// turn-off, the taxiway behind it or the runway centreline where it begins all
+// mean the same exit.
+//
+// Refused rather than approximated when the click matches no exit. "The nearest
+// exit to wherever you clicked" is how an aeroplane ends up taking a turn-off
+// it cannot make at its speed, and bestExit already weighs that properly.
+func (it *controlled) vacateAt(node airport.NodeID) error {
+	if it.arr == nil {
+		return errors.New("not an arrival")
+	}
+	x, err := it.exitAt(node)
+	if err != nil {
+		return err
+	}
+	if err := it.arr.VacateAt(x); err != nil {
+		return err
+	}
+	it.mu.Lock()
+	it.view.Instruction = "vacate " + strings.TrimSpace(x.Side.String()+" "+x.Taxiway)
+	it.mu.Unlock()
+	it.cc.changed("control")
+	return nil
+}
+
+// exitAt is the exit off the arrival's runway that node is on.
+func (it *controlled) exitAt(node airport.NodeID) (airport.RunwayExit, error) {
+	p := it.arr.Plan()
+	if p == nil || it.graph == nil {
+		return airport.RunwayExit{}, errors.New("vacate: this arrival has no runway plan yet")
+	}
+	exits, err := it.graph.RunwayExits(p.End.Name)
+	if err != nil {
+		return airport.RunwayExit{}, err
+	}
+	x, ok := exitAtNode(exits, node)
+	if !ok {
+		return airport.RunwayExit{}, fmt.Errorf("vacate: no exit off runway %s there", p.End.Name)
+	}
+	return x, nil
+}
+
+// exitAtNode is the exit node belongs to: the runway node it leaves by, the
+// first taxiway node off the surface, or anything on the path between them.
+//
+// ALL THREE, because all three are the same turn-off to the person clicking.
+// Matching only the taxiway node would refuse a click on the runway end of the
+// very exit being named, which is where the turn-off is drawn on a chart.
+func exitAtNode(exits []airport.RunwayExit, node airport.NodeID) (airport.RunwayExit, bool) {
+	for _, x := range exits {
+		if x.RunwayNode == node || x.Node == node || slices.Contains(x.Path, node) {
+			return x, true
+		}
+	}
+	return airport.RunwayExit{}, false
+}
+
+// arrivalActions is what a controller may say to an arrival in state s.
+//
+// THE OFFER FOLLOWS THE PHASE, as it now does for a departure (#1308). This
+// answered "land, go around, taxi, up to" to an aeroplane ON FINAL: a taxi
+// clearance to something a thousand feet in the air, which the engine would
+// take and which teaches an order of the job that does not exist. The ground
+// clearances begin where ground begins — off the runway (ArrivalPosition) —
+// and the roll itself is the crew's, not the controller's: the aeroplane is
+// stopping, and the next word on the frequency is its call to ground.
 func arrivalActions(s traffic.ArrivalState) []string {
 	switch s {
 	case traffic.ArrivalApproaching, traffic.ArrivalLanding:
-		return []string{"land", "goaround", "taxi", "upto"}
-	case traffic.ArrivalRollout, traffic.ArrivalVacating, traffic.ArrivalAwaitingTaxi:
+		// `vacate` names the exit it leaves the runway by, and is the tower's
+		// to give before the wheels are down: after that the rollout is a
+		// braking profile already being flown to the old one (VacateAt).
+		return []string{"land", "goaround", "vacate"}
+	case traffic.ArrivalVacating, traffic.ArrivalAwaitingTaxi:
 		return []string{"taxi", "upto"}
 	case traffic.ArrivalTaxiing:
 		return []string{"hold", "taxi", "upto"}
@@ -2001,6 +2076,8 @@ func (it *controlled) act(action string, node airport.NodeID) error {
 		if it.cc.rejoin != nil {
 			it.cc.rejoin(it.ICAO, it.Tail)
 		}
+	case it.arr != nil && action == "vacate":
+		return it.vacateAt(node)
 	case it.arr != nil && action == "taxi":
 		it.arr.ClearToTaxi()
 	case it.arr != nil && action == "upto":
@@ -2636,8 +2713,9 @@ func registerControl(mux *http.ServeMux, st *state) {
 		}
 		// No limit given is not a limit behind it (#1308): "not ahead on the
 		// taxi route" sent a host looking at the route.
-		if a := r.PathValue("action"); a == "upto" && r.URL.Query().Get("node") == "" {
-			http.Error(w, "upto: ?node= the clearance limit is required", http.StatusBadRequest)
+		if a := r.PathValue("action"); (a == "upto" || a == "vacate") && r.URL.Query().Get("node") == "" {
+			what := map[string]string{"upto": "the clearance limit", "vacate": "the exit"}[a]
+			http.Error(w, a+": ?node= "+what+" is required", http.StatusBadRequest)
 			return
 		}
 		if a := r.PathValue("action"); a != "remove" && a != "locate" {
@@ -4023,6 +4101,13 @@ func (it *controlled) phraseView(v ControlView, r *airport.Route, action string,
 			return traffic.ClearedTaxiToRunway(call, rwy, entry, spoken(n))
 		}
 		return traffic.ClearedTaxiToStand(call, v.Stand, spoken(n))
+	case "vacate":
+		if it.arr != nil {
+			if x, err := it.exitAt(node); err == nil {
+				return traffic.VacateAtExit(call, traffic.PosTower, x.Side.String(), x.Taxiway)
+			}
+		}
+		return traffic.Transmission{} // no exit named: not the catch-all's "CSA1, vacate"
 	case "upto":
 		if r != nil {
 			if i := slices.Index(r.Nodes, node); i > 0 {

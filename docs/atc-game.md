@@ -36,9 +36,14 @@ A `StaffedStation` is a whole position (`Position`: "delivery", "ground", "tower
 
 `ControlView.Actions` follows the crew: on the stand, nothing until it has its IFR clearance and has called, then what it called for. `ControlView.Request` says what it called for. A clearance ahead of the crew is still taken, as a controller can expedite; `ControlView.ClearedEarly` lists those, so a host can warn or score them. An aircraft cleared early gets no "contact ground" after its late IFR clearance (#1308).
 
-`ControlView.ActionParams` names the offered actions that need a query parameter: `upto` needs `node`, `climb` needs `level`. `upto` without `node` answers 400 (#1308).
+`ControlView.ActionParams` names the offered actions that need a query parameter: `upto` and `vacate` need `node`, `climb` needs `level`. `upto` or `vacate` without `node` answers 400 (#1308).
 
 A clearance is taken at once and said when the frequency clears. Until then `ControlView.SayingUntil` holds when what is booked for that aircraft has been said, so a host can show it as queued; `GET /api/radio` lists a queued transmission with its `at` in the future (#1312).
+
+An arrival's `Actions` follow its phase the same way: `land` and `goaround` while it is in the air, `vacate` with them until the wheels are down, nothing on the landing roll — the aeroplane is stopping and the next word is its own — and the ground clearances from the moment it is off the runway. It becomes ground's at `ArrivalVacating`, not at the full stop, so a staffed tower hands it on as it leaves the runway rather than after it has parked on a taxiway waiting.
+
+`vacate` names the exit, as `taxi` and `upto` name a point: `POST /api/control/{id}/vacate?node=N`, where N is any node on the exit — the turn-off, the taxiway behind it, or the runway centreline where it begins. It is the tower's word before the landing; after touchdown it is refused, because the rollout's braking is already planned to the exit it was given. An exit it cannot slow down for is refused too (`ErrExitTooClose`).
+
 
 The player gives clearances through the same calls as any host: `World.Clear(id, action)` (`POST /api/control/{id}/{action}`), `World.Approach(icao, callsign, action)` for the arrivals' sequence, `World.ApproachDescend(icao, callsign, ft)` for a lower level on the STAR (said against the transition altitude, never a climb), and `World.Phrase(id, action)` for what a clearance would say. Each is said on the radio with its readback, as the automatic controllers' are.
 
