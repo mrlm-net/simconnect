@@ -32,6 +32,7 @@ const (
 	gameSeparation      = 50 // wingtip clearance lost on the ground (safe zones overlap)
 	gameIncursion       = 100
 	gameSpacing         = 25          // closer than the sequence's spacing on final (#396)
+	gameNoLanding       = 50          // a crew going around for want of a landing clearance
 	gameFinalNM         = 10.0        // … within this of the threshold
 	gameConflictRepeat  = time.Minute // the same conflict counts again after this
 	gameSafeMarginM     = 3.0
@@ -207,6 +208,20 @@ func (cc *controlCenter) gameTick(now time.Time) {
 		}
 	}
 	g.finalSpacing(cc, icao, items, now)
+}
+
+// scoreNoLandingClearance costs a go-around for a landing clearance not
+// given: the controller's error, not the crew's.
+func (cc *controlCenter) scoreNoLandingClearance(icao, tail string) {
+	g := cc.game
+	if g == nil {
+		return
+	}
+	g.mu.Lock()
+	defer g.mu.Unlock()
+	if g.On && g.ICAO == icao {
+		g.event(-gameNoLanding, "%s went around: no landing clearance", tail)
+	}
 }
 
 // finalSpacing costs each of our arrivals within gameFinalNM of the

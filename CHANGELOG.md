@@ -7,6 +7,13 @@ This project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 ---
 
+## [0.152.2] - 2026-10-30
+
+### Fixed
+
+- An arrival on a staffed tower or on held gates landed without a landing clearance: the crew's decision at 0.6 NM skipped every aircraft that was the player's. It now goes around and says why ("going around, no landing clearance", `traffic.GoingAroundFor`), and in the ATC game it costs 50 points (#1334).
+- A landing clearance given by the player stayed good for the approach after a go-around (#1334).
+
 ## [0.152.1] - 2026-10-30
 
 ### Fixed

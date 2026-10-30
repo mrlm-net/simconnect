@@ -28,7 +28,9 @@ const (
 // crewDecides lets the crews of icao's arrivals in list decide.
 func (t *towers) crewDecides(icao string, list []traffic.RunwayUser, ours map[string]*controlled) {
 	for _, u := range list {
-		if !u.Arrival || u.Other || u.Phase != traffic.RunwayFinal || !u.Established || u.DistanceNM > crewDecisionNM {
+		// Other too: it marks ours on gates, a staffed station's among them
+		// (the simulator's are not in ours).
+		if !u.Arrival || u.Phase != traffic.RunwayFinal || !u.Established || u.DistanceNM > crewDecisionNM {
 			continue
 		}
 		it := ours[u.Callsign]
@@ -67,7 +69,10 @@ func (t *towers) crewDecides(icao string, list []traffic.RunwayUser, ours map[st
 		t.given[cs+" goaround"] = true
 		t.mu.Unlock()
 		t.cc.log.printf("%-6s crew: going around — %s", cs, why)
-		it.say(traffic.GoingAround(cs))
+		it.say(traffic.GoingAroundFor(cs, why))
+		if !cleared {
+			t.cc.scoreNoLandingClearance(icao, cs)
+		}
 		go func() {
 			if err := t.cc.do(func() error { return it.act("goaround", 0) }); err != nil {
 				t.cc.log.printf("%-6s crew go-around: %v", cs, err)

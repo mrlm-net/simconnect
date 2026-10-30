@@ -2075,6 +2075,9 @@ func (it *controlled) act(action string, node airport.NodeID) error {
 		if err := it.arr.GoAround(); err != nil {
 			return err
 		}
+		it.mu.Lock()
+		it.landCleared = false // the next approach is cleared again
+		it.mu.Unlock()
 		if it.cc.rejoin != nil {
 			it.cc.rejoin(it.ICAO, it.Tail)
 		}
