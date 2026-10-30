@@ -5,6 +5,7 @@ import (
 	"math"
 	"math/rand/v2"
 	"strconv"
+	"slices"
 	"strings"
 	"sync"
 	"time"
@@ -1743,8 +1744,18 @@ func (r *Radio) ClearAt(airport, freq string) time.Time {
 	return r.busy[airport+" "+freq]
 }
 
+// AircraftClearAt is when all that is booked for callsign at airport has been
+// said, whichever the frequency; in the past, or zero, when nothing is.
+func (r *Radio) AircraftClearAt(airport, callsign string) time.Time {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	return r.busy["aircraft "+airport+" "+callsign]
+}
+
 // Recent is up to n of the latest transmissions at airport ("" all),
-// oldest first.
+// oldest first by the time they go out: one queued on a busy frequency comes
+// after those said meanwhile on a clear one, and At past now is still to come
+// (#1312).
 func (r *Radio) Recent(airport string, n int) []Transmission {
 	r.mu.Lock()
 	defer r.mu.Unlock()
@@ -1757,6 +1768,7 @@ func (r *Radio) Recent(airport string, n int) []Transmission {
 	for i, j := 0, len(out)-1; i < j; i, j = i+1, j-1 {
 		out[i], out[j] = out[j], out[i]
 	}
+	slices.SortStableFunc(out, func(a, b Transmission) int { return a.At.Compare(b.At) })
 	return out
 }
 

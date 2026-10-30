@@ -509,3 +509,31 @@ func TestExpectDelay(t *testing.T) {
 		t.Errorf("no minutes: said %q", tx.Text)
 	}
 }
+
+// TestRecentInOrderOfSaying: one queued on a busy frequency comes after one said
+// meanwhile on a clear frequency, and the aircraft's clear time shows it (#1312).
+func TestRecentInOrderOfSaying(t *testing.T) {
+	at := time.Date(2026, 10, 30, 10, 0, 0, 0, time.UTC)
+	r := NewRadio(RadioOptions{Now: func() time.Time { return at }})
+	on := func(cs, freq string) Transmission {
+		tx := ClearedStartUp(cs)
+		tx.Frequency = freq
+		return r.Transmit("LKPR", tx)
+	}
+	on("AAA1", "121.9")
+	queued := on("BBB2", "121.9")
+	on("CCC3", "118.1")
+	if !queued.At.After(at) {
+		t.Fatalf("second on a busy frequency said at %v", queued.At)
+	}
+	var said []string
+	for _, tx := range r.Recent("LKPR", 0) {
+		said = append(said, tx.Callsign)
+	}
+	if got := strings.Join(said, " "); got != "AAA1 CCC3 BBB2" {
+		t.Errorf("recent: %s", got)
+	}
+	if got := r.AircraftClearAt("LKPR", "BBB2"); !got.After(queued.At) {
+		t.Errorf("BBB2 clear at %v, said at %v", got, queued.At)
+	}
+}
