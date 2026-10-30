@@ -109,6 +109,7 @@ func (it *controlled) onRequest(req string) {
 			return
 		}
 	}
+	it.called = req
 	switch req {
 	case "pushback":
 		// The first call to ground: mostly pushback and start-up in one;
@@ -330,7 +331,14 @@ func (it *controlled) clearance(clr traffic.Transmission) {
 		p.later(it.clearAt(traffic.PosDelivery).Add(atcAnswerDelay+p.jitter(atcAnswerJitter)), func() {
 			it.say(traffic.ReadbackCorrect(traffic.PosDelivery, it.Tail))
 			station, freq := it.station(traffic.PosGround)
-			it.say(traffic.Handoff(it.Tail, traffic.PosDelivery, traffic.PosGround, station, freq))
+			it.mu.Lock()
+			worked := len(it.view.ClearedEarly) > 0
+			it.mu.Unlock()
+			// Already worked by a player's ground ahead of the clearance
+			// (#1308): no transfer to the position it is with.
+			if !worked {
+				it.say(traffic.Handoff(it.Tail, traffic.PosDelivery, traffic.PosGround, station, freq))
+			}
 			p.later(it.clearAt(traffic.PosDelivery).Add(crewActDelay+p.jitter(crewActJitter)), func() {
 				it.mu.Lock()
 				it.delivered, it.atc = true, traffic.PosGround

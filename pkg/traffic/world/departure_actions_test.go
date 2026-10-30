@@ -211,3 +211,31 @@ func TestActTaxiInForceNotRefused(t *testing.T) {
 }
 
 func (f *standDep) ClearToTaxi() {}
+
+// On the stand the offer follows the crew, not the taxi state (#1308).
+func TestAskedFor(t *testing.T) {
+	await, pushing, ready := traffic.TaxiAwaitingPushback.String(), traffic.TaxiPushback.String(), traffic.TaxiAwaitingTaxi.String()
+	for _, tc := range []struct {
+		name      string
+		state     string
+		delivered bool
+		called    string
+		want      []string
+	}{
+		{"with delivery", await, false, "", nil},
+		{"with delivery, its call waiting", await, false, "pushback", nil},
+		{"delivered, not called", await, true, "", nil},
+		{"asks to push", await, true, "pushback", []string{"pushback", "pushstart"}},
+		{"faces out, asks to start", await, true, "start_up", []string{"startup", "taxi", "upto"}},
+		{"being pushed", pushing, true, "", nil},
+		{"pushed, tug still there", ready, true, "", nil},
+		{"pushed, asks to start", ready, true, "start_up", []string{"startup"}},
+		{"pushed, asks to taxi", ready, true, "taxi", []string{"taxi", "upto"}},
+		{"taxiing, not delivered", traffic.TaxiTaxiing.String(), false, "", []string{"pushback", "pushstart", "startup", "taxi", "upto"}},
+	} {
+		all := []string{"pushback", "pushstart", "startup", "taxi", "upto"}
+		if got := askedFor(all, tc.state, tc.delivered, tc.called); !slices.Equal(got, tc.want) && (len(got) > 0 || len(tc.want) > 0) {
+			t.Errorf("%s: %v, want %v", tc.name, got, tc.want)
+		}
+	}
+}

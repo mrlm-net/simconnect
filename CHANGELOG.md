@@ -7,6 +7,21 @@ This project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 ---
 
+## [0.147.0] - 2026-10-30
+
+### Added
+
+- `ControlView.ClearedEarly` lists the clearances a player gave ahead of the crew: not called for yet, or before its IFR clearance. They are still taken, as a controller can expedite; a host decides whether to warn or score them (#1308).
+
+### Changed
+
+- A departure's `Actions` on its stand follow the crew's calls instead of the taxi state: nothing until it has its IFR clearance and has called, then what it called for. "awaiting pushback" holds from the spawn, so `pushback` was on offer through delivery (#1308). A client that waits on `Actions` to give a clearance now waits for the crew's call.
+- `ControlView.Request` is what the crew has called for, not what it will call for: empty while the call waits for delivery or boarding (#1308).
+
+### Fixed
+
+- After a late IFR clearance, an aircraft a player already cleared ahead of it is no longer told to contact ground (#1308).
+
 ## [0.146.0] - 2026-10-30
 
 ### Fixed
