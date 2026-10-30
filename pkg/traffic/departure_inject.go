@@ -1778,6 +1778,7 @@ const rollOnMeters = 40.0
 func (c *TaxiController) startTakeoff() {
 	pose := c.mover.Pose()
 	c.takeoff = NewTakeoffMover(pose.Position, c.end.Heading, pose.GroundSpeedKts, c.takeoffProfile())
+	c.takeoff.FromHeading(pose.Heading)
 	c.mover = nil
 	c.lastStep = c.now()
 	c.seq.begin(c.lastStep)

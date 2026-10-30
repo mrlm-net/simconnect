@@ -113,7 +113,10 @@ type TakeoffMover struct {
 	p       TakeoffProfile
 	start   airport.LatLon
 	heading float64
-	x, v    float64 // m, m/s
+	// offDeg: how far the aircraft faces off heading at the start, taken out
+	// over the first takeoffAlignMeters (FromHeading).
+	offDeg float64
+	x, v   float64 // m, m/s
 	h, vs   float64 // ft, fpm
 	pitch   float64
 	// shown, shownRate: the pitch as drawn, following pitch smoothly
@@ -219,10 +222,30 @@ func NewTakeoffMover(start airport.LatLon, heading, speedKts float64, p TakeoffP
 	return &TakeoffMover{p: p, start: start, heading: heading, v: speedKts * ktsToMS}
 }
 
+// takeoffAlignMeters: an aircraft starting its roll a little off the runway
+// heading has straightened out by here.
+const takeoffAlignMeters = 40.0
+
+// FromHeading has the aircraft start facing h, not the runway heading, and
+// straighten out as it rolls: a line-up can end a few degrees off (live at
+// LOWI: 5° at 1 kt), and setting the heading would snap it in one frame.
+func (m *TakeoffMover) FromHeading(h float64) {
+	m.offDeg = headingDiff(m.heading, h)
+}
+
+// facing is the heading drawn at m.x.
+func (m *TakeoffMover) facing() float64 {
+	if m.offDeg == 0 || m.x >= takeoffAlignMeters {
+		return m.heading
+	}
+	f := m.x / takeoffAlignMeters
+	return math.Mod(m.heading+m.offDeg*(1-f*f*f*(f*(f*6-15)+10))+360, 360)
+}
+
 // Pose returns the current pose.
 func (m *TakeoffMover) Pose() TakeoffPose {
 	return TakeoffPose{
-		Position: offsetHeading(m.start, m.heading, m.x), Heading: m.heading,
+		Position: offsetHeading(m.start, m.heading, m.x), Heading: m.facing(),
 		HeightFt: m.h, PitchDeg: m.shown, GroundSpeedKts: m.v / ktsToMS, VerticalFpm: m.vs,
 		Distance: m.x, Phase: m.phase, LiftoffDistance: m.liftoffX, AirborneSeconds: m.airborneFor,
 	}
