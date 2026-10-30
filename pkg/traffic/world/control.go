@@ -383,6 +383,10 @@ type ControlView struct {
 	// called for yet, or before its IFR clearance (#1308). They are taken, as
 	// a controller can expedite; a host decides what they mean.
 	ClearedEarly []string `json:"clearedEarly,omitempty"`
+	// ActionParams names, of Actions, those that cannot be given on their own
+	// and the query parameter they need: "upto" → "node", "climb" → "level"
+	// (#1308).
+	ActionParams map[string]string `json:"actionParams,omitempty"`
 	// SayingUntil: what is booked on the radio to or from it has been said by
 	// then, on the World's clock (#1312). A clearance is taken at once and
 	// said when the frequency clears: until this time it is queued; absent or
@@ -1856,6 +1860,28 @@ func (it *controlled) clearedEarly(action string) bool {
 	return false
 }
 
+// actionParams are the query parameters of the offered actions that need one
+// (ControlView.ActionParams).
+func actionParams(actions []string) map[string]string {
+	var out map[string]string
+	for _, a := range actions {
+		p := ""
+		switch a {
+		case "upto":
+			p = "node"
+		case "climb":
+			p = "level"
+		}
+		if p != "" {
+			if out == nil {
+				out = map[string]string{}
+			}
+			out[a] = p
+		}
+	}
+	return out
+}
+
 func arrivalActions(s traffic.ArrivalState) []string {
 	switch s {
 	case traffic.ArrivalApproaching, traffic.ArrivalLanding:
@@ -2008,6 +2034,7 @@ func (cc *controlCenter) views() []ControlView {
 		it.mu.Lock()
 		v, id, fixes := it.view, it.objectID, it.fixes
 		it.mu.Unlock()
+		v.ActionParams = actionParams(v.Actions)
 		if cc.tcasView != nil && id != 0 {
 			v.TCAS = cc.tcasView(id)
 		}
@@ -2605,6 +2632,12 @@ func registerControl(mux *http.ServeMux, st *state) {
 		// Network play (#511): only the position working it clears it.
 		if as := positionOf(r); !mayClear(as, it) {
 			http.Error(w, it.Tail+" is not on your frequency ("+as+")", http.StatusForbidden)
+			return
+		}
+		// No limit given is not a limit behind it (#1308): "not ahead on the
+		// taxi route" sent a host looking at the route.
+		if a := r.PathValue("action"); a == "upto" && r.URL.Query().Get("node") == "" {
+			http.Error(w, "upto: ?node= the clearance limit is required", http.StatusBadRequest)
 			return
 		}
 		if a := r.PathValue("action"); a != "remove" && a != "locate" {

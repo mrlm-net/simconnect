@@ -3,6 +3,7 @@ package worldtest
 import (
 	"fmt"
 	"net/http"
+	"strings"
 	"testing"
 	"time"
 
@@ -34,6 +35,10 @@ func TestSayingUntil(t *testing.T) {
 		return false
 	}) {
 		t.Fatal("no departure asking to push in 10 simulated minutes")
+	}
+	// `upto` needs its limit, and the offer and the refusal say so (#1308).
+	if _, err := h.World.Do(http.MethodPost, fmt.Sprintf("/api/control/%d/upto", dep.ID), nil); err == nil || !strings.Contains(err.Error(), "400") || !strings.Contains(err.Error(), "node") {
+		t.Errorf("upto with no limit: %v", err)
 	}
 	if _, err := h.World.Do(http.MethodPost, fmt.Sprintf("/api/control/%d/pushback", dep.ID), nil); err != nil {
 		t.Fatal(err)

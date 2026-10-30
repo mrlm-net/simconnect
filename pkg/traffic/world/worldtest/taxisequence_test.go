@@ -111,6 +111,9 @@ func TestNoTaxiClearanceOnTheStand(t *testing.T) {
 	if after.State == "awaiting pushback" {
 		t.Errorf("%s: taxi offered while still on the stand (%s)", dep.Tail, after.State)
 	}
+	if after.ActionParams["upto"] != "node" {
+		t.Errorf("%s: upto offered without saying it needs a node: %v", dep.Tail, after.ActionParams)
+	}
 	if !slices.Contains(after.Actions, "upto") {
 		t.Errorf("%s ready to taxi: want upto offered beside taxi, got %v", dep.Tail, after.Actions)
 	}
