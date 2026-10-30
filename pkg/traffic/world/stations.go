@@ -88,7 +88,7 @@ func (cc *controlCenter) stations(icao string) []traffic.Station {
 // its crews announce themselves, unless a player works tower, ground or
 // delivery there.
 func (cc *controlCenter) uncontrolled(icao string) (traffic.UncontrolledField, bool) {
-	if cc.graph == nil {
+	if cc.graph == nil || cc.selfAnnounceOff.Load() {
 		return traffic.UncontrolledField{}, false
 	}
 	g, err := cc.graph(icao)

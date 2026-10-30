@@ -267,6 +267,22 @@ func (o *ManagerOptions) defaults() {
 	}
 }
 
+// ManagerTiming are the ManagerOptions' times that can change while it
+// runs (SetTiming, #1303), defaults filled in by Timing.
+type ManagerTiming struct {
+	Horizon, DepartureLead, ArrivalLead, VFRLead time.Duration
+	DepartureLate, ArrivalLate                   time.Duration
+	MinTurn, MaxTurn, MorningWave                time.Duration
+	NightStops                                   int
+}
+
+// Timing is o's timing, with the defaults for what it leaves out.
+func (o ManagerOptions) Timing() ManagerTiming {
+	o.defaults()
+	return ManagerTiming{Horizon: o.Horizon, DepartureLead: o.DepartureLead, ArrivalLead: o.ArrivalLead, VFRLead: o.VFRLead,
+		DepartureLate: o.DepartureLate, ArrivalLate: o.ArrivalLate, MinTurn: o.MinTurn, MaxTurn: o.MaxTurn, MorningWave: o.MorningWave, NightStops: o.NightStops}
+}
+
 // OtherTrafficMode is how a manager treats the traffic that is not ours.
 type OtherTrafficMode uint8
 
@@ -404,6 +420,17 @@ func (m *TrafficManager) SetEnabled(on bool) {
 	}
 	m.enabled = on
 	m.unlock()
+}
+
+// SetTiming changes the timing from now on; flights already paired or
+// parked stay as they are.
+func (m *TrafficManager) SetTiming(t ManagerTiming) {
+	m.mu.Lock()
+	defer m.unlock()
+	o := &m.opts
+	o.Horizon, o.DepartureLead, o.ArrivalLead, o.VFRLead = t.Horizon, t.DepartureLead, t.ArrivalLead, t.VFRLead
+	o.DepartureLate, o.ArrivalLate = t.DepartureLate, t.ArrivalLate
+	o.MinTurn, o.MaxTurn, o.MorningWave, o.NightStops = t.MinTurn, t.MaxTurn, t.MorningWave, t.NightStops
 }
 
 // Enabled reports whether the manager spawns.

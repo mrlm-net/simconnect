@@ -168,6 +168,7 @@ func New(o Options) *World {
 	st.modelRules = loadModelRules(filepath.Join(o.DataDir, "model-rules.json"))
 	st.providers = loadProviders(filepath.Join(o.DataDir, "model-providers.json"), o.ModelProviders)
 	st.standRules = loadStandRules(filepath.Join(o.DataDir, "stand-rules.json"))
+	st.tuning = loadTuning(filepath.Join(o.DataDir, "schedule-tuning.json"), baseTiming(o.Schedule))
 	st.doorOffsets = loadDoorOffsets(filepath.Join(o.DataDir, "jetway-door-offsets.json"))
 	gateLessons.load(filepath.Join(o.DataDir, "jetway-gates.json"))
 	st.reviewDir = filepath.Join(o.DataDir, "review")

@@ -557,6 +557,8 @@ type controlCenter struct {
 	// airports the simulator knows (a retract plan's destination).
 	jw          jetwayState
 	airportRefs func() map[string]traffic.AirportRef
+	// selfAnnounceOff: tuned off (ScheduleTuning.SelfAnnounce, #1303).
+	selfAnnounceOff atomic.Bool
 }
 
 func newControlCenter(client engine.Client, k *core) *controlCenter {
