@@ -965,8 +965,7 @@ func TestArrivalVacateAt(t *testing.T) {
 	var other airport.RunwayExit
 	for _, x := range exits {
 		if x.Node != was.Node {
-			other = x
-			break
+			other = x // the last: one nearer may be too close to make
 		}
 	}
 	if other.Node == 0 && other.RunwayNode == 0 {
@@ -996,6 +995,16 @@ func TestArrivalVacateAt(t *testing.T) {
 	}
 	if ctl.exitAlong != ctl.track.cum[len(p.Exit.Path)-1] {
 		t.Error("the exit distance was not re-measured on the new route")
+	}
+
+	// Too close to slow down for: refused, the plan left as it is.
+	short := exits[0]
+	short.Along = 100
+	if err := ctl.VacateAt(short); !errors.Is(err, ErrExitTooClose) {
+		t.Errorf("an exit 100 m in: %v, want ErrExitTooClose", err)
+	}
+	if ctl.Plan().Exit.Node != other.Node {
+		t.Errorf("exit %v after a refusal, want %v", ctl.Plan().Exit.Node, other.Node)
 	}
 
 	// Down and rolling: the exit is fixed, because the deceleration to it is

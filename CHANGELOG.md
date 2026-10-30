@@ -15,6 +15,7 @@ This project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 - The `vacate` action on an arrival, with the exit named by any node on it (`?node=N`), so a map click on the turn-off, the taxiway behind it or the runway centreline where it begins all mean the same exit. A click matching no exit is refused rather than snapped to the nearest: `bestExit` already weighs what an aircraft can make at its speed, and "the nearest exit to wherever you clicked" undoes that.
 - `vacate` is in `ControlView.ActionParams` as needing `node`, beside `upto` (#1308): a host is told it takes a point rather than discovering it from a refusal.
 - `VacateAtExit` says it: "CSA123, vacate left via L" (Doc 4444 12.3.4.20), the side alone when the turn-off has no name.
+- `traffic.ErrExitTooClose`: `VacateAt` refuses an exit the aircraft cannot slow down for, as `bestExit` passes it; the last exit is always there to take.
 
 ### Changed
 
@@ -52,7 +53,6 @@ This project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 - A circuit's downwind is no longer extended once the aircraft has started its turn in. It turned back and came onto the final the long way round, with no base at all (#1314).
 - The conflict log no longer reports lost separation between VFR traffic not separated where it is, unless they nearly meet (within 1 NM and 500 ft) (#1314).
 - A VFR departure leaving a field without a tower no longer calls "Departure" and gets "identified" (#1314).
-
 
 ## [0.147.0] - 2026-10-30
 

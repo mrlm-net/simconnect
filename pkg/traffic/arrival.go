@@ -1138,6 +1138,10 @@ func (c *ArrivalController) ChangeStand(parking int) error {
 // already being flown to it.
 var ErrExitFixed = errors.New("traffic: the arrival is on the runway; its exit is fixed")
 
+// ErrExitTooClose is returned by VacateAt for an exit the aircraft cannot
+// slow down for after its touchdown; bestExit passes such an exit too.
+var ErrExitTooClose = errors.New("traffic: the arrival cannot make that exit")
+
 // VacateAt sends the arrival off the runway at x — the controller naming the
 // exit instead of taking the one the engine chose for the rollout ("vacate
 // left at A4"; Doc 4444 12.3.4.20).
@@ -1163,6 +1167,14 @@ func (c *ArrivalController) VacateAt(x airport.RunwayExit) error {
 	}
 	g := c.req.Graph
 	req := c.req
+	reach := exitReach{approachProfileOf(req).TouchdownKts, req.Rollout.BrakeDecel}
+	exits, err := g.RunwayExits(c.plan.End.Name)
+	if err != nil {
+		return err
+	}
+	if x.Along < reach.rollout(ExitSpeed(x)) && len(exits) > 0 && x.Node != exits[len(exits)-1].Node {
+		return fmt.Errorf("%w: %s", ErrExitTooClose, x.Taxiway)
+	}
 	plan, err := PlanArrival(g, req.Runway, req.Parking, ArrivalOptions{
 		SpawnNm: c.plan.SpawnNm, Exit: &x, Route: req.Options, GroundAGL: req.GroundAGL, NoseOffset: req.NoseOffset, StandSide: req.StandSide,
 		TouchdownKts: approachProfileOf(req).TouchdownKts, BrakeDecel: req.Rollout.BrakeDecel,

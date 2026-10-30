@@ -1899,30 +1899,35 @@ func (it *controlled) vacateAt(node airport.NodeID) error {
 	if it.arr == nil {
 		return errors.New("not an arrival")
 	}
-	if node < 0 {
-		return errors.New("vacate: name the exit — click it on the map")
-	}
-	p := it.arr.Plan()
-	if p == nil || it.graph == nil {
-		return errors.New("vacate: this arrival has no runway plan yet")
-	}
-	exits, err := it.graph.RunwayExits(p.End.Name)
+	x, err := it.exitAt(node)
 	if err != nil {
 		return err
 	}
-	x, ok := exitAtNode(exits, node)
-	if ok {
-		if err := it.arr.VacateAt(x); err != nil {
-			return err
-		}
-		it.mu.Lock()
-		it.view.Instruction = "vacate " + strings.TrimSpace(x.Side.String()+" "+x.Taxiway)
-		it.mu.Unlock()
-		it.say(traffic.VacateAtExit(it.Tail, traffic.PosTower, x.Side.String(), x.Taxiway))
-		it.cc.changed("control")
-		return nil
+	if err := it.arr.VacateAt(x); err != nil {
+		return err
 	}
-	return fmt.Errorf("vacate: no exit off runway %s there", p.End.Name)
+	it.mu.Lock()
+	it.view.Instruction = "vacate " + strings.TrimSpace(x.Side.String()+" "+x.Taxiway)
+	it.mu.Unlock()
+	it.cc.changed("control")
+	return nil
+}
+
+// exitAt is the exit off the arrival's runway that node is on.
+func (it *controlled) exitAt(node airport.NodeID) (airport.RunwayExit, error) {
+	p := it.arr.Plan()
+	if p == nil || it.graph == nil {
+		return airport.RunwayExit{}, errors.New("vacate: this arrival has no runway plan yet")
+	}
+	exits, err := it.graph.RunwayExits(p.End.Name)
+	if err != nil {
+		return airport.RunwayExit{}, err
+	}
+	x, ok := exitAtNode(exits, node)
+	if !ok {
+		return airport.RunwayExit{}, fmt.Errorf("vacate: no exit off runway %s there", p.End.Name)
+	}
+	return x, nil
 }
 
 // exitAtNode is the exit node belongs to: the runway node it leaves by, the
@@ -2708,8 +2713,9 @@ func registerControl(mux *http.ServeMux, st *state) {
 		}
 		// No limit given is not a limit behind it (#1308): "not ahead on the
 		// taxi route" sent a host looking at the route.
-		if a := r.PathValue("action"); a == "upto" && r.URL.Query().Get("node") == "" {
-			http.Error(w, "upto: ?node= the clearance limit is required", http.StatusBadRequest)
+		if a := r.PathValue("action"); (a == "upto" || a == "vacate") && r.URL.Query().Get("node") == "" {
+			what := map[string]string{"upto": "the clearance limit", "vacate": "the exit"}[a]
+			http.Error(w, a+": ?node= "+what+" is required", http.StatusBadRequest)
 			return
 		}
 		if a := r.PathValue("action"); a != "remove" && a != "locate" {
@@ -4095,6 +4101,13 @@ func (it *controlled) phraseView(v ControlView, r *airport.Route, action string,
 			return traffic.ClearedTaxiToRunway(call, rwy, entry, spoken(n))
 		}
 		return traffic.ClearedTaxiToStand(call, v.Stand, spoken(n))
+	case "vacate":
+		if it.arr != nil {
+			if x, err := it.exitAt(node); err == nil {
+				return traffic.VacateAtExit(call, traffic.PosTower, x.Side.String(), x.Taxiway)
+			}
+		}
+		return traffic.Transmission{} // no exit named: not the catch-all's "CSA1, vacate"
 	case "upto":
 		if r != nil {
 			if i := slices.Index(r.Nodes, node); i > 0 {
