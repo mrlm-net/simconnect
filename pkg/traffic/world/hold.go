@@ -96,10 +96,13 @@ func (s *scheduler) enable(on bool) {
 // hold is World.Hold on the scheduler. Held again, whatever came in
 // meanwhile is removed too (#1283).
 func (s *scheduler) hold(on bool) HoldResult {
+	// Asked before the World's lock: the manager's tick takes that lock
+	// under its own (Conditions), so the other way round both wait (#1318).
+	running := s.mgr.Enabled()
 	s.st.mu.Lock()
 	was := s.st.held
 	if on && !was {
-		s.st.heldEnabled = s.mgr.Enabled()
+		s.st.heldEnabled = running
 	}
 	s.st.held = on
 	enabled := s.st.heldEnabled

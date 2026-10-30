@@ -374,11 +374,23 @@ func (s *scheduler) Spawn(f traffic.ManagedFlight) {
 		case "observed":
 			spawn = func() error { return s.spawnObserved(f) } // a real aircraft in the air (#841)
 		}
-		if err := spawn(); err != nil {
-			s.cc.log.printf("%-6s schedule: %s %s → %s (attempt %d) failed: %v", f.Callsign, f.Kind, f.Origin, f.Destination, f.Attempts, err)
-			s.mgr.Failed(f.Callsign, err, s.cc.clock.Now())
-		}
+		s.runSpawn(f, spawn)
 	}()
+}
+
+// runSpawn runs a flight's spawn. A spawn takes a while, so a hold can
+// come while it is under way, and its pass over the flights and aircraft
+// finds nothing of it yet: what comes up then goes again (#1318).
+func (s *scheduler) runSpawn(f traffic.ManagedFlight, spawn func() error) {
+	if err := spawn(); err != nil {
+		s.cc.log.printf("%-6s schedule: %s %s → %s (attempt %d) failed: %v", f.Callsign, f.Kind, f.Origin, f.Destination, f.Attempts, err)
+		s.mgr.Failed(f.Callsign, err, s.cc.clock.Now())
+		return
+	}
+	if s.isHeld() {
+		s.mgr.Remove(f.Callsign, s.cc.clock.Now())
+		s.Remove(f) // the hold may have made its flight done already
+	}
 }
 
 // spawnWith spawns f on its stand or at its STAR entry; pre is the

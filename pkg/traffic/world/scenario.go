@@ -736,6 +736,11 @@ func (w *World) act(icao string, a ScenarioAction, cast map[string]string) (bool
 		if err != nil {
 			return err
 		}
+		// A step asks for a state: already cleared, by the automatic ground
+		// or the player, it has what it asked for (#1321).
+		if it.dep != nil && it.dep.Cleared(action) {
+			return nil
+		}
 		it.mu.Lock()
 		id := it.view.ID
 		it.mu.Unlock()

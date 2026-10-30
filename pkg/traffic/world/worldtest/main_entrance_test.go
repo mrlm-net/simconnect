@@ -60,7 +60,8 @@ func TestMainEntranceFirst(t *testing.T) {
 		t.Fatalf("not both cleared to taxi in 30 minutes: %v", taxi)
 	}
 	for _, cs := range pair {
-		if !strings.HasSuffix(taxi[cs], ", A") && !strings.HasSuffix(taxi[cs], " via A") {
+		route, _, _ := strings.Cut(taxi[cs], ", follow ") // said with the route when one is ahead
+		if !strings.HasSuffix(route, ", A") && !strings.HasSuffix(route, " via A") {
 			t.Errorf("%s: %q, want runway 24 at A", cs, taxi[cs])
 		}
 	}
