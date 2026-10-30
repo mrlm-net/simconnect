@@ -1517,6 +1517,10 @@ type RadioOptions struct {
 	// Variety varies what crews and controllers say and when (#721); nil:
 	// off. Radio.SetVariety changes it.
 	Variety *Variety
+	// Uncontrolled gives the field when airport has no tower working it
+	// (#1296): what is said there is SelfAnnounceFor's, on its common
+	// frequency. Nil: every airport has one.
+	Uncontrolled func(airport string) (UncontrolledField, bool)
 }
 
 // Radio carries the transmissions of our controllers (and, with #417,
@@ -1596,6 +1600,21 @@ func (r *Radio) transmit(airport string, t Transmission, readBack bool) Transmis
 	}
 	if t.Airport == "" {
 		t.Airport = airport
+	}
+	if r.opts.Uncontrolled != nil {
+		if f, ok := r.opts.Uncontrolled(t.Airport); ok {
+			if localPosition(t.Position) || t.Intent == IntentContact {
+				at, where := t.At, t.Airport
+				said, ok := SelfAnnounceFor(f.Name, t)
+				if !ok {
+					return Transmission{}
+				}
+				t, t.At, t.Airport = said, at, where
+				if t.Position == PosTraffic {
+					t.Frequency = f.Freq
+				}
+			}
+		}
 	}
 	t = r.word(t)
 	if t.Frequency == "" && r.opts.FrequencyOf != nil {

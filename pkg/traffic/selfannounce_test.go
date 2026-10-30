@@ -1,6 +1,11 @@
 package traffic
 
-import "testing"
+import (
+	"strings"
+	"testing"
+
+	"github.com/mrlm-net/simconnect/pkg/airport"
+)
 
 // TestSelfAnnounce: the calls to a field's traffic, said to "<Field>
 // Traffic" and closed with the field's name, nobody answering; the IFR
@@ -28,5 +33,73 @@ func TestSelfAnnounce(t *testing.T) {
 	tx := SelfTaxiing("Henderson", "OKABC", "24")
 	if tx.Position != PosTraffic || !tx.Pilot || tx.Intent != IntentSelfAnnounce || tx.Params[ParamSelf] != "taxiing" || tx.Params[ParamRunway] != "24" {
 		t.Errorf("%+v", tx)
+	}
+}
+
+// TestRadioUncontrolled: at a field without a tower the radio says the
+// crews' own announcements for the clearances our controllers still decide,
+// on the common frequency, nobody answering; the other calls of tower and
+// ground are not said; approach stays as it is (#1296).
+func TestRadioUncontrolled(t *testing.T) {
+	var heard []Transmission
+	r := NewRadio(RadioOptions{ReadBack: true, OnTransmission: func(tx Transmission) { heard = append(heard, tx) },
+		Uncontrolled: func(a string) (UncontrolledField, bool) {
+			return UncontrolledField{Name: "Henderson", Freq: "118.10"}, a == "AGGH"
+		}})
+	taxi := Transmission{Position: PosGround, Callsign: "OKABC", Intent: IntentTaxi, Params: map[string]string{ParamRunway: "24"}}
+	toStand := Transmission{Position: PosGround, Callsign: "OKABC", Intent: IntentTaxi, Params: map[string]string{ParamStand: "A1"}}
+	for _, c := range []struct {
+		tx   Transmission
+		want []string
+		freq string
+	}{
+		{taxi, []string{"Henderson Traffic, OKABC, taxiing to runway 24, Henderson"}, "118.10"},
+		{ClearedTakeoff("OKABC", "24", ""), []string{"Henderson Traffic, OKABC, departing runway 24, Henderson"}, "118.10"},
+		{ClearedToLand("OKABC", "24", ""), []string{"Henderson Traffic, OKABC, final runway 24, Henderson"}, "118.10"},
+		{Vacated("OKABC", "24"), []string{"Henderson Traffic, OKABC, clear of runway 24, Henderson"}, "118.10"},
+		{CheckIn(PosGround, "Ground", "OKABC", "runway 24 vacated at D", ""), []string{"Henderson Traffic, OKABC, clear of runway 24, Henderson"}, "118.10"},
+		{CheckIn(PosTower, "Tower", "OKABC", "final runway 24", ""), nil, ""},
+		{toStand, nil, ""},
+		{HoldPosition("OKABC"), nil, ""},
+		{pilotTx(PosTower, "OKABC", IntentCheckIn, nil, "Tower, OKABC"), nil, ""},
+		{Handoff("OKABC", PosApproach, PosTower, "Henderson Tower", "118.10"), []string{"OKABC, change to advisory frequency approved", "Change to advisory frequency, OKABC"}, ""},
+	} {
+		heard = nil
+		said := r.Transmit("AGGH", c.tx)
+		var got []string
+		for _, tx := range heard {
+			got = append(got, tx.Text)
+			if c.freq != "" && tx.Frequency != c.freq {
+				t.Errorf("%q on %q, want %s", tx.Text, tx.Frequency, c.freq)
+			}
+		}
+		if strings.Join(got, "|") != strings.Join(c.want, "|") {
+			t.Errorf("%v: said %q, want %q", c.tx.Intent, got, c.want)
+		}
+		if len(c.want) == 0 && said.Text != "" {
+			t.Errorf("%v: returned %q, nothing said", c.tx.Intent, said.Text)
+		}
+	}
+	heard = nil
+	r.Transmit("LKPR", ClearedTakeoff("CSA1", "24", ""))
+	if len(heard) != 2 || heard[0].Intent != IntentTakeoff {
+		t.Errorf("a towered airport: %+v", heard)
+	}
+}
+
+// TestFieldCallName: the name a field's traffic is called by.
+func TestFieldCallName(t *testing.T) {
+	for _, c := range []struct {
+		l    airport.Layout
+		want string
+	}{
+		{airport.Layout{ICAO: "AGGH", Frequencies: []airport.Frequency{{Kind: airport.FreqCTAF, MHz: 118.1, Name: "HENDERSON INFORMATION"}}}, "Henderson"},
+		{airport.Layout{ICAO: "KVUO", Name: "Pearson Field"}, "Pearson Field"},
+		{airport.Layout{ICAO: "XXXX", Name: "Some Town International Airport"}, "Some Town"},
+		{airport.Layout{ICAO: "XXXX"}, "XXXX"},
+	} {
+		if got := FieldCallName(&c.l); got != c.want {
+			t.Errorf("%s: %q, want %q", c.l.ICAO, got, c.want)
+		}
 	}
 }

@@ -92,6 +92,18 @@ Most airports have no tower: about 35,000 in the simulator's data. There nobody 
 - `SelfAnnounceFrequency()` is the common frequency to announce on: the CTAF, else the UNICOM, else the MULTICOM (`Frequency.Service`). A frequency named only for the runway lights is not one (AYBK's MULTICOM "ACTIVATE LIGHT ONLY").
 - `ControlledFrequency(kind)` is a controller's frequency only, never the common one or flight information. At a field without a tower there is no tower; ground and clearance count only on a frequency of the field's own (KVUO: clearance by Portland). Approach, departure and centre fall back as in `FrequencyFor`.
 
+The World's own traffic talks that way there (`RadioOptions.Uncontrolled`, `SelfAnnounceFor`). Our controllers still decide who goes when, unheard; on the air are the crews' announcements for those decisions, on the common frequency, with the field called by `FieldCallName`:
+
+| Decided | Said |
+|---|---|
+| Taxi to a runway | `SelfTaxiing` |
+| Take-off | `SelfDeparting` |
+| Landing | `SelfPattern`, final |
+| Runway vacated | `SelfClear` |
+| Approach's handoff to the tower | `AdvisoryFrequency`: "OKABC, change to advisory frequency approved" |
+
+Every other call of tower, ground and delivery, and the crews' calls to them, are not said; `Transmit` then returns an empty transmission. Approach, departure and centre stay as they are. A player working tower, ground or delivery there (`SetStaffed`) keeps the usual dialogue, for the whole field.
+
 The calls go to "<Field> Traffic" (`TrafficStation`, `PosTraffic`, `IntentSelfAnnounce`). Each ends with the field's name, and nobody answers:
 
 | Call | Said |
