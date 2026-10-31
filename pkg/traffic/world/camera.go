@@ -105,9 +105,37 @@ type cameraMan struct {
 	// towerAt: the airport whose tower watches (the one on the map), for
 	// the user's aircraft when none of ours is there to watch.
 	towerAt string
-	// simTime and setZulu: the simulator's time of day, for a scene's Local.
-	simTime func() (zulu, local float64, ok bool)
-	setZulu func(hours, minutes uint32) error
+	// simTime and setZulu: the simulator's time of day, for a scene's Local;
+	// sendZulu is setZulu on the connection's own goroutine. clockBack puts it
+	// back, nil when it is as it was.
+	simTime   func() (zulu, local float64, ok bool)
+	setZulu   func(hours, minutes uint32) error
+	sendZulu  func(hours, minutes uint32) error
+	clockBack func(set func(hours, minutes uint32) error) error
+}
+
+// connectionEnds leaves the simulator as it was, on the connection's goroutine
+// with the connection still open: a camera left acquired stays stuck for the
+// user, and a scene's clock would stay wherever the scene had set it.
+func (m *cameraMan) connectionEnds() {
+	if m.sendZulu != nil {
+		if err := m.putClockBack(m.sendZulu); err != nil {
+			tlog.printf("time of day back: %v", err)
+		}
+	}
+	m.mu.Lock()
+	prev := m.prevSim
+	m.prevSim = 0
+	m.mu.Unlock()
+	if m.dir != nil {
+		m.dir.Release()
+	}
+	if prev != 0 && m.sim != nil {
+		time.Sleep(restoreSimAfter) // the simulator settles its own camera first
+		if err := m.sim.setRaw(prev); err != nil {
+			tlog.printf("simulator camera back: %v", err)
+		}
+	}
 }
 
 func newCameraMan(cc *controlCenter, client engine.Client) *cameraMan {

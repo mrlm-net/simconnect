@@ -7,6 +7,12 @@ This project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 ---
 
+## [0.159.1] - 2026-10-31
+
+### Fixed
+
+- The map exiting during a scene left the simulator's clock at the scene's time of day, and on any clean exit with our camera on left the simulator's view where the release put it. Both now go back (#1355).
+
 ## [0.159.0] - 2026-10-31
 
 ### Added

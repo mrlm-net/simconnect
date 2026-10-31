@@ -73,6 +73,8 @@ type Loopback struct {
 	events      map[uint32]string // client event ID → its simulator event (lights.go)
 	// zuluShift, localOffset: the clock against now, set by events; local against zulu, seconds.
 	zuluShift, localOffset float64
+	// cameraState: CAMERA STATE as set, 0 the default.
+	cameraState int32
 	cameraSets  int
 	out         chan engine.Message
 	defs        map[uint32][]datum
@@ -217,6 +219,10 @@ func (l *Loopback) SetDataOnSimObject(definitionID uint32, objectID uint32, flag
 			o.OnGround = p.OnGround != 0
 			o.GroundKts = float64(p.Airspeed)
 		}
+		return nil
+	}
+	if ds[0].name == "CAMERA STATE" {
+		l.cameraState = *(*int32)(data)
 		return nil
 	}
 	// Plain values (a definition of FLOAT64s): the position and attitude
@@ -490,6 +496,9 @@ func (l *Loopback) value(o *Object, d datum) float64 {
 	case "COM ACTIVE FREQUENCY":
 		return o.COM1
 	case "CAMERA STATE":
+		if l.cameraState != 0 {
+			return float64(l.cameraState)
+		}
 		return 2
 	case "ZULU TIME":
 		return float64(now.Hour()*3600+now.Minute()*60+now.Second()) + float64(now.Nanosecond())/1e9 + l.zuluShift

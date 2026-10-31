@@ -302,34 +302,47 @@ func localSeconds(s string) (float64, error) {
 	return float64(t.Hour()*3600 + t.Minute()*60), nil
 }
 
-// sceneTime sets the simulator's clock to local and gives what puts it back to
-// where it would have been by then; nil if it could not. Measured live (MSFS 2024,
+// sceneTime sets the simulator's clock to local and notes how to put it back to
+// where it would have been by then (putClockBack). Measured live (MSFS 2024,
 // LKPR, 2026-10-31): ZULU_HOURS_SET takes effect within the second and the part of
 // the day follows; our traffic runs on its own clock and takes no notice.
-func (m *cameraMan) sceneTime(local string, logf func(string, ...any)) func() {
+func (m *cameraMan) sceneTime(local string, logf func(string, ...any)) {
 	sec, err := localSeconds(local)
 	if err != nil || m.simTime == nil || m.setZulu == nil {
-		return nil
+		return
 	}
 	zulu, now, ok := m.simTime()
 	if !ok {
 		logf("time of day: the simulator's not known yet")
-		return nil
+		return
 	}
-	set := func(z float64) error {
+	at := func(z float64) (uint32, uint32) {
 		day := int(math.Mod(math.Mod(z, 86400)+86400, 86400))
-		return m.setZulu(uint32(day/3600), uint32(day%3600/60))
+		return uint32(day / 3600), uint32(day % 3600 / 60)
 	}
-	if err := set(sec - (now - zulu)); err != nil {
+	if err := m.setZulu(at(sec - (now - zulu))); err != nil {
 		logf("time of day: %v", err)
-		return nil
+		return
 	}
 	began := m.cc.clock.Now()
-	return func() {
-		if err := set(zulu + m.cc.clock.Now().Sub(began).Seconds()); err != nil {
-			logf("time of day back: %v", err)
-		}
+	m.mu.Lock()
+	m.clockBack = func(set func(hours, minutes uint32) error) error {
+		return set(at(zulu + m.cc.clock.Now().Sub(began).Seconds()))
 	}
+	m.mu.Unlock()
+}
+
+// putClockBack undoes sceneTime through set, once: when the scene ends or the
+// connection does, whichever comes first.
+func (m *cameraMan) putClockBack(set func(hours, minutes uint32) error) error {
+	m.mu.Lock()
+	back := m.clockBack
+	m.clockBack = nil
+	m.mu.Unlock()
+	if back == nil {
+		return nil
+	}
+	return back(set)
 }
 
 // sceneRadio tells the host of a transmission and says whether the scene mutes it.

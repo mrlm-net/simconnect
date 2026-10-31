@@ -29,6 +29,27 @@ func (l *Loopback) MapClientEventToSimEvent(eventID uint32, eventName string) er
 	return nil
 }
 
+// ZuluShift is how far events have moved the clock from now, seconds.
+func (l *Loopback) ZuluShift() float64 {
+	l.mu.Lock()
+	defer l.mu.Unlock()
+	return l.zuluShift
+}
+
+// CameraState is the simulator's camera state as set; 0 not set.
+func (l *Loopback) CameraState() int32 {
+	l.mu.Lock()
+	defer l.mu.Unlock()
+	return l.cameraState
+}
+
+// SetCameraState sets it, as the user changing the view would.
+func (l *Loopback) SetCameraState(v int32) {
+	l.mu.Lock()
+	defer l.mu.Unlock()
+	l.cameraState = v
+}
+
 // SetLocalOffset is how far the local time is ahead of zulu, seconds.
 func (l *Loopback) SetLocalOffset(sec float64) {
 	l.mu.Lock()
