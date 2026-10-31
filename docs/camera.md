@@ -180,6 +180,12 @@ A cue holds once reached, so a beat is not missed when two things happen close t
 | `ROLE:rescue` | Rescue vehicles have been sent for it (it has priority: an emergency). |
 | `ROLE:rescue:with` | It is down and one of its rescue vehicles is within 80 m. |
 
+### Time of day
+
+`"local": "21:30"` plays the scene at that time of day, local at the user's aircraft, and puts the clock back when it ends. The date stays. The light follows at once and our traffic takes no notice, since it runs on its own clock.
+
+A scene cannot set the simulation rate. MSFS 2024 ignored `SIM_RATE_INCR`, `SIM_RATE_DECR` and `SIM_RATE_SET` from SimConnect in a measured test (no error, the rate stayed 1) and refused writing `SIMULATION RATE`.
+
 ### Radio
 
 Scene events of kind `radio` give each transmission: `speaker` (a crew's call sign or the station), `callsign` (who a station talks to), `frequency`, `text`, `atSec` and `durSec`. `atSec` is when it starts, later than the event when it waits for the frequency. `durSec` is the speaking time worked out from the words, not what a voice took. Events of kind `shot` and `beat` give the `subject` on screen.

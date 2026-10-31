@@ -72,6 +72,9 @@ type Scene struct {
 	// of the radio goes on unheard (still in the "radio" events, marked muted).
 	Lines []SceneLine `json:"lines,omitempty"`
 	Mute  bool        `json:"mute,omitempty"`
+	// Local: the time of day "HH:MM" the scene plays at, local at the user's
+	// aircraft, put back when it ends; the date stays. "": as it is.
+	Local string `json:"local,omitempty"`
 }
 
 // SceneLine is a line of a scene's radio, said word for word at its time.
@@ -406,6 +409,11 @@ func (m *cameraMan) runScene(g *airport.Graph, sc Scene) {
 	r.emit(SceneEvent{Kind: "start"})
 	m.mu.Unlock()
 	go r.sayLines(g.Layout.ICAO) // before the cast: it talks from when it spawns
+	if sc.Local != "" {
+		if back := m.sceneTime(sc.Local, logf); back != nil {
+			defer back()
+		}
+	}
 	defer func() {
 		m.mu.Lock()
 		m.scene = nil
