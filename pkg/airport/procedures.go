@@ -80,6 +80,10 @@ type Leg struct {
 	TurnLeft  bool    `json:"turnLeft,omitempty"`
 	Course    float64 `json:"course,omitempty"`
 	Distance  float64 `json:"distance,omitempty"` // leg length or DME distance
+	// OriginFix and Origin: the recommended navaid, which a CD, VD or FD leg's
+	// DME distance is measured from; none in data dumped before v0.160.0.
+	OriginFix string `json:"originFix,omitempty"`
+	Origin    LatLon `json:"origin,omitzero"`
 	// AltDesc qualifies Alt1 (and Alt2 for BETWEEN).
 	AltDesc types.SIMCONNECT_FACILITY_ALTITUDE_DESCRIPTOR `json:"altDesc,omitempty"`
 	Alt1    float64                                       `json:"alt1,omitempty"`
@@ -97,10 +101,11 @@ type Leg struct {
 func (l Leg) HasFix() bool { return l.Fix != "" && (l.Position.Lat != 0 || l.Position.Lon != 0) }
 
 // legFields are the APPROACH_LEG fields requested, in the order
-// decodeLeg reads them (112 bytes, packed).
+// decodeLeg reads them (136 bytes, packed).
 var legFields = []string{"TYPE", "FIX_ICAO", "FIX_REGION", "FIX_TYPE", "FIX_LATITUDE", "FIX_LONGITUDE", "FIX_ALTITUDE",
 	"FLY_OVER", "TURN_DIRECTION", "COURSE", "ROUTE_DISTANCE", "APPROACH_ALT_DESC", "ALTITUDE1", "ALTITUDE2", "SPEED_LIMIT",
-	"ARC_CENTER_FIX_LATITUDE", "ARC_CENTER_FIX_LONGITUDE", "RHO", "IS_IAF", "IS_FAF", "IS_MAP"}
+	"ARC_CENTER_FIX_LATITUDE", "ARC_CENTER_FIX_LONGITUDE", "RHO", "IS_IAF", "IS_FAF", "IS_MAP",
+	"ORIGIN_ICAO", "ORIGIN_LATITUDE", "ORIGIN_LONGITUDE"}
 
 // recordReader reads packed facility record fields.
 type recordReader struct {
@@ -156,6 +161,8 @@ func decodeLeg(b []byte) Leg {
 	l.ArcCenter = LatLon{Lat: r.f64(), Lon: r.f64()}
 	l.Rho = r.f32()
 	l.IAF, l.FAF, l.MAP = r.i32() != 0, r.i32() != 0, r.i32() != 0
+	l.OriginFix = r.str(8)
+	l.Origin = LatLon{Lat: r.f64(), Lon: r.f64()}
 	return l
 }
 
@@ -242,7 +249,10 @@ func ProcedurePath(legs []Leg, start LatLon, startAlt, magVar, turnRadius float6
 	if have {
 		pts = append(pts, cur)
 	}
-	open := func(l Leg) float64 {
+	open := func(l Leg, c float64) float64 {
+		if d, ok := dmeEndMeters(l, cur, c); ok {
+			return d
+		}
 		switch l.Type {
 		case types.SIMCONNECT_FACILITY_LEG_TYPE_CA, types.SIMCONNECT_FACILITY_LEG_TYPE_VA, types.SIMCONNECT_FACILITY_LEG_TYPE_FA:
 			d := math.Max(1000, math.Min(20000, (l.Alt1-alt)/climbGradient))
@@ -300,7 +310,7 @@ func ProcedurePath(legs []Leg, start LatLon, startAlt, magVar, turnRadius float6
 				cur = pts[len(pts)-1]
 			}
 		}
-		cur = displace(cur, c, open(l))
+		cur = displace(cur, c, open(l, c))
 		pts = append(pts, cur)
 		hdg, haveHdg = c, true
 	}

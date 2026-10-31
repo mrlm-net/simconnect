@@ -7,6 +7,16 @@ This project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 ---
 
+## [0.160.0] - 2026-10-31
+
+### Added
+
+- `Leg.OriginFix` and `Leg.Origin`: a procedure leg's recommended navaid, read from the facility data (#1359).
+
+### Fixed
+
+- CD, VD and FD legs ended their DME distance from where the leg began, cut off at 20 km. They now end where the course reaches that distance from the navaid, in `ProcedurePath` and the resolved `NavPoint`s. Data dumped earlier has no navaid and behaves as before (#1359).
+
 ## [0.159.2] - 2026-10-31
 
 ### Fixed

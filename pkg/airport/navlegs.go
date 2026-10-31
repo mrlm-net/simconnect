@@ -345,9 +345,17 @@ func resolveLegs(legs []Leg, start LatLon, alt, magVar float64) []NavPoint {
 	return out
 }
 
+// A DME leg's end, from where it starts: nearer is the point it starts on (the
+// way out from there counts), farther isn't a leg of a terminal procedure.
+const (
+	dmeEndMinMeters = 100.0
+	dmeEndMaxMeters = 120000.0
+)
+
 // openPoint is where a leg without a fix ends, flown from cur on course c
 // (true): a climb (CA, VA, FA) at climbGradient to its altitude, a DME
-// distance (CD, VD, FC, FD) its distance, an intercept (CI, VI) where it
+// distance (CD, VD, FC, FD) its distance (dmeEndMeters where the navaid is
+// known), an intercept (CI, VI) where it
 // meets the next leg's course, anything else openLegMeters. alt is the
 // altitude so far, raised by climbs.
 func openPoint(l Leg, cur LatLon, alt *float64, c float64, intercept func() (LatLon, float64, bool)) NavPoint {
@@ -363,7 +371,9 @@ func openPoint(l Leg, cur LatLon, alt *float64, c float64, intercept func() (Lat
 		}
 	case types.SIMCONNECT_FACILITY_LEG_TYPE_CD, types.SIMCONNECT_FACILITY_LEG_TYPE_VD,
 		types.SIMCONNECT_FACILITY_LEG_TYPE_FC, types.SIMCONNECT_FACILITY_LEG_TYPE_FD:
-		if l.Distance > 0 {
+		if x, ok := dmeEndMeters(l, cur, c); ok {
+			d = x
+		} else if l.Distance > 0 {
 			d = math.Min(l.Distance, 20000)
 		}
 	case types.SIMCONNECT_FACILITY_LEG_TYPE_CI, types.SIMCONNECT_FACILITY_LEG_TYPE_VI:
@@ -379,6 +389,39 @@ func openPoint(l Leg, cur LatLon, alt *float64, c float64, intercept func() (Lat
 	}
 	n.Position = displace(cur, c, d)
 	return n
+}
+
+// dmeEndMeters is how far along course c (true) from p a CD, VD or FD leg ends:
+// where it first reaches its DME distance from the recommended navaid (live,
+// EGLL's CD legs to 6 DME from LON, EDDH's FD legs to 22.7 DME from HAM). False
+// for other legs, without a navaid (older data), when the course never reaches
+// that distance, or beyond dmeEndMaxMeters. Flat earth, as interceptMeters.
+func dmeEndMeters(l Leg, p LatLon, c float64) (float64, bool) {
+	switch l.Type {
+	case types.SIMCONNECT_FACILITY_LEG_TYPE_CD, types.SIMCONNECT_FACILITY_LEG_TYPE_VD, types.SIMCONNECT_FACILITY_LEG_TYPE_FD:
+	default:
+		return 0, false
+	}
+	if l.OriginFix == "" || l.Distance <= 0 || (l.Origin.Lat == 0 && l.Origin.Lon == 0) {
+		return 0, false
+	}
+	kLat := 111320.0
+	kLon := kLat * math.Cos(p.Lat*math.Pi/180)
+	ox, oy := (l.Origin.Lon-p.Lon)*kLon, (l.Origin.Lat-p.Lat)*kLat
+	ax, ay := math.Sin(c*math.Pi/180), math.Cos(c*math.Pi/180)
+	// |t·a - o| = Distance.
+	along := ox*ax + oy*ay
+	disc := along*along - (ox*ox + oy*oy - l.Distance*l.Distance)
+	if disc < 0 {
+		return 0, false
+	}
+	root := math.Sqrt(disc)
+	for _, t := range []float64{along - root, along + root} {
+		if t >= dmeEndMinMeters {
+			return t, t <= dmeEndMaxMeters
+		}
+	}
+	return 0, false
 }
 
 // interceptMeters is how far along course c from p the course fc into fix
