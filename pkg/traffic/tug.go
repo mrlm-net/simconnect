@@ -199,12 +199,9 @@ func (t *SimObjectTug) inbound(pose GroundPose) (*GroundPath, airport.LatLon, bo
 	if err != nil {
 		return nil, airport.LatLon{}, false
 	}
-	// Off the road to the nose: round the aircraft, not through it.
-	if n := len(route); n >= 2 {
-		if via := roundAircraft(route[n-2], route[n-1], pose, t.prof); via != nil {
-			route = append(append(route[:n-1:n-1], via...), route[n-1])
-		}
-	}
+	// Round the aircraft, not through it: off the road to the nose, and where
+	// the road itself passes under it.
+	route = roundRoute(route, pose, t.prof)
 	// The path is followed by the tug's front axle, its reference point a
 	// wheelbase behind: the path ends that far past the attach point, so the
 	// tug stops on it and is not snapped forward as it connects (live, a
@@ -380,9 +377,7 @@ func (t *SimObjectTug) Update(pose GroundPose, pushing bool, dt float64) error {
 		}
 		if err == nil && len(route) >= 2 {
 			// From the nose to the road: round the aircraft just pushed.
-			if via := roundAircraft(route[0], route[1], pose, t.prof); via != nil {
-				route = append(append([]airport.LatLon{route[0]}, via...), route[1:]...)
-			}
+			route = roundRoute(route, pose, t.prof)
 		}
 		if err == nil {
 			if path, err := NewArcPath(route, tugRoadProfile(), 6); err == nil {

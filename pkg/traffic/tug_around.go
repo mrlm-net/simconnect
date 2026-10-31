@@ -76,6 +76,24 @@ func (f aircraftFrame) clear(a, b airport.LatLon) bool {
 	return true
 }
 
+// roundRoute is route kept off the aircraft at pose: the points of it under the
+// aircraft dropped (a vehicle road can run under a parked aircraft: LKPR N51,
+// LOWW F21) and a way round it wherever a leg crosses it. The ends stay.
+func roundRoute(route []airport.LatLon, pose GroundPose, prof MotionProfile) []airport.LatLon {
+	f := aircraftFrame{nose: NoseGear(pose.Position, pose.Heading, prof), hdg: pose.Heading, prof: prof}
+	kept := make([]airport.LatLon, 0, len(route))
+	for i, p := range route {
+		if i == 0 || i == len(route)-1 || !f.inside(p) {
+			kept = append(kept, p)
+		}
+	}
+	out := kept[:1:1]
+	for i := 1; i < len(kept); i++ {
+		out = append(append(out, roundAircraft(kept[i-1], kept[i], pose, prof)...), kept[i])
+	}
+	return out
+}
+
 // roundAircraft is the way from a to b round the aircraft at pose: the
 // points to pass between them (none when the straight leg is clear), the
 // shortest of going by either wingtip, abeam the nose and the tail.
