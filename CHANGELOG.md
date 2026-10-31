@@ -7,6 +7,12 @@ This project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 ---
 
+## [0.160.1] - 2026-10-31
+
+### Fixed
+
+- `addons.AircraftPackage` found nothing from the whole path MSFS 2024 reports after a flight load, so a Fenix fell back to the A320 family profile. It now takes the path from `SimObjects` on, and the Fenix profile also matches titles with "Fenix" (#1361).
+
 ## [0.160.0] - 2026-10-31
 
 ### Added

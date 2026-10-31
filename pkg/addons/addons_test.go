@@ -112,6 +112,10 @@ func TestAircraftPackage(t *testing.T) {
 		{`SimObjects\Airplanes\FNX_32X\presets\fnx\FNX_319_CFM_WF_HD\config\aircraft.CFG`, "fnx-aircraft-319-321"},
 		{`SimObjects\Airplanes\Asobo_Baron_G58\aircraft.CFG`, "fs20-asobo-aircraft-baron-g58"},
 		{`SimObjects\Airplanes\Nothing\aircraft.CFG`, ""},
+		// The whole path, as MSFS 2024 reports it after a flight load.
+		{`c:\users\me\packages\community\fnx-aircraft-319-321\simobjects\airplanes\fnx_32x\presets\fnx\fnx_319_cfm_wf_hd\config\aircraft.cfg`, "fnx-aircraft-319-321"},
+		{`c:\users\me\packages\streamedpackages\fs20-asobo-aircraft-baron-g58\content\simobjects\airplanes\asobo_baron_g58\aircraft.cfg`, "fs20-asobo-aircraft-baron-g58"},
+		{`c:\users\me\packages\community\x\simobjects\airplanes\nothing\aircraft.cfg`, ""},
 		{"", ""},
 	} {
 		p, ok := AircraftPackage(pkgs, c.path)

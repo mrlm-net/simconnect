@@ -15,7 +15,8 @@ import (
 
 // AircraftPackage finds the package that holds an aircraft, from the path
 // the sim reports for AircraftLoaded, e.g.
-// SimObjects\Airplanes\FNX_32X\presets\fnx\FNX_319_CFM_WF_HD\config\aircraft.CFG.
+// SimObjects\Airplanes\FNX_32X\presets\fnx\FNX_319_CFM_WF_HD\config\aircraft.CFG,
+// or the whole path from the disk (live, MSFS 2024 after a flight load).
 //
 // Packages with a manifest are matched on their layout.json file list
 // (read once and cached while the file is unchanged). Streamed packages
@@ -26,6 +27,9 @@ func AircraftPackage(pkgs []Package, aircraftPath string) (Package, bool) {
 	rel := strings.ToLower(strings.ReplaceAll(strings.TrimSpace(aircraftPath), `\`, "/"))
 	if rel == "" {
 		return Package{}, false
+	}
+	if i := strings.LastIndex(rel, "/"+simObjectsPrefix); i >= 0 {
+		rel = rel[i+1:]
 	}
 	needle := []byte(`"` + rel + `"`)
 	for _, src := range []Source{Community, Community2024, Official, Streamed} {
