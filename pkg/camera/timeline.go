@@ -3,6 +3,7 @@ package camera
 import (
 	"cmp"
 	"slices"
+	"sync"
 	"time"
 )
 
@@ -45,7 +46,61 @@ func (tl *Timeline) PoseAt(clock time.Duration) (Pose, Shot, bool) {
 	if into > c.Shot.Length() {
 		return Pose{}, nil, false
 	}
+	if w, ok := c.Shot.(*objectShot); ok && !w.ready() {
+		return Pose{}, nil, false
+	}
 	return c.Shot.PoseAt(into), c.Shot, true
+}
+
+// OnObject is a shot on an object not known when the film is written, a replayed
+// aircraft the simulator creates as the replay reaches it: on a Timeline, while
+// object says 0 the camera holds as between shots, and the shot is made again
+// when the object changes, after a seek brought the aircraft back.
+func OnObject(length time.Duration, object func() uint32, shot func(o uint32) Shot) Shot {
+	return &objectShot{length: length, object: object, shot: shot}
+}
+
+type objectShot struct {
+	length time.Duration
+	object func() uint32
+	shot   func(o uint32) Shot
+
+	mu  sync.Mutex
+	o   uint32
+	cur Shot
+}
+
+func (s *objectShot) Length() time.Duration { return s.length }
+
+func (s *objectShot) ready() bool {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if o := s.object(); o != s.o || s.cur == nil && o != 0 {
+		s.o, s.cur = o, nil
+		if o != 0 {
+			s.cur = s.shot(o)
+		}
+	}
+	return s.cur != nil
+}
+
+// PoseAt: nothing while there is no object.
+func (s *objectShot) PoseAt(t time.Duration) Pose {
+	if !s.ready() {
+		return Pose{}
+	}
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	return s.cur.PoseAt(t)
+}
+
+func (s *objectShot) Name() string {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if s.cur == nil {
+		return "on an object not there yet"
+	}
+	return s.cur.Name()
 }
 
 // End is when the last shot ends.

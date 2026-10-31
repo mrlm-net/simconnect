@@ -165,3 +165,15 @@ fleet.Handle(msg)
 // at the end:
 fleet.Stop()
 ```
+
+A film shoots any aircraft of the scene on the replay's clock. `Keep` puts its subjects first within the budget whenever they are due, however far from the player, and `ObjectOf` gives an aircraft's object, 0 until it has one:
+
+```go
+fleet.Keep(key)
+tl := camera.NewTimeline(camera.Cue{At: 545 * time.Second, Shot: camera.OnObject(8*time.Second,
+	func() uint32 { return fleet.ObjectOf(key) },
+	func(o uint32) camera.Shot { return camera.Flyover(o, size, 1, 8*time.Second) })})
+director.Follow(tl, func() time.Duration { return replayTime() })
+```
+
+`At` is on the same clock as the function given to `Follow`. The simulator creates a ghost a moment after it is due, so cue a shot a few seconds after its subject appears; until the object exists the camera holds.
