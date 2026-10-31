@@ -7,6 +7,12 @@ This project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 ---
 
+## [0.160.2] - 2026-10-31
+
+### Fixed
+
+- A tug coming from the aircraft's side turned 180° and hopped 6 m in one frame as it connected at the nose. Its way in now makes that turn before it gets there (#1363).
+
 ## [0.160.1] - 2026-10-31
 
 ### Fixed

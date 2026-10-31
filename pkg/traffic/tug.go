@@ -7,6 +7,7 @@ import (
 	"time"
 
 	"github.com/mrlm-net/simconnect/pkg/airport"
+	"github.com/mrlm-net/simconnect/pkg/calc"
 	"github.com/mrlm-net/simconnect/pkg/engine"
 	"github.com/mrlm-net/simconnect/pkg/types"
 )
@@ -210,11 +211,41 @@ func (t *SimObjectTug) inbound(pose GroundPose) (*GroundPath, airport.LatLon, bo
 	// 3 m hop at the nose).
 	p := tugRoadProfile()
 	end := offsetHeading(t.pose.Position, localBearing(front, t.pose.Position), p.WheelbaseMeters-p.RefAheadMeters)
-	path, err := NewArcPath(append(route, end), p, 6)
+	route = endFacing(route, localBearing(front, t.pose.Position), tugTurnMeters)
+	path, err := NewArcPath(append(route, end), p, tugTurnMeters)
 	if err != nil {
 		return nil, airport.LatLon{}, false
 	}
 	return path, depot, true
+}
+
+// tugTurnMeters is the radius a tug turns on.
+const tugTurnMeters = 6.0
+
+// endFacing has route reach its last point travelling along to: the turn made
+// on the way, not left for the few meters after it (a tug coming from the
+// aircraft's side was still facing away at the nose, and turned 180° and hopped
+// 6 m in one frame as it connected, live LKMT stands 4 and 5, offline a third of
+// LOWW's). The route as it is when it already comes that way, or no such turn.
+func endFacing(route []airport.LatLon, to, radius float64) []airport.LatLon {
+	n := len(route)
+	if n < 2 {
+		return route
+	}
+	a, b := route[n-2], route[n-1]
+	in := localBearing(a, b)
+	if math.Abs(headingDiff(in, to)) <= 5 {
+		return route
+	}
+	turn := calc.Dubins(a.Lat, a.Lon, in, b.Lat, b.Lon, to, radius, 1, 0)
+	if len(turn) < 2 {
+		return route
+	}
+	out := append([]airport.LatLon(nil), route[:n-1]...)
+	for _, q := range turn {
+		out = append(out, airport.LatLon{Lat: q[0], Lon: q[1]})
+	}
+	return out
 }
 
 // nearestDepot is the vehicle parking spot of l nearest p.
