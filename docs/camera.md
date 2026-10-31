@@ -64,6 +64,12 @@ Each move is a `MoveFunc(object, size, side, duration)`, scaled to the aircraft'
 
 `MaxShot` (10 s) caps every shot unless it opts out. `camera.Stretch(shot, d)` plays any shot over `d`, up to `MaxStretch` (5 minutes), its move slowed to fit, for a camera that stays with one aircraft through an event. In a scene or a `ShotRequest`, `"long": true` makes `sec` exact (no pacing, no cap).
 
+## Spotting director
+
+`World.StartSpotting(SpottingRequest{ICAO: "LKPR"})` or `POST /api/camera/spotting`: the camera watches the airport by itself. It picks an aircraft landing, taking off or taxiing and the nearest fitting spot, stays with it until that is over, and moves on. Landings and take-offs come first and interrupt a taxi, never each other. `GET /api/camera` gives `subject`, `event` and `shot`; mode `off` ends it.
+
+It reads the scan, so it sees ours, other traffic and the player alike. `Kinds` (`ours`, `other`, `player`), `Types` (ICAO designators) and `Events` limit what it may pick. It cuts to a closer spot at most every 10 s, and only one 30% closer. What an aircraft is doing is worked out from where it is and how it moves, not from our controllers: an unusual approach off the runway's line counts as nothing to watch until it lines up.
+
 ## Spots
 
 A `camera.Spot` is a camera standing in the world: fixed, or on a straight rail (`RailEnd`, at most `RailSpeed`, 4 m/s by default) going abeam its subject. Its lens (`FovMin`, `FovMax`) is chosen to keep the aircraft at `Share` of the frame's width, the change smoothed. `Spot.Track(object, size, d, feed, clock)` plays it for up to `MaxStretch`.

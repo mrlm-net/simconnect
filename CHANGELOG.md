@@ -7,6 +7,12 @@ This project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 ---
 
+## [0.155.0] - 2026-10-31
+
+### Added
+
+- Spotting director: `World.StartSpotting`, `POST /api/camera/spotting`. The camera picks an aircraft landing, taking off or taxiing and a spot to see it from, holds it to the end of that, and moves on, across all traffic the World sees and the player. Filters by kind, type and event; `GET /api/camera` gives `event` (#1343).
+
 ## [0.154.2] - 2026-10-31
 
 ### Fixed

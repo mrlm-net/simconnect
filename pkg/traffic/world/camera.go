@@ -68,7 +68,12 @@ type cameraMan struct {
 	frames func(on bool)
 
 	mu   sync.Mutex
-	mode string // off, follow, auto, demo
+	mode string // off, follow, auto, demo, spotting
+	// spotter: the spotting director; spotEvent what its subject is doing,
+	// spotAt when it looks next.
+	spotter   *spotter
+	spotEvent string
+	spotAt    time.Time
 	// sceneStarting: a scene asked for and not yet playing (#62: two at once).
 	sceneStarting bool
 	follow        int    // the card followed
@@ -148,10 +153,24 @@ func (m *cameraMan) tick(now time.Time) {
 	if mode == "off" {
 		return
 	}
+	if mode == "spotting" {
+		m.mu.Lock()
+		due := m.spotter != nil && !now.Before(m.spotAt)
+		if due {
+			m.spotAt = now.Add(spottingEvery)
+		}
+		m.mu.Unlock()
+		if due && m.picking.CompareAndSwap(false, true) {
+			go func() {
+				defer m.picking.Store(false)
+				m.spottingLook(now)
+			}()
+		}
+	}
 	// The next shot is picked off the connection's goroutine: it looks at
 	// the aircraft (their locks), and a goroutine holding one may be
 	// waiting on this one.
-	if cur, _ := m.dir.Current(now); cur == nil && m.dir.Remaining() == 0 && mode != "scene" && mode != "shot" && mode != "view" && look && m.picking.CompareAndSwap(false, true) {
+	if cur, _ := m.dir.Current(now); cur == nil && m.dir.Remaining() == 0 && mode != "scene" && mode != "spotting" && mode != "shot" && mode != "view" && look && m.picking.CompareAndSwap(false, true) {
 		go func() {
 			defer m.picking.Store(false)
 			m.next(now)
@@ -170,7 +189,7 @@ func (m *cameraMan) setMode(mode string, follow int) error {
 		return errors.New("no camera on this connection")
 	}
 	switch mode {
-	case "off", "follow", "auto", "scene", "shot":
+	case "off", "follow", "auto", "scene", "shot", "spotting":
 	default:
 		return errors.New("mode: off, follow, auto or view")
 	}
@@ -179,6 +198,7 @@ func (m *cameraMan) setMode(mode string, follow int) error {
 		m.rememberSim()
 	}
 	m.mode, m.follow, m.subject, m.shots, m.err = mode, follow, "", 0, ""
+	m.spotter, m.spotEvent = nil, ""
 	m.mu.Unlock()
 	if m.frames != nil {
 		m.frames(mode != "off")
@@ -639,8 +659,10 @@ type lookView struct {
 }
 
 type cameraView struct {
-	Mode     string `json:"mode"`
-	Subject  string `json:"subject,omitempty"`
+	Mode    string `json:"mode"`
+	Subject string `json:"subject,omitempty"`
+	// Event: spotting, what the subject is doing (landing, takeoff, taxi).
+	Event    string `json:"event,omitempty"`
 	Shot     string `json:"shot,omitempty"`
 	Acquired bool   `json:"acquired"`
 	Error    string `json:"error,omitempty"`
@@ -660,7 +682,7 @@ type cameraView struct {
 func (m *cameraMan) view() cameraView {
 	m.mu.Lock()
 	defer m.mu.Unlock()
-	v := cameraView{Mode: m.mode, Subject: m.subject, Shot: m.shot, Error: m.err}
+	v := cameraView{Mode: m.mode, Subject: m.subject, Event: m.spotEvent, Shot: m.shot, Error: m.err}
 	if m.scene != nil {
 		v.Scene = m.scene.progress()
 	}
@@ -804,6 +826,22 @@ func registerCamera(mux *http.ServeMux, st *state) {
 			return
 		}
 		writeJSON(w, map[string]string{"playing": got})
+	})
+	mux.HandleFunc("POST /api/camera/spotting", func(w http.ResponseWriter, r *http.Request) {
+		m := cam(w)
+		if m == nil {
+			return
+		}
+		var req SpottingRequest
+		if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+			http.Error(w, err.Error(), http.StatusBadRequest)
+			return
+		}
+		if err := m.startSpotting(req); err != nil {
+			http.Error(w, err.Error(), http.StatusUnprocessableEntity)
+			return
+		}
+		w.WriteHeader(http.StatusNoContent)
 	})
 	mux.HandleFunc("POST /api/camera/shot", func(w http.ResponseWriter, r *http.Request) {
 		m := cam(w)
