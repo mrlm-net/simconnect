@@ -173,8 +173,10 @@ type ArrivalEvent struct {
 	StoppedBy string
 	// MissedJoin: MSFS AI flew past the end of its procedure without
 	// joining the final (where, how): it needs a direct to the final.
-	MissedJoin  string
-	Position    airport.LatLon
+	MissedJoin string
+	Position   airport.LatLon
+	// Steps is how many steps Sequence has; a new one is told at once.
+	Steps       int
 	AGL         float64 // feet
 	Heading     float64
 	GroundSpeed float64 // knots
@@ -885,10 +887,11 @@ func (c *ArrivalController) setState(s ArrivalState, err error) {
 }
 
 func (c *ArrivalController) emit(err error, important bool) {
-	if !important && err == nil && !c.lightsChanged && c.fast && c.now().Sub(c.emittedAt) < time.Second {
+	if !important && err == nil && !c.lightsChanged && c.fast && len(c.seq.steps) == c.last.Steps && c.now().Sub(c.emittedAt) < time.Second {
 		return // progress at most once a second while reading every frame
 	}
 	c.emittedAt, c.lightsChanged = c.now(), false
+	c.last.Steps = len(c.seq.steps)
 	ev := c.last
 	ev.State, ev.ObjectID, ev.Err = c.state, c.objectID, err
 	if important || len(c.events) < cap(c.events)-16 {

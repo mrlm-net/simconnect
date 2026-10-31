@@ -205,6 +205,12 @@ func (r *remoteDep) Route() *airport.Route {
 	return o0
 }
 
+func (r *remoteDep) Sequence() []traffic.SequenceStep {
+	var o0 []traffic.SequenceStep
+	r.c.dropped(r.c.call(r.t, "Sequence", []any{}, &o0))
+	return o0
+}
+
 func (r *remoteDep) State() traffic.TaxiState {
 	var o0 traffic.TaxiState
 	r.c.dropped(r.c.call(r.t, "State", []any{}, &o0))
@@ -212,6 +218,12 @@ func (r *remoteDep) State() traffic.TaxiState {
 }
 
 // remoteArr is the director's arrivalCtl: each call a wire call.
+func (r *remoteArr) Sequence() []traffic.SequenceStep {
+	var o0 []traffic.SequenceStep
+	r.c.dropped(r.c.call(r.t, "Sequence", []any{}, &o0))
+	return o0
+}
+
 func (r *remoteArr) AvoidOccupied(occ []airport.Occupied) bool {
 	var o0 bool
 	r.c.dropped(r.c.call(r.t, "AvoidOccupied", []any{occ}, &o0))

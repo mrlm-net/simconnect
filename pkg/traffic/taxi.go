@@ -204,6 +204,8 @@ type TaxiEvent struct {
 	PushbackHeldBy uint32
 	// HeightFt is the height above the runway during the take-off.
 	HeightFt float64
+	// Steps is how many steps Sequence has; a new one is told at once.
+	Steps int
 	// Request is what the crew asks for while HoldForClearances holds the
 	// aircraft and it is ready (its own wait is over): "pushback",
 	// "start_up" (once the tug has gone), "taxi"; "" when it asks for
@@ -826,10 +828,11 @@ func (c *TaxiController) emit(err error, important bool) {
 	if c.eventsClosed {
 		return // done: a background push plan coming in after the end (it panicked)
 	}
-	if !important && err == nil && c.fast && c.now().Sub(c.emittedAt) < time.Second {
+	if !important && err == nil && c.fast && len(c.seq.steps) == c.last.Steps && c.now().Sub(c.emittedAt) < time.Second {
 		return // progress at most once a second while reading every frame
 	}
 	c.emittedAt = c.now()
+	c.last.Steps = len(c.seq.steps)
 	ev := c.last
 	ev.State, ev.ObjectID, ev.Err = c.state, c.objectID, err
 	if important || len(c.events) < cap(c.events)-16 {

@@ -48,12 +48,14 @@ type departureCtl interface {
 	PushFacingSaid() string
 	Reroute(route []traffic.RoutePoint) error
 	Route() *airport.Route
+	Sequence() []traffic.SequenceStep
 	State() traffic.TaxiState
 }
 
 // arrivalCtl is what the World asks of an arrival's controller
 // (traffic.ArrivalController), as departureCtl.
 type arrivalCtl interface {
+	Sequence() []traffic.SequenceStep
 	AvoidOccupied(occ []airport.Occupied) bool
 	AbsorbDelay(delay time.Duration) (traffic.Absorption, error)
 	AbsorbWithin(delay time.Duration, withinNM float64) (traffic.Absorption, error)
