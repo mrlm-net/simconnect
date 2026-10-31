@@ -7,6 +7,12 @@ This project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 ---
 
+## [0.154.1] - 2026-10-31
+
+### Fixed
+
+- A face-out stand approached from behind: the arrival carried on to the lead-in ahead of the stand and looped round behind it, over ground nothing says is apron (LOWI E1). It now pulls straight in. When it must turn, the loop takes the side nearer mapped pavement (#1339).
+
 ## [0.154.0] - 2026-10-31
 
 ### Added

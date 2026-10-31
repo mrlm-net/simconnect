@@ -100,7 +100,7 @@ func (c *ArrivalController) takeover(m arrivalMonitor, pos airport.LatLon, onRun
 	// final stretch onto the stand is replaced by the axis. (Earlier points
 	// may lie in front of the stand; the route can pass it before looping
 	// round to its lead-in.)
-	faceOut := len(route) > 1 && leadInAhead(c.req.Graph, c.req.Parking, route[len(route)-2])
+	faceOut := turnsOnStand(c.req.Graph, c.req.Parking, route, from)
 	last := from - 1
 	for i := from; i < len(route)-1; i++ {
 		if faceOut || alongHeading(stopNose, c.standHeading, route[i]) <= -standAxisMeters {
@@ -548,16 +548,47 @@ func (c *ArrivalController) stepSurfaces(dt float64) {
 	}
 }
 
+// pullInMeters and pullInDegrees: how far behind a face-out stand, and how far
+// off its heading, a route may come and still pull straight in.
+const (
+	pullInMeters  = 60.0
+	pullInDegrees = 75.0
+)
+
+// turnsOnStand says an arrival on route has to turn around to park: the lead-in
+// is ahead of the stand, and the route does not already come up from behind it
+// (LOWI E1: on along the taxiway to the lead-in, back to the stand and a loop
+// behind it, where nothing says there is apron). route[from:] is still ahead.
+func turnsOnStand(g *airport.Graph, parking int, route []airport.LatLon, from int) bool {
+	if len(route) < 2 || !leadInAhead(g, parking, route[len(route)-2]) {
+		return false
+	}
+	p := g.Layout.Parking[parking]
+	for i := len(route) - 2; i >= max(from, 1); i-- {
+		along := alongHeading(p.Position, p.Heading, route[i])
+		if along > -standAxisMeters {
+			continue
+		}
+		off := math.Abs(headingDiff(p.Heading, localBearing(route[i-1], route[i])))
+		return math.Hypot(along, alongHeading(p.Position, p.Heading+90, route[i])) > pullInMeters || off > pullInDegrees
+	}
+	return true
+}
+
 // turnAround is the custom route onto a self-manoeuvring (face-out) stand:
 // from the lead-in junction ahead of the stand the aircraft swings out to
 // the side with fewer neighbouring stands, loops round behind the stop mark
 // and comes back along the stand centreline, facing out, to stop with its
 // nose gear at stopNose.
 func (c *ArrivalController) turnAround(stopNose airport.LatLon) []airport.LatLon {
-	h := c.standHeading
-	side := c.roomySide()
 	// Scaled for longer aircraft: TurnAroundMeters suits an A320's wheelbase.
 	r := TurnAroundMeters * math.Max(1, c.profile().WheelbaseMeters/DefaultMotionProfile().WheelbaseMeters)
+	return turnLoop(stopNose, c.standHeading, r, loopSide(c.req.Graph, c.req.Parking, stopNose, c.standHeading, r))
+}
+
+// turnLoop is the way round behind the stop mark, on side (+1 right of the
+// stand's heading, -1 left), for a turn of radius r.
+func turnLoop(stopNose airport.LatLon, h, r, side float64) []airport.LatLon {
 	at := func(u, v float64) airport.LatLon {
 		return offsetHeading(offsetHeading(stopNose, h, u*r), h+90, v*r*side)
 	}
@@ -571,11 +602,33 @@ func (c *ArrivalController) turnAround(stopNose airport.LatLon) []airport.LatLon
 	}
 }
 
+// loopOffPavementMeters: a loop this much further from mapped pavement than
+// the one on the other side gives way to it.
+const loopOffPavementMeters = 10.0
+
+// loopSide is the side for the turn: the one with fewer neighbouring stands,
+// unless it leaves mapped pavement for ground nothing says is apron and the
+// other does not as much (LOWI E1, taxiway L on one side, nothing on the other).
+func loopSide(g *airport.Graph, parking int, stopNose airport.LatLon, h, r float64) float64 {
+	side := roomySide(g, parking)
+	pv := pavementAround(g, stopNose, 4*r)
+	furthest := func(pts []airport.LatLon) float64 {
+		worst := 0.0
+		for _, p := range pts {
+			worst = math.Max(worst, pv.off(p))
+		}
+		return worst
+	}
+	if furthest(turnLoop(stopNose, h, r, side)) > furthest(turnLoop(stopNose, h, r, -side))+loopOffPavementMeters {
+		return -side
+	}
+	return side
+}
+
 // roomySide is +1 or -1: the side of the stand (right or left of its
 // heading) with fewer other stands within 60 m, for the turn-around loop.
-func (c *ArrivalController) roomySide() float64 {
-	g := c.req.Graph
-	stand := g.Layout.Parking[c.req.Parking]
+func roomySide(g *airport.Graph, parking int) float64 {
+	stand := g.Layout.Parking[parking]
 	sum := 0.0
 	for _, p := range g.Layout.Parking {
 		if p.Index == stand.Index || localDist(p.Position, stand.Position) > 60 {

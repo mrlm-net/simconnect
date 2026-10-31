@@ -110,9 +110,9 @@ Logo and wing lights stay as the aircraft had them. `ArrivalEvent.Lights` report
 
 ### Self-manoeuvring stands
 
-Some stands face the taxilane: the lead-in junction the route uses lies *ahead* of the parked aircraft (LKPR N50–N58 and the S stands). A stand can have lead-ins on both sides, so this is decided per route.
+Some stands face the taxilane: the lead-in junction the route uses lies *ahead* of the parked aircraft (LKPR N50–N58 and the S stands). A stand can have lead-ins on both sides, so this is decided per route. A route already coming up from behind such a stand, its last point behind the stop mark within 60 m and 75° of the stand's heading, pulls straight in and takes no turn.
 
-- **Arrivals** take a custom turn-around route: they come in off the lead-in and swing out to the side with fewer neighbouring stands. They loop round behind the stop mark (scaled by `TurnAroundMeters`) and come back along the centreline, facing out, with about three wheelbases of straight so the main gear lines up.
+- **Arrivals** take a custom turn-around route: they come in off the lead-in and swing out to the side with fewer neighbouring stands. If that side leaves mapped pavement (taxi network and other stands) by over 10 m more than the other, they take the other. They loop round behind the stop mark (scaled by `TurnAroundMeters`) and come back along the centreline, facing out, with about three wheelbases of straight so the main gear lines up.
 - **Departures** from such stands start without a pushback: after the start-up approval (`ClearPushback`) the aircraft taxis straight out.
 
 The sweep tests fly 44 injected arrivals across LKPR stands and runways. All park within 3° of the stand heading and 1 m of the stop mark.
