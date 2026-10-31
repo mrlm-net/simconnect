@@ -54,6 +54,9 @@ const (
 	reqAircraft uint32 = 2001
 	evPause     uint32 = 2010
 	evCom1Set   uint32 = 2011 // COM_RADIO_SET_HZ: the map tunes the user's COM1
+	// A scene's time of day (Scene.Local).
+	evZuluHours   uint32 = 2017
+	evZuluMinutes uint32 = 2018
 	// The simulation from the map: pause and resume, rate up and down.
 	evPauseOn  uint32 = 2012
 	evPauseOff uint32 = 2013
@@ -622,6 +625,11 @@ func runOn(ctx context.Context, st *state, client engine.Client, stream <-chan e
 		fmt.Fprintln(stdout, "❌ SubscribeToSystemEvent(Pause):", err)
 	}
 	// Following COM1 both ways: a frequency picked on the map tunes it.
+	for id, name := range map[uint32]string{evZuluHours: "ZULU_HOURS_SET", evZuluMinutes: "ZULU_MINUTES_SET"} {
+		if err := client.MapClientEventToSimEvent(id, name); err != nil {
+			fmt.Fprintf(stdout, "❌ MapClientEventToSimEvent(%s): %v\n", name, err)
+		}
+	}
 	if err := client.MapClientEventToSimEvent(evCom1Set, "COM_RADIO_SET_HZ"); err != nil {
 		fmt.Fprintln(stdout, "❌ MapClientEventToSimEvent(COM_RADIO_SET_HZ):", err)
 	}
@@ -801,6 +809,24 @@ func runOn(ctx context.Context, st *state, client engine.Client, stream <-chan e
 	cameraHeard.Store(&cam)
 	defer cameraHeard.Store(nil)
 	st.mu.Lock()
+	cam.simTime = func() (zulu, local float64, ok bool) {
+		st.mu.Lock()
+		defer st.mu.Unlock()
+		if st.aircraft == nil {
+			return 0, 0, false
+		}
+		return st.aircraft.ZuluSec, st.aircraft.LocalSec, true
+	}
+	cam.setZulu = func(hours, minutes uint32) error {
+		return cc.do(func() error {
+			for ev, v := range map[uint32]uint32{evZuluHours: hours, evZuluMinutes: minutes} {
+				if err := client.TransmitClientEvent(types.SIMCONNECT_OBJECT_ID_USER, ev, v, types.SIMCONNECT_GROUP_PRIORITY_HIGHEST, types.SIMCONNECT_EVENT_FLAG_GROUPID_IS_PRIORITY); err != nil {
+					return err
+				}
+			}
+			return nil
+		})
+	}
 	st.camera = cam
 	st.mu.Unlock()
 	defer func() {

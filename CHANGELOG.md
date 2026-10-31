@@ -7,6 +7,12 @@ This project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 ---
 
+## [0.159.0] - 2026-10-31
+
+### Added
+
+- `Scene.Local`: the time of day a scene plays at, put back when it ends (#1353).
+
 ## [0.158.0] - 2026-10-31
 
 ### Added

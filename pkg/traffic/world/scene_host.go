@@ -4,6 +4,7 @@ import (
 	"cmp"
 	"errors"
 	"fmt"
+	"math"
 	"net/http"
 	"net/url"
 	"slices"
@@ -156,6 +157,11 @@ func (sc Scene) validate() error {
 	if err := validLines(sc, roles); err != nil {
 		return err
 	}
+	if sc.Local != "" {
+		if _, err := localSeconds(sc.Local); err != nil {
+			return fmt.Errorf("scene: %w", err)
+		}
+	}
 	listen := func(what, l string) error {
 		if l != "" && !roles[l] && !isFrequency(l) {
 			return fmt.Errorf("scene: %s: listen %q: a role or a frequency", what, l)
@@ -284,6 +290,45 @@ func (r *sceneRun) sayLines(icao string) {
 			cc.radio.Script(icao, tx)
 		}
 		time.Sleep(50 * time.Millisecond)
+	}
+}
+
+// localSeconds is a time of day "HH:MM" in seconds since midnight.
+func localSeconds(s string) (float64, error) {
+	t, err := time.Parse("15:04", s)
+	if err != nil {
+		return 0, fmt.Errorf("time of day %q: want HH:MM", s)
+	}
+	return float64(t.Hour()*3600 + t.Minute()*60), nil
+}
+
+// sceneTime sets the simulator's clock to local and gives what puts it back to
+// where it would have been by then; nil if it could not. Measured live (MSFS 2024,
+// LKPR, 2026-10-31): ZULU_HOURS_SET takes effect within the second and the part of
+// the day follows; our traffic runs on its own clock and takes no notice.
+func (m *cameraMan) sceneTime(local string, logf func(string, ...any)) func() {
+	sec, err := localSeconds(local)
+	if err != nil || m.simTime == nil || m.setZulu == nil {
+		return nil
+	}
+	zulu, now, ok := m.simTime()
+	if !ok {
+		logf("time of day: the simulator's not known yet")
+		return nil
+	}
+	set := func(z float64) error {
+		day := int(math.Mod(math.Mod(z, 86400)+86400, 86400))
+		return m.setZulu(uint32(day/3600), uint32(day%3600/60))
+	}
+	if err := set(sec - (now - zulu)); err != nil {
+		logf("time of day: %v", err)
+		return nil
+	}
+	began := m.cc.clock.Now()
+	return func() {
+		if err := set(zulu + m.cc.clock.Now().Sub(began).Seconds()); err != nil {
+			logf("time of day back: %v", err)
+		}
 	}
 }
 

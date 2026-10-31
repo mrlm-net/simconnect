@@ -105,6 +105,9 @@ type cameraMan struct {
 	// towerAt: the airport whose tower watches (the one on the map), for
 	// the user's aircraft when none of ours is there to watch.
 	towerAt string
+	// simTime and setZulu: the simulator's time of day, for a scene's Local.
+	simTime func() (zulu, local float64, ok bool)
+	setZulu func(hours, minutes uint32) error
 }
 
 func newCameraMan(cc *controlCenter, client engine.Client) *cameraMan {

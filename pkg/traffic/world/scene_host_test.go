@@ -24,6 +24,7 @@ func TestSceneValidate(t *testing.T) {
 		{"cue role", Scene{Cast: cast, Beats: []SceneBeat{{Cue: "arr:airborne"}}}, "cue"},
 		{"cue no event", Scene{Cast: cast, Beats: []SceneBeat{{Cue: "dep"}}}, "cue"},
 		{"cue time", Scene{Cast: cast, Beats: []SceneBeat{{Cue: "t:soon"}}}, "seconds"},
+		{"local", Scene{Cast: cast, Local: "evening"}, "HH:MM"},
 		{"line nobody", Scene{Cast: cast, Lines: []SceneLine{{Text: "x", Frequency: "118.10"}}}, "nobody"},
 		{"line no text", Scene{Cast: cast, Lines: []SceneLine{{Who: "dep"}}}, "no text"},
 		{"line station", Scene{Cast: cast, Lines: []SceneLine{{Who: "Prague Tower", Text: "x"}}}, "without a frequency"},
