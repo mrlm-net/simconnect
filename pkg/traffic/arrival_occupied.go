@@ -136,7 +136,7 @@ func (c *ArrivalController) taxiPathFrom(nose airport.LatLon, from int) (*Ground
 	route := c.plan.Route.Points
 	stopNose := NoseGear(c.plan.Stop, c.standHeading, prof)
 	axis := offsetHeading(stopNose, c.standHeading, -standAxisMeters)
-	faceOut := len(route) > 1 && leadInAhead(c.req.Graph, c.req.Parking, route[len(route)-2])
+	faceOut := turnsOnStand(c.req.Graph, c.req.Parking, route, from)
 	last := from - 1
 	for i := from; i < len(route)-1; i++ {
 		if faceOut || alongHeading(stopNose, c.standHeading, route[i]) <= -standAxisMeters {
