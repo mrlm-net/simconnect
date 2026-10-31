@@ -190,7 +190,7 @@ type controlled struct {
 	lastATC   string
 	lastATCAt time.Time
 	taxiSaid  string // the last taxi clearance said to it (#1269)
-	visual    bool // cleared for a visual approach, as the crew asked (#766)
+	visual    bool   // cleared for a visual approach, as the crew asked (#766)
 	// circuit: a VFR arrival's circuit (#568); downwindSaid once it has
 	// reported downwind.
 	circuit      *traffic.Circuit
@@ -201,7 +201,7 @@ type controlled struct {
 	// landedNoted: its landing noted for those behind it.
 	wakeCautioned atomic.Bool
 	landedNoted   bool
-	ifrCancelled bool // cancelled IFR with approach, at a field without a tower (#1305)
+	ifrCancelled  bool // cancelled IFR with approach, at a field without a tower (#1305)
 	// tngRolling: on the runway for a touch-and-go; once in the circuit
 	// again its calls start afresh (#569).
 	tngRolling bool
@@ -590,7 +590,7 @@ type controlCenter struct {
 	scan   []Traffic
 	// scanNow: the same for the camera (spots.go).
 	scanNow atomic.Pointer[scanned]
-	gameAt time.Time
+	gameAt  time.Time
 	// jw: jetways for our traffic (jetways.go, #572); airportRefs the
 	// airports the simulator knows (a retract plan's destination).
 	jw          jetwayState
@@ -1798,7 +1798,11 @@ func departureActions(s traffic.TaxiState, holdingShortOf string, ctl departureC
 		// Nor here: a departure taxiing is minutes and a mile from the
 		// runway, and the runway is not even known to be free yet. `upto` is
 		// the clearance that means something while it taxis, and `hold` is
-		// the one that stops it.
+		// the one that stops it. Only with the runway next and close may it
+		// be told to line up, by a controller who knows the sequence (#1331).
+		if ctl != nil && ctl.RunwayNext() {
+			return notAgain(ctl, []string{"hold", "taxi", "upto", "lineup"})
+		}
 		return notAgain(ctl, []string{"hold", "taxi", "upto"})
 	case traffic.TaxiHoldingShort:
 		if r := ctl.Route(); r != nil && holdingShortOf != r.Runway {
@@ -2534,7 +2538,15 @@ func registerControl(mux *http.ServeMux, st *state) {
 		// `", "` — so the page swapped a sentence nobody would say for a fragment
 		// nobody would say. An action with no phrase right now answers empty, and
 		// the page shows no line at all.
-		t := it.phrase(r.PathValue("action"), node)
+		if s := r.URL.Query().Get("taxiway"); s != "" && r.PathValue("action") == "upto" && node < 0 {
+			n, err := it.holdShortNode(s)
+			if err != nil {
+				http.Error(w, err.Error(), http.StatusUnprocessableEntity)
+				return
+			}
+			node = n
+		}
+		t := it.qualified(r.PathValue("action"), it.phrase(r.PathValue("action"), node), r)
 		if t.Intent == "" {
 			writeJSON(w, ClearancePhrase{})
 			return
@@ -2627,7 +2639,14 @@ func registerControl(mux *http.ServeMux, st *state) {
 				http.Error(w, "level: feet", http.StatusBadRequest)
 				return
 			}
-			if err := it.climbTo(ft); err != nil {
+			through := 0.0
+			if s := r.URL.Query().Get("through"); s != "" {
+				if through, err = strconv.ParseFloat(s, 64); err != nil || through <= 0 {
+					http.Error(w, "through: feet", http.StatusBadRequest)
+					return
+				}
+			}
+			if err := it.climbTo(ft, through, through > 0 || r.URL.Query().Get("expedite") == "1"); err != nil {
 				http.Error(w, err.Error(), http.StatusUnprocessableEntity)
 				return
 			}
@@ -2754,7 +2773,7 @@ func registerControl(mux *http.ServeMux, st *state) {
 		}
 		// No limit given is not a limit behind it (#1308): "not ahead on the
 		// taxi route" sent a host looking at the route.
-		if a := r.PathValue("action"); (a == "upto" || a == "vacate" && r.URL.Query().Get("side") == "") && r.URL.Query().Get("node") == "" {
+		if a := r.PathValue("action"); (a == "upto" && r.URL.Query().Get("taxiway") == "" || a == "vacate" && r.URL.Query().Get("side") == "") && r.URL.Query().Get("node") == "" {
 			what := map[string]string{"upto": "the clearance limit", "vacate": "the exit"}[a]
 			http.Error(w, a+": ?node= "+what+" is required", http.StatusBadRequest)
 			return
@@ -2770,6 +2789,15 @@ func registerControl(mux *http.ServeMux, st *state) {
 				return
 			}
 			node = airport.NodeID(n)
+		}
+		// A limit by name (?taxiway=B): where its route first meets it.
+		if s := r.URL.Query().Get("taxiway"); s != "" && r.PathValue("action") == "upto" && node < 0 {
+			n, err := it.holdShortNode(s)
+			if err != nil {
+				http.Error(w, err.Error(), http.StatusUnprocessableEntity)
+				return
+			}
+			node = n
 		}
 		action := r.PathValue("action")
 		// Vacate by side alone (?side=left): the first exit there it can make.
@@ -2823,6 +2851,13 @@ func registerControl(mux *http.ServeMux, st *state) {
 		// A pushback facing a compass direction ("east"): planned again so.
 		facing := r.URL.Query().Get("facing")
 		do := func() error { return it.act(action, node) }
+		// Told not to linger (?immediate=1, ?nodelay=1): the crew rolls at once.
+		if q := r.URL.Query(); action == "takeoff" && it.dep != nil && (q.Get("immediate") == "1" || q.Get("nodelay") == "1") {
+			do = func() error {
+				it.dep.Expedite(true)
+				return it.act(action, node)
+			}
+		}
 		if (action == "pushback" || action == "pushstart") && facing != "" && it.dep != nil {
 			start := action == "pushstart"
 			do = func() error {
@@ -2864,7 +2899,7 @@ func registerControl(mux *http.ServeMux, st *state) {
 			// Said by the exchange they start (live in the test: "Airfrans
 			// 1288, clearance" before the clearance itself).
 		default:
-			it.say(it.phrase(action, node))
+			it.say(it.qualified(action, it.phrase(action, node), r))
 		}
 		if action == "remove" {
 			it.stands.ReleaseOwner(it.Tail)
@@ -4197,6 +4232,8 @@ func (it *controlled) phraseView(v ControlView, r *airport.Route, action string,
 				limit := r.Edges[i-1].Name
 				if i < len(r.Edges) && r.Edges[i].Name != "" && r.Edges[i].Name != limit {
 					limit = r.Edges[i].Name // hold short of the taxiway joined there
+				} else if c := it.crossingAt(node, limit); c != "" || i < len(r.Edges) {
+					limit = c // on along it: the one crossing there, or a marked point
 				}
 				return traffic.ClearedTaxiUpTo(call, spoken(i), limit)
 			}
@@ -4211,7 +4248,7 @@ func (it *controlled) phraseView(v ControlView, r *airport.Route, action string,
 	case "hold":
 		return traffic.HoldPosition(call)
 	case "land":
-		return traffic.ClearedToLand(call, rwy, it.cc.windSaid(it.ICAO))
+		return traffic.LandingAhead(traffic.ClearedToLand(call, rwy, it.cc.windSaid(it.ICAO)), it.landAhead())
 	case "lineupbehind":
 		what := "aircraft"
 		if it.cc.behindSaid != nil {

@@ -4,8 +4,8 @@ import (
 	"fmt"
 	"math"
 	"math/rand/v2"
-	"strconv"
 	"slices"
+	"strconv"
 	"strings"
 	"sync"
 	"time"
@@ -203,6 +203,8 @@ const (
 	ParamFromTouchdown = "from_touchdown" // on vectors: its distance from touchdown, NM (approach clearance)
 	ParamRush          = "rush"           // "1": expedite (immediate take-off, expedite crossing, vacating, climb)
 	ParamNoDelay       = "no_delay"       // a take-off with traffic on final: its distance in whole NM, "5"
+	ParamThrough       = "through"        // an expedited climb or descent: only through this level, as said
+	ParamAhead         = "ahead"          // a landing clearance: the traffic ahead, "departing" or "landing"
 	ParamCircuit       = "circuit"        // a position in the circuit as said: "left downwind", "base", "final"
 	ParamInstr         = "instr"          // an approach instruction or delay as said: "extend downwind", "orbit right"
 	ParamType          = "type"           // an aircraft type as said: "Cessna 172"
@@ -298,9 +300,15 @@ func phraseFAA(cs string, in Intent, p map[string]string) (string, bool) {
 		}
 		return fmt.Sprintf("%s, %s, line up and wait", cs, rwy), true // 3-9-4
 	case IntentTakeoff:
+		if p[ParamRush] != "" {
+			return fmt.Sprintf("%s, %s, cleared for immediate takeoff", cs, rwy), true
+		}
+		if p[ParamNoDelay] != "" {
+			return fmt.Sprintf("%s, %s, cleared for takeoff, no delay", cs, rwy), true
+		}
 		return fmt.Sprintf("%s, %s, cleared for takeoff", cs, rwy), true // 3-9-10; civil: no wind
 	case IntentLanding:
-		return fmt.Sprintf("%s, runway %s, cleared to land", cs, p[ParamRunway]), true // 3-10-5
+		return fmt.Sprintf("%s, runway %s, cleared to land%s", cs, p[ParamRunway], aheadSaid(p)), true // 3-10-5
 	case IntentApproachClearance:
 		kind, turn := p[ParamApproach], ""
 		if p[ParamIntercept] != "" { // on vectors: the turn first (5-9-4)
@@ -446,12 +454,15 @@ func phrase(cs string, in Intent, p map[string]string) string {
 		if p[ParamRush] != "" {
 			return fmt.Sprintf("%s, %s, cleared for immediate take-off%s", cs, runwayAt(p), wind) // CAP 413 4.30
 		}
+		if p[ParamNoDelay] == "0" {
+			return fmt.Sprintf("%s, %s, cleared for take-off%s, no delay", cs, runwayAt(p), wind)
+		}
 		if p[ParamNoDelay] != "" {
 			return fmt.Sprintf("%s, %s, cleared for take-off%s, no delay, traffic on %s mile final", cs, runwayAt(p), wind, p[ParamNoDelay])
 		}
 		return fmt.Sprintf("%s, %s, cleared for take-off%s", cs, runwayAt(p), wind) // 12.3.4.11 a; at an intersection, JO 7110.65 3-9-10
 	case IntentLanding:
-		return fmt.Sprintf("%s, runway %s, cleared to land%s", cs, p[ParamRunway], wind) // 12.3.4.16 a
+		return fmt.Sprintf("%s, runway %s, cleared to land%s%s", cs, p[ParamRunway], wind, aheadSaid(p)) // 12.3.4.16 a
 	case IntentContinueTaxi:
 		return cs + ", continue taxi"
 	case IntentHoldShort:
@@ -578,8 +589,14 @@ func phrase(cs string, in Intent, p map[string]string) string {
 		if p[ParamSlower] == "true" {
 			verb = "reduce"
 		}
+		if p[ParamRush] != "" {
+			why = ", expedite" + why
+		}
 		return fmt.Sprintf("%s, %s speed to %s%s", cs, verb, spokenSpeed(p[ParamSpeed]), why) // 12.4.1.6
 	case IntentLevel:
+		if p[ParamRush] != "" {
+			return cs + ", " + levelExpedited(p) + why
+		}
 		switch p[ParamClimb] {
 		case "stop":
 			return fmt.Sprintf("%s, stop descent at %s%s", cs, p[ParamLevel], why)
@@ -1162,6 +1179,95 @@ func ClearedTakeoff(cs, runway, wind string) Transmission {
 func ClearedTakeoffNoDelay(cs, runway, wind string, finalNM float64) Transmission {
 	return Say(Transmission{Position: PosTower, Callsign: cs, Intent: IntentTakeoff, Params: map[string]string{
 		ParamRunway: runway, ParamWind: wind, ParamNoDelay: fmt.Sprint(int(math.Max(1, math.Round(finalNM))))}})
+}
+
+// NoDelayed is a take-off clearance t to be taken without delay, with the
+// distance of the traffic on final (0: no traffic to name): "cleared for
+// take-off, no delay, traffic on 3 mile final" (#1331).
+func NoDelayed(t Transmission, finalNM float64) Transmission {
+	if t.Intent != IntentTakeoff {
+		return t
+	}
+	p := map[string]string{ParamNoDelay: "0"}
+	if finalNM > 0 {
+		p[ParamNoDelay] = fmt.Sprint(int(math.Max(1, math.Round(finalNM))))
+	}
+	for k, v := range t.Params {
+		p[k] = v
+	}
+	t.Params = p
+	return Say(t)
+}
+
+// LandingAhead is a landing clearance t naming the traffic ahead on the
+// runway, "departing" or "landing" ("" none): "cleared to land, traffic
+// departing ahead" (#1331).
+func LandingAhead(t Transmission, ahead string) Transmission {
+	if t.Intent != IntentLanding || ahead == "" {
+		return t
+	}
+	p := map[string]string{ParamAhead: ahead}
+	for k, v := range t.Params {
+		p[k] = v
+	}
+	t.Params = p
+	return Say(t)
+}
+
+// HoldShortOf is a taxi clearance up to a limit t with the limit named: the
+// taxiway the player gave, where others meet at the same node (#1331).
+func HoldShortOf(t Transmission, taxiway string) Transmission {
+	if t.Intent != IntentTaxiLimit {
+		return t
+	}
+	p := map[string]string{}
+	for k, v := range t.Params {
+		p[k] = v
+	}
+	p[ParamLimit] = taxiway
+	t.Params = p
+	return Say(t)
+}
+
+// aheadSaid is the traffic ahead of a landing clearance, "" none.
+func aheadSaid(p map[string]string) string {
+	if p[ParamAhead] == "" {
+		return ""
+	}
+	return ", traffic " + p[ParamAhead] + " ahead"
+}
+
+// Expedited is a climb, a descent or a speed told to hurry (#1331): "expedite
+// climb to FL 120", through a level only "climb to FL 120, expedite through
+// FL 80" (through as said, "" the whole way). Others are returned as they are.
+func Expedited(t Transmission, through string) Transmission {
+	switch {
+	case t.Intent == IntentSpeed && t.Params[ParamResume] == "":
+	case t.Intent == IntentLevel && (t.Params[ParamClimb] == "climb" || t.Params[ParamClimb] == "descend"):
+	default:
+		return t
+	}
+	p := map[string]string{ParamRush: "1"}
+	if through != "" {
+		p[ParamThrough] = through
+	}
+	for k, v := range t.Params {
+		p[k] = v
+	}
+	t.Params = p
+	return Say(t)
+}
+
+// levelExpedited is an expedited climb or descent as said, without callsign.
+func levelExpedited(p map[string]string) string {
+	if p[ParamThrough] != "" {
+		return fmt.Sprintf("%s to %s, expedite through %s", p[ParamClimb], p[ParamLevel], p[ParamThrough])
+	}
+	noun := "climb"
+	if p[ParamClimb] == "descend" {
+		noun = "descent"
+	}
+	return fmt.Sprintf("expedite %s to %s", noun, p[ParamLevel])
 }
 
 // ClearedToLand clears the landing on runway, with the wind (WindSaid, ""

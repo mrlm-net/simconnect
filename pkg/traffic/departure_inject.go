@@ -2149,6 +2149,23 @@ func (c *TaxiController) ClearToLineUp() {
 	c.lineUpCleared = true
 }
 
+// lineUpAheadMeters: how far from the holding point a taxiing departure may
+// be told to line up (#1331): under a minute away at taxi speed, when the
+// sequence at the runway is known. Further out it is not.
+const lineUpAheadMeters = 800.0
+
+// RunwayNext says the aircraft is taxiing and the departure runway is the next
+// thing it meets, close: no limit and no crossing on the way, lineUpAheadMeters
+// or less to go.
+func (c *TaxiController) RunwayNext() bool {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	if c.mover == nil || c.state != TaxiTaxiing || c.hasLimit || c.hasPendingLimit || c.nextCross < len(c.crossZones) {
+		return false
+	}
+	return c.mover.Path().Length()-c.mover.Pose().Distance <= lineUpAheadMeters
+}
+
 // ClearToCross clears an injected departure to cross the runway it holds
 // short of (or, given earlier, the next crossing ahead).
 func (c *TaxiController) ClearToCross() {
@@ -2352,6 +2369,12 @@ func (c *TaxiController) DirectTo(pos airport.LatLon, altFt, kts float64, fix ai
 // climbs on past the top of its SID ("identified, climb to flight level
 // 240": live, EZY516 levelled at the SID's 10000 ft for good).
 func (c *TaxiController) ClimbTo(pos airport.LatLon, altFt, ft float64) error {
+	return c.ClimbExpedited(pos, altFt, ft, 0)
+}
+
+// ClimbExpedited is ClimbTo at expeditedFPM as far as throughFt (ft for the
+// whole climb, 0 not expedited), on at the usual rate from there (#1331).
+func (c *TaxiController) ClimbExpedited(pos airport.LatLon, altFt, ft, throughFt float64) error {
 	c.mu.Lock()
 	c.climbCapFt = 0 // cleared higher: the restriction after departure ends
 	if c.state != TaxiComplete {
@@ -2366,11 +2389,22 @@ func (c *TaxiController) ClimbTo(pos airport.LatLon, altFt, ft float64) error {
 	if len(plan) == 0 {
 		return errors.New("traffic: climb: not handed over to MSFS AI")
 	}
-	route := []RoutePoint{{Position: pos, AltFt: altFt, Kts: plan[0].Kts}}
+	return c.Reroute(climbRoute(pos, altFt, ft, throughFt, plan))
+}
+
+// climbRoute is a climb from altFt to ft on the way to plan: expedited as far
+// as throughFt (0 not), then at climbOnFPM, then along the plan.
+func climbRoute(pos airport.LatLon, altFt, ft, throughFt float64, plan []RoutePoint) []RoutePoint {
+	kts := plan[0].Kts
+	route := []RoutePoint{{Position: pos, AltFt: altFt, Kts: kts}}
+	if p, ok := expeditePoint(pos, plan[0].Position, altFt, throughFt, kts); ok && throughFt > altFt {
+		route = append(route, RoutePoint{Position: p, AltFt: throughFt, Kts: kts})
+		pos, altFt = p, throughFt
+	}
 	// The level reached at a climb's rate on the way to the next point,
 	// not by that point: a leg of tens of miles made the climb a few
 	// hundred feet a minute (#1096, a staffed departure cleared on).
-	if kts := plan[0].Kts; ft > altFt && kts > 0 {
+	if kts > 0 && ft > altFt {
 		at := (ft - altFt) / climbOnFPM * kts * 1852 / 60
 		if d := calc.HaversineMeters(pos.Lat, pos.Lon, plan[0].Position.Lat, plan[0].Position.Lon); at < d {
 			lat, lon := calc.DisplaceByHeading(pos.Lat, pos.Lon, calc.BearingDegrees(pos.Lat, pos.Lon, plan[0].Position.Lat, plan[0].Position.Lon), at)
@@ -2381,11 +2415,30 @@ func (c *TaxiController) ClimbTo(pos airport.LatLon, altFt, ft float64) error {
 		p.AltFt = math.Max(p.AltFt, ft)
 		route = append(route, p)
 	}
-	return c.Reroute(route)
+	return route
 }
 
-// climbOnFPM: the rate ClimbTo plans the climb at.
-const climbOnFPM = 2000.0
+// expeditePoint is where a climb or descent at expeditedFPM from fromFt
+// reaches toFt, flying from pos toward next at kts; false when it would not
+// before next, or there is no such level (toFt 0).
+func expeditePoint(pos, next airport.LatLon, fromFt, toFt, kts float64) (airport.LatLon, bool) {
+	if toFt <= 0 || kts <= 0 || toFt == fromFt {
+		return airport.LatLon{}, false
+	}
+	at := math.Abs(toFt-fromFt) / expeditedFPM * kts * 1852 / 60
+	if at >= calc.HaversineMeters(pos.Lat, pos.Lon, next.Lat, next.Lon) {
+		return airport.LatLon{}, false
+	}
+	lat, lon := calc.DisplaceByHeading(pos.Lat, pos.Lon, calc.BearingDegrees(pos.Lat, pos.Lon, next.Lat, next.Lon), at)
+	return airport.LatLon{Lat: lat, Lon: lon}, true
+}
+
+// climbOnFPM: the rate ClimbTo plans the climb at. expeditedFPM: told to
+// expedite, the climb or the descent (#1331).
+const (
+	climbOnFPM   = 2000.0
+	expeditedFPM = 3000.0
+)
 
 // Reroute sends a departure handed to MSFS AI on route (from where it is
 // now, as ResolvedRoute gives it), flown as waypoints like an en route

@@ -1058,6 +1058,13 @@ func (c *ArrivalController) StopDescent(altFt, forNM float64) error {
 // tried and they met at 0.4 NM). The align and join points are never
 // touched. ErrNotOnProcedure on the final, ErrHolding in the hold.
 func (c *ArrivalController) DescendTo(altFt float64) error {
+	return c.DescendExpedited(0, altFt, 0, 0)
+}
+
+// DescendExpedited is DescendTo at expeditedFPM from fromFt as far as
+// throughFt (altFt for the whole descent, 0 not expedited), flying at kts; down
+// to the next waypoint's own descent from there (#1331).
+func (c *ArrivalController) DescendExpedited(fromFt, altFt, throughFt, kts float64) error {
 	c.mu.Lock()
 	defer c.mu.Unlock()
 	if !c.flyingProc || c.proc == nil || len(c.proc.Waypoints) < 3 {
@@ -1080,6 +1087,13 @@ func (c *ArrivalController) DescendTo(altFt float64) error {
 		return out
 	}
 	out := lower(wps[next:], final-next)
+	if len(out) > 0 && throughFt < fromFt {
+		first := out[0]
+		if p, ok := expeditePoint(c.last.Position, airport.LatLon{Lat: first.Latitude, Lon: first.Longitude}, fromFt, throughFt, kts); ok {
+			first.Latitude, first.Longitude, first.Altitude = p.Lat, p.Lon, throughFt
+			out = append([]types.SIMCONNECT_DATA_WAYPOINT{first}, out...)
+		}
+	}
 	if err := c.fleet.SetWaypoints(c.objectID, c.defBase+arrDefWaypoints, out); err != nil {
 		return err
 	}

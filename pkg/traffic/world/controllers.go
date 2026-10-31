@@ -15,6 +15,8 @@ type departureCtl interface {
 	Occupies() (airport.Occupied, bool)
 	AvoidOccupied(occ []airport.Occupied) bool
 	ClimbTo(pos airport.LatLon, altFt, ft float64) error
+	ClimbExpedited(pos airport.LatLon, altFt, ft, throughFt float64) error
+	RunwayNext() bool
 	SetPushbackAt(at time.Time) bool
 	DelayPushback(d time.Duration) bool
 	ClearPushback()
@@ -67,6 +69,7 @@ type arrivalCtl interface {
 	TaxiInForce(node airport.NodeID) bool
 	DirectToJoin() error
 	DescendTo(altFt float64) error
+	DescendExpedited(fromFt, altFt, throughFt, kts float64) error
 	DirectTo(p airport.LatLon) (string, traffic.Vector, error)
 	JoinFinal(p airport.LatLon) (float64, traffic.Vector, error)
 	AssignSpeed(kts float64) (float64, error)

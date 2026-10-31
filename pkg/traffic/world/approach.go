@@ -72,12 +72,16 @@ type spacing struct {
 	// mark: what is said for it, as the conflict watch marks it (the
 	// safety net, #1096); nil as it is.
 	mark func(traffic.Transmission) traffic.Transmission
+	// expedite: a descent or a speed told to hurry, a descent only through
+	// throughFt if set (#1331).
+	expedite  bool
+	throughFt float64
 }
 
 // approachSpace has callsign lose delay within withinNM, before it meets
 // the arrival ahead, what it is told passed through mark (nil none).
 func (q *sequences) approachSpace(icao, callsign string, delay time.Duration, withinNM float64, mark func(traffic.Transmission) traffic.Transmission) error {
-	return q.approachDo(icao, callsign, "slow", nil, 0, 0, spacing{delay, withinNM, mark})
+	return q.approachDo(icao, callsign, "slow", nil, 0, 0, spacing{delay: delay, withinNM: withinNM, mark: mark})
 }
 
 // approachDo is approachActionAt, a "slow" for spacing with sp.
@@ -139,7 +143,11 @@ func (q *sequences) approachDo(icao, callsign, action string, at *airport.LatLon
 			return err
 		}
 		if kts > 0 {
-			it.say(traffic.SpeedAssigned(callsign, set, now))
+			said := traffic.SpeedAssigned(callsign, set, now)
+			if sp.expedite {
+				said = traffic.Expedited(said, "")
+			}
+			it.say(said)
 			told = fmt.Sprintf("speed %.0f kt", set)
 		} else {
 			it.say(traffic.SpeedAssigned(callsign, 0, now))
@@ -262,21 +270,33 @@ func (q *sequences) approachDo(icao, callsign, action string, at *airport.LatLon
 		if ft <= 0 {
 			return errors.New("descend needs a level in feet")
 		}
-		alt, id := 0.0, it.object()
+		alt, gs, id := 0.0, 0.0, it.object()
 		for _, a := range q.cc.world.Aircraft() {
 			if a.ObjectID == id {
-				alt = a.AltFt
+				alt, gs = a.AltFt, a.GroundKts
 			}
 		}
 		if alt > 0 && ft >= alt-100 {
 			return fmt.Errorf("at %.0f ft: %.0f ft is no descent", alt, ft)
 		}
-		if err := q.cc.do(func() error { return it.arr.DescendTo(ft) }); err != nil {
+		if t := sp.throughFt; t > 0 && (t <= ft || alt > 0 && t >= alt) {
+			return fmt.Errorf("at %.0f ft, descending to %.0f ft: %.0f ft is not on the way", alt, ft, t)
+		}
+		fast := sp.throughFt
+		if sp.expedite && fast == 0 {
+			fast = ft
+		}
+		if err := q.cc.do(func() error { return it.arr.DescendExpedited(alt, ft, fast, gs) }); err != nil {
 			return err
 		}
 		ta := q.cc.taOf(icao)
-		it.say(traffic.Descend(traffic.PosApproach, callsign, ft, ta))
+		said := traffic.Descend(traffic.PosApproach, callsign, ft, ta)
 		told = "descend to " + traffic.LevelSaidAbove(ft, ta)
+		if sp.expedite {
+			said = traffic.Expedited(said, throughSaid(sp.throughFt, ta))
+			told = "expedite " + told
+		}
+		it.say(said)
 		q.cc.log.printf("%-6s approach: %s (on the map)", callsign, told)
 	case "goaround":
 		// On the connection's goroutine, as every SimConnect call.
@@ -323,11 +343,15 @@ func registerApproach(mux *http.ServeMux, st *state) {
 			Lat, Lon *float64
 			Kts      float64 // speed: the speed, 0 normal speed
 			Ft       float64 // descend: the level, feet (#1164)
+			// descend, speed: told to hurry; a descent only through ThroughFt (#1331).
+			Expedite  bool
+			ThroughFt float64
 		}
 		if json.NewDecoder(r.Body).Decode(&body) == nil && body.Lat != nil && body.Lon != nil {
 			at = &airport.LatLon{Lat: *body.Lat, Lon: *body.Lon}
 		}
-		err := q.approachActionAt(strings.ToUpper(r.PathValue("icao")), r.PathValue("callsign"), r.PathValue("action"), at, body.Kts, body.Ft)
+		err := q.approachDo(strings.ToUpper(r.PathValue("icao")), r.PathValue("callsign"), r.PathValue("action"), at, body.Kts, body.Ft,
+			spacing{expedite: body.Expedite || body.ThroughFt > 0, throughFt: body.ThroughFt})
 		switch {
 		case errors.Is(err, traffic.ErrNotSequenced):
 			http.Error(w, err.Error(), http.StatusNotFound)
