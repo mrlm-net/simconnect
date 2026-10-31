@@ -110,15 +110,19 @@ func (d *groundDrive) advance() (GroundPose, error) {
 // is unknown, or when the step was restarted since (lastStep set anew).
 func (d *groundDrive) frameStep(now time.Time) float64 {
 	dt := math.Max(0, math.Min(now.Sub(d.lastStep).Seconds(), MaxFrameStepSeconds))
+	simStep := 0.0
 	if d.simNow > 0 && d.simLast > 0 && d.simAt.Equal(d.lastStep) {
 		if s := d.simNow - d.simLast; s >= 0 && s <= MaxFrameStepSeconds {
-			dt = s
+			dt, simStep = s, s
 			if s > 0 {
 				countFrame(d, s)
 			}
 		}
 	}
 	d.lastStep, d.simLast, d.simAt = now, d.simNow, now
+	if d.injector != nil {
+		d.injector.noteSimStep(d.object, simStep)
+	}
 	return dt
 }
 

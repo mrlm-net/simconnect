@@ -18,6 +18,7 @@ Smooth movement is not negotiable. One frame lasts 16.7 ms at 60 fps, and everyt
 - **`examples/glitch-watch`** traces every aircraft the map drives, every simulator frame. It reports jumps in position, height, pitch, bank or heading, with the frames around each one saved as CSV.
   - Run it during every live test, and read its log before saying the motion is right.
   - A position jump at a steady speed, where the distance per frame stays even over wall time, is the simulator's own frame hitch: everything stutters with it. A jump where one frame carries several frames of distance after a pause is ours.
+- **The jump trace:** a placement farther from the last than its speed explains, or turned more than 3° (45°/s on a long frame), is logged with who placed it. `sim step` on the line is how far the simulator's clock moved the aircraft: a distance it explains came from that clock, one it doesn't is a wrong placement of ours. Tugs and other vehicles have no sim step.
 - **The slow-step log:** the World logs any step of the connection loop over 40 ms (`slowStep`), naming it:
   - `slow: command …(*controlCenter).do.func1 took 181ms`: a command, such as a spawn, ran on the loop;
   - `CSA1991 slow: its frame took 42ms (awaiting pushback)`: one controller's frame.

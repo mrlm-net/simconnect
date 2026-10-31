@@ -20,7 +20,10 @@ import (
 const (
 	jumpTraceMarginM = 1.0
 	jumpTraceDeg     = 3.0
-	jumpTraceGap     = 1500 * time.Millisecond // longer between two placements: not the same run (a still aircraft is placed every 30th frame)
+	// jumpTraceDegPerSec: a steady turn over a long frame is no jump (a tug on
+	// its 6 m arc at 9 kt turns 44°/s: 3.3° in a frame of 106 ms, live).
+	jumpTraceDegPerSec = 45.0
+	jumpTraceGap       = 1500 * time.Millisecond // longer between two placements: not the same run (a still aircraft is placed every 30th frame)
 )
 
 type lastSent struct {
@@ -45,11 +48,32 @@ func (i *Injector) traceJump(objectID uint32, o *injected, kind string, pos airp
 	d := localDist(last.pos, pos)
 	allowed := jumpAllowedM(math.Max(last.kts, kts), dt, last.gap)
 	turn := math.Abs(math.Remainder(hdg-last.hdg, 360))
-	if d <= allowed && turn <= jumpTraceDeg {
+	if d <= allowed && turn <= jumpTurnAllowed(dt) {
 		return
 	}
-	fmt.Fprintf(os.Stderr, "%s  jump trace: object %d %s %.1f m (%.1f allowed), %.1f° in %s at %.0f kt; %s\n",
-		now.Format("15:04:05.000"), objectID, kind, d, allowed, turn, dt.Round(time.Millisecond), kts, callers())
+	// The simulator's own step beside ours: the mover moved by it, so a distance
+	// it explains came from the simulator's clock, not from a wrong placement.
+	simStep := ""
+	if o.simStep > 0 {
+		simStep = fmt.Sprintf(", sim step %s", time.Duration(o.simStep*float64(time.Second)).Round(time.Millisecond))
+	}
+	fmt.Fprintf(os.Stderr, "%s  jump trace: object %d %s %.1f m (%.1f allowed), %.1f° in %s%s at %.0f kt; %s\n",
+		now.Format("15:04:05.000"), objectID, kind, d, allowed, turn, dt.Round(time.Millisecond), simStep, kts, callers())
+}
+
+// jumpTurnAllowed is how far a placement dt after the last may turn.
+func jumpTurnAllowed(dt time.Duration) float64 {
+	return math.Max(jumpTraceDeg, jumpTraceDegPerSec*dt.Seconds())
+}
+
+// noteSimStep tells the trace how far the simulator's clock moved objectID's
+// coming placement, seconds; 0 when it stepped by ours.
+func (i *Injector) noteSimStep(objectID uint32, seconds float64) {
+	i.mu.Lock()
+	defer i.mu.Unlock()
+	if o, ok := i.objects[objectID]; ok {
+		o.simStep = seconds
+	}
 }
 
 // jumpAllowedM is how far a placement dt after the last may lie at kts. Motion
