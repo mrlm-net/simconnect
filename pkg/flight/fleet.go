@@ -83,6 +83,8 @@ type GhostFleet struct {
 	nextReq uint32
 	placed  time.Time
 	stopped bool
+	// keep: flown whenever due, whatever the budget and the distance (Keep).
+	keep map[string]bool
 }
 
 // NewGhostFleet replays scene on player's clock.
@@ -197,6 +199,9 @@ func (f *GhostFleet) dueLocked(now time.Time) []SceneSample {
 			return calc.HaversineMeters(lat, lon, at[i].Sample.Lat, at[i].Sample.Lon) < calc.HaversineMeters(lat, lon, at[j].Sample.Lat, at[j].Sample.Lon)
 		})
 	}
+	if len(f.keep) > 0 {
+		sort.SliceStable(at, func(i, j int) bool { return f.keep[at[i].Aircraft.Key] && !f.keep[at[j].Aircraft.Key] })
+	}
 	if len(at) > f.opt.Budget {
 		at = at[:f.opt.Budget]
 	}
@@ -286,6 +291,29 @@ func (f *GhostFleet) Owns(objectID uint32) bool {
 		}
 	}
 	return false
+}
+
+// Keep says the aircraft of keys come first within the budget whenever they are
+// due, however far: a film's subjects. It replaces the keys before; takes effect
+// at the next Tick.
+func (f *GhostFleet) Keep(keys ...string) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	f.keep = make(map[string]bool, len(keys))
+	for _, k := range keys {
+		f.keep[k] = true
+	}
+}
+
+// ObjectOf is the object of the aircraft with key, 0 while it has none: not due,
+// over the budget, or not created yet.
+func (f *GhostFleet) ObjectOf(key string) uint32 {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	if g := f.live[key]; g != nil {
+		return g.obj
+	}
+	return 0
 }
 
 // Objects are the object IDs of the aircraft the fleet flies now.

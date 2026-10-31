@@ -7,6 +7,12 @@ This project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 ---
 
+## [0.158.0] - 2026-10-31
+
+### Added
+
+- Films of a replay on any ghost: `camera.OnObject`, a shot on an object only known as the replay plays; `flight.GhostFleet.Keep` flies a film's subjects whatever the budget and the distance; `GhostFleet.ObjectOf` gives an aircraft's object by its key (#1351).
+
 ## [0.157.0] - 2026-10-31
 
 ### Added

@@ -7,6 +7,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/mrlm-net/simconnect/pkg/camera"
 	"github.com/mrlm-net/simconnect/pkg/engine"
 	"github.com/mrlm-net/simconnect/pkg/types"
 )
@@ -125,5 +126,58 @@ func TestGhostFleetsShareConnection(t *testing.T) {
 	}
 	if len(ca.removed) > 0 || a.Owns(902) {
 		t.Errorf("fleet A removed %v, owns 902 %v", ca.removed, a.Owns(902))
+	}
+}
+
+// TestFilmOnAGhost: a film's subject is flown though it is the furthest and over
+// the budget, and a shot cued on it follows its object: held until the object is
+// there, on it once it is, held again when it is gone, on the new one after a seek.
+func TestFilmOnAGhost(t *testing.T) {
+	player := &Track{Samples: []Sample{{T: 100, Lat: 50, Lon: 14}, {T: 200, Lat: 50, Lon: 14}}}
+	sc := &Scene{Aircraft: []*SceneAircraft{
+		{Key: "NEAR", Title: "A320", Track: sceneTrack(100, 30, 50.01)},
+		{Key: "FAR", Title: "B738", Track: sceneTrack(110, 30, 51)}, // 110…139
+	}}
+	c, inj := &fleetClient{}, &fleetInj{}
+	p := NewPlayer(player)
+	f := NewGhostFleet(c, inj, sc, p, FleetOptions{Budget: 1})
+	now := time.Now()
+	shot := func(o uint32) camera.Shot { return camera.Flyover(o, camera.Size{Span: 34, Length: 37}, 1, 8*time.Second) }
+	tl := camera.NewTimeline(camera.Cue{At: 15 * time.Second, Shot: camera.OnObject(40*time.Second, func() uint32 { return f.ObjectOf("FAR") }, shot)})
+
+	p.Seek(15, now) // scene 115: both due, the budget takes the nearest
+	f.Tick(now)
+	if !slices.Equal(c.creates, []string{"A320"}) {
+		t.Fatalf("without Keep created %v", c.creates)
+	}
+	if f.ObjectOf("FAR") != 0 {
+		t.Error("an object for an aircraft not flown")
+	}
+	f.Keep("FAR")
+	f.Tick(now)
+	if c.creates[len(c.creates)-1] != "B738" || f.Live() != 1 {
+		t.Fatalf("Keep: created %v, %d live", c.creates, f.Live())
+	}
+	if _, _, ok := tl.PoseAt(16 * time.Second); ok {
+		t.Error("a pose before the object is there")
+	}
+	f.Handle(assigned(c.reqs[len(c.reqs)-1], 777))
+	pose, _, ok := tl.PoseAt(16 * time.Second)
+	if !ok || pose != shot(777).PoseAt(time.Second) {
+		t.Errorf("on 777: %v, %+v", ok, pose)
+	}
+	if f.ObjectOf("FAR") != 777 {
+		t.Errorf("ObjectOf %d", f.ObjectOf("FAR"))
+	}
+	p.Seek(45, now) // 145: over
+	f.Tick(now)
+	if _, _, ok := tl.PoseAt(16 * time.Second); ok || f.ObjectOf("FAR") != 0 {
+		t.Errorf("gone: pose %v, object %d", ok, f.ObjectOf("FAR"))
+	}
+	p.Seek(15, now) // back: created again, another object
+	f.Tick(now)
+	f.Handle(assigned(c.reqs[len(c.reqs)-1], 888))
+	if pose, _, ok := tl.PoseAt(16 * time.Second); !ok || pose != shot(888).PoseAt(time.Second) {
+		t.Errorf("on 888: %v, %+v", ok, pose)
 	}
 }
