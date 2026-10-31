@@ -7,6 +7,12 @@ This project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 ---
 
+## [0.160.3] - 2026-10-31
+
+### Fixed
+
+- A tug's way in could pass under the parked aircraft where the vehicle road runs under it, and come back under it on the way home. Road points under the aircraft are dropped and the tug goes round it, in both directions (#1364).
+
 ## [0.160.2] - 2026-10-31
 
 ### Fixed
