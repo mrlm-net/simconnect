@@ -7,6 +7,13 @@ This project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 ---
 
+## [0.156.0] - 2026-10-31
+
+### Added
+
+- Film moments on any aircraft: `flare`, `touchdown`, `reversers`, `vacated`, `rotate`, `liftoff`, `gearup`, by `World.OnMoment` and `GET /api/camera/moments`. Ours say all of them; the player's and other traffic's are read off the scan (no flare, rotate or reversers) (#1347).
+- Scene cues `ROLE:MOMENT`, also on `player` and any call sign outside the cast, and `ROLE:below:FEET` for an arrival's height (#1347).
+
 ## [0.155.1] - 2026-10-31
 
 ### Fixed

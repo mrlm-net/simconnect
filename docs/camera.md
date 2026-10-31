@@ -64,6 +64,12 @@ Each move is a `MoveFunc(object, size, side, duration)`, scaled to the aircraft'
 
 `MaxShot` (10 s) caps every shot unless it opts out. `camera.Stretch(shot, d)` plays any shot over `d`, up to `MaxStretch` (5 minutes), its move slowed to fit, for a camera that stays with one aircraft through an event. In a scene or a `ShotRequest`, `"long": true` makes `sec` exact (no pacing, no cap).
 
+## Moments
+
+The instants worth a cut, on any aircraft the World sees: `flare`, `touchdown`, `reversers`, `vacated`, `rotate`, `liftoff`, `gearup`. `World.OnMoment(f)` hands each one over as it happens; `GET /api/camera/moments?since=SEQ` gives the last 256 after that number (`seq`, `name`, `tail`, `objectId`, `at`, `user`, `ours`). Scene cues use them as `ROLE:MOMENT`.
+
+Ours say all of them, at the frame they happen. The player's and other traffic's are read off the scan, at its rate, and are only what the simulator shows: `touchdown` and `liftoff` (from `SIM ON GROUND`, 20 ft up before it counts as flown, so a bounce is not a lift-off), `gearup`, and `vacated` (50 m off the line it touched down on). They have no `flare`, `rotate` or `reversers`.
+
 ## Spotting director
 
 `World.StartSpotting(SpottingRequest{ICAO: "LKPR"})` or `POST /api/camera/spotting`: the camera watches the airport by itself. It picks an aircraft landing, taking off or taxiing and the nearest fitting spot, stays with it until that is over, and moves on. Landings and take-offs come first and interrupt a taxi, never each other. `GET /api/camera` gives `subject`, `event` and `shot`; mode `off` ends it.
@@ -167,6 +173,8 @@ A cue holds once reached, so a beat is not missed when two things happen close t
 | `ROLE:airborne` | The departure has left the ground. |
 | `ROLE:lights:X` | That light has come on: N nav, B beacon, S strobe, T taxi, L landing, O logo, W wing. |
 | `ROLE:height:FEET` | The departure has climbed that high above the runway. |
+| `ROLE:below:FEET` | The arrival has come down that low above the ground. |
+| `ROLE:MOMENT` | That [moment](#moments) has happened since the scene began. ROLE can also be `player` or the call sign of any aircraft outside the cast. |
 | `ROLE:heard` | A call to or from the aircraft has been heard since the last beat. |
 | `ROLE:rescue` | Rescue vehicles have been sent for it (it has priority: an emergency). |
 | `ROLE:rescue:with` | It is down and one of its rescue vehicles is within 80 m. |

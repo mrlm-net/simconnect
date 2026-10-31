@@ -7,6 +7,7 @@ import (
 	"math"
 	"net/http"
 	"slices"
+	"strconv"
 	"strings"
 	"sync"
 	"sync/atomic"
@@ -772,6 +773,22 @@ func registerCamera(mux *http.ServeMux, st *state) {
 		if err != nil {
 			http.Error(w, err.Error(), http.StatusInternalServerError)
 			return
+		}
+		writeJSON(w, list)
+	})
+	mux.HandleFunc("GET /api/camera/moments", func(w http.ResponseWriter, r *http.Request) {
+		var since uint64
+		if s := r.URL.Query().Get("since"); s != "" {
+			n, err := strconv.ParseUint(s, 10, 64)
+			if err != nil {
+				http.Error(w, "since: "+err.Error(), http.StatusBadRequest)
+				return
+			}
+			since = n
+		}
+		list := st.core.moments.since(since)
+		if list == nil {
+			list = []Moment{}
 		}
 		writeJSON(w, list)
 	})

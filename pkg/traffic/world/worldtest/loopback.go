@@ -39,6 +39,8 @@ type Object struct {
 	// Vehicle: a simulated object (AICreateSimulatedObject: a tug, a truck),
 	// not an aircraft: by-type scans tell them apart as the simulator does.
 	Vehicle bool
+	// GearUp: its gear is up.
+	GearUp bool
 	// Lights: the lights on, by SimVar ("LIGHT BEACON"), as events set them.
 	Lights map[string]bool
 }
@@ -477,6 +479,9 @@ func (l *Loopback) value(o *Object, d datum) float64 {
 	case "GENERAL ENG COMBUSTION":
 		return b2f(o.EnginesRunning)
 	case "GEAR TOTAL PCT EXTENDED", "GEAR HANDLE POSITION":
+		if o.GearUp {
+			return 0
+		}
 		return 1
 	case "SIMULATION RATE":
 		return 1

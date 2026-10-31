@@ -28,9 +28,11 @@ import (
 // controller state, e.g. "dep:pushback", "dep:taxiing"; "dep:airborne" once
 // off the ground), "ROLE:lights:X" (a light comes on: N nav, B beacon, S
 // strobe, T taxi, L landing, O logo, W wing), "ROLE:height:FEET" (above the
-// runway), "ROLE:heard" (a call to or from it is heard), "ROLE:rescue"
-// (rescue vehicles sent for it) or "ROLE:rescue:with" (down, a vehicle
-// within 80 m of it).
+// runway), "ROLE:below:FEET" (an arrival above the ground), "ROLE:heard" (a
+// call to or from it is heard), "ROLE:rescue" (rescue vehicles sent for it) or
+// "ROLE:rescue:with" (down, a vehicle within 80 m of it). "ROLE:MOMENT" is a
+// moment (moments.go), where ROLE can also be "player" or the call sign of any
+// aircraft outside the cast.
 //
 // A scene can set the airport up first (Jetways, Schedule), have a cast
 // member declare an emergency (SceneCast.Emergency), run World actions at
@@ -272,6 +274,10 @@ type sceneRun struct {
 	// its greatest height above the runway.
 	seen map[string]map[string]bool
 	top  map[string]float64
+	// low: an arrival's least height above the ground; momentAt the last moment
+	// read into seen, under the role, the call sign and "player".
+	low      map[string]float64
+	momentAt uint64
 	// beat, cue: what it has reached; events to the host until ended.
 	beat   int
 	cue    string
@@ -292,10 +298,12 @@ func (r *sceneRun) watch() {
 		if !on {
 			return
 		}
+		roles := make(map[string]string, len(cast))
 		for role, it := range cast {
 			it.mu.Lock()
-			v, h := it.view, it.heightFt
+			v, h, agl := it.view, it.heightFt, it.aglFt
 			it.mu.Unlock()
+			roles[v.Tail] = role
 			r.m.mu.Lock()
 			s := r.seen[role]
 			if s == nil {
@@ -303,6 +311,11 @@ func (r *sceneRun) watch() {
 				r.seen[role] = s
 			}
 			s[v.State] = true
+			if v.Kind == "arrival" && !v.OnGround && agl > 0 {
+				if l, ok := r.low[role]; !ok || agl < l {
+					r.low[role] = agl
+				}
+			}
 			if v.State == "departing" && !v.OnGround {
 				s["airborne"] = true
 				r.top[role] = max(r.top[role], h)
@@ -322,13 +335,39 @@ func (r *sceneRun) watch() {
 				r.m.mu.Unlock()
 			}
 		}
+		r.readMoments(roles)
 		time.Sleep(100 * time.Millisecond)
+	}
+}
+
+// readMoments puts the moments since the last look into seen. roles: the cast's
+// by call sign.
+func (r *sceneRun) readMoments(roles map[string]string) {
+	list := r.m.cc.core.moments.since(r.momentAt)
+	r.m.mu.Lock()
+	defer r.m.mu.Unlock()
+	mark := func(who, what string) {
+		if r.seen[who] == nil {
+			r.seen[who] = map[string]bool{}
+		}
+		r.seen[who][what] = true
+	}
+	for _, mo := range list {
+		r.momentAt = mo.Seq
+		mark(mo.Tail, mo.Name)
+		if role, ok := roles[mo.Tail]; ok {
+			mark(role, mo.Name)
+		}
+		if mo.User {
+			mark("player", mo.Name)
+		}
 	}
 }
 
 func (m *cameraMan) runScene(g *airport.Graph, sc Scene) {
 	cc := m.cc
 	r := &sceneRun{m: m, sc: sc, start: time.Now(), cast: map[string]*controlled{}, heard: map[string]bool{}, listening: sc.Listen, seen: map[string]map[string]bool{}, top: map[string]float64{}}
+	r.low, r.momentAt = map[string]float64{}, cc.core.moments.last()
 	r.listenEvents()
 	logf := func(f string, a ...any) { tlog.printf("scene  "+sc.Name+": "+f, a...) }
 	limit := time.Duration(sc.LimitSec * float64(time.Second))
@@ -577,8 +616,12 @@ func (r *sceneRun) cued(cue string) bool {
 	role, what, _ := strings.Cut(cue, ":")
 	r.m.mu.Lock()
 	it := r.cast[role]
+	outside := it == nil && r.seen[role][what]
 	r.m.mu.Unlock()
-	if it == nil || it.object() == 0 {
+	if it == nil {
+		return outside // the player, or any aircraft by its call sign
+	}
+	if it.object() == 0 {
 		return false
 	}
 	r.m.mu.Lock()
@@ -589,6 +632,10 @@ func (r *sceneRun) cued(cue string) bool {
 	case strings.HasPrefix(what, "height:"):
 		ft, _ := strconv.ParseFloat(strings.TrimPrefix(what, "height:"), 64)
 		return r.top[role] >= ft
+	case strings.HasPrefix(what, "below:"):
+		ft, _ := strconv.ParseFloat(strings.TrimPrefix(what, "below:"), 64)
+		l, ok := r.low[role]
+		return ok && l <= ft
 	}
 	return r.seen[role][what]
 }

@@ -16,6 +16,8 @@ import (
 // library's World will hold (#710). One per process today; the control
 // center of each connection reaches it as cc.core.
 type core struct {
+	// moments: the instants worth a cut, across connections (moments.go).
+	moments *momentLog
 	// log is the traffic log (console, file, /api/control/log).
 	log *trafficLog
 
@@ -69,7 +71,7 @@ type core struct {
 }
 
 func newCore(log *trafficLog) *core {
-	return &core{log: log, zone: traffic.ClassD, pushes: pushPlanQueue{log: log}, selectors: map[string]*nav.RunwaySelector{}, inUse: map[string]string{}, busy: map[string]bool{},
+	return &core{moments: newMomentLog(), log: log, zone: traffic.ClassD, pushes: pushPlanQueue{log: log}, selectors: map[string]*nav.RunwaySelector{}, inUse: map[string]string{}, busy: map[string]bool{},
 		ils:      ilsStore{byICAO: map[string]map[string]ilsInfo{}, pending: map[nav.FixKey][]ilsRef{}},
 		circuits: circuitStore{m: map[string]map[string]traffic.CircuitConfig{}},
 		vfrSets:  vfrPointStore{m: map[string][]traffic.ReportingPoint{}}}

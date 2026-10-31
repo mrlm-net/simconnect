@@ -168,6 +168,10 @@ type controlled struct {
 	radarSaid string
 	radarFt   float64
 	heightFt  float64
+	// aglFt: an arrival's height above the ground; stepsRead how many steps of
+	// its sequence have been read for moments.
+	aglFt     float64
+	stepsRead int
 	// vacateSaid: set once, by whichever event comes first (live, OKECF
 	// and TVS122 told twice in the same millisecond).
 	vacateSaid   atomic.Bool
@@ -1499,6 +1503,13 @@ func (it *controlled) update(ev TaxiOrArrival) {
 	defer it.mu.Unlock()
 	v := &it.view
 	prev := *v
+	switch {
+	case ev.dep != nil && it.dep != nil:
+		it.stepMoments(ev.dep.Steps, it.dep.Sequence)
+	case ev.arr != nil && it.arr != nil:
+		it.aglFt = ev.arr.AGL
+		it.stepMoments(ev.arr.Steps, it.arr.Sequence)
+	}
 	// On the stand: the route with its push, planned in the background
 	// (TaxiWithPushInBackground), drawn once it is in.
 	if ev.dep != nil && it.dep != nil && (ev.dep.State == traffic.TaxiSpawning || ev.dep.State == traffic.TaxiAwaitingPushback) {
@@ -4980,7 +4991,9 @@ func (cc *controlCenter) reportTraffic(scan []Traffic) {
 	cc.mu.Lock()
 	cc.scan = scan
 	cc.mu.Unlock()
-	cc.scanNow.Store(&scanned{at: traffic.Now(), list: cc.labelled(scan)})
+	labelled := cc.labelled(scan)
+	cc.scanNow.Store(&scanned{at: traffic.Now(), list: labelled})
+	cc.core.moments.scan(cc.clock.Now(), labelled)
 	for _, t := range scan {
 		if t.User {
 			cc.detail.SetViewer(airport.LatLon{Lat: t.Latitude, Lon: t.Longitude})

@@ -100,6 +100,9 @@ func (sc Scene) validate() error {
 			return nil
 		}
 		role, event, _ := strings.Cut(c, ":")
+		if isMoment(event) && role != "" && (role == "player" || role == strings.ToUpper(role)) {
+			return nil // the player, or any aircraft by its call sign
+		}
 		if !roles[role] || event == "" {
 			return fmt.Errorf("scene: %s: cue %q: want start, t:SECONDS or ROLE:EVENT of the cast", what, c)
 		}
