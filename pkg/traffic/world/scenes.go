@@ -410,9 +410,12 @@ func (m *cameraMan) runScene(g *airport.Graph, sc Scene) {
 	m.mu.Unlock()
 	go r.sayLines(g.Layout.ICAO) // before the cast: it talks from when it spawns
 	if sc.Local != "" {
-		if back := m.sceneTime(sc.Local, logf); back != nil {
-			defer back()
-		}
+		m.sceneTime(sc.Local, logf)
+		defer func() {
+			if err := m.putClockBack(m.setZulu); err != nil {
+				logf("time of day back: %v", err)
+			}
+		}()
 	}
 	defer func() {
 		m.mu.Lock()

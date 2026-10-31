@@ -801,11 +801,7 @@ func runOn(ctx context.Context, st *state, client engine.Client, stream <-chan e
 	}
 	// The camera goes back to the simulator however this connection ends:
 	// a camera left acquired stays stuck for the user.
-	defer func() {
-		if cam.dir != nil {
-			cam.dir.Release()
-		}
-	}()
+	defer cam.connectionEnds()
 	cameraHeard.Store(&cam)
 	defer cameraHeard.Store(nil)
 	st.mu.Lock()
@@ -817,15 +813,16 @@ func runOn(ctx context.Context, st *state, client engine.Client, stream <-chan e
 		}
 		return st.aircraft.ZuluSec, st.aircraft.LocalSec, true
 	}
-	cam.setZulu = func(hours, minutes uint32) error {
-		return cc.do(func() error {
-			for ev, v := range map[uint32]uint32{evZuluHours: hours, evZuluMinutes: minutes} {
-				if err := client.TransmitClientEvent(types.SIMCONNECT_OBJECT_ID_USER, ev, v, types.SIMCONNECT_GROUP_PRIORITY_HIGHEST, types.SIMCONNECT_EVENT_FLAG_GROUPID_IS_PRIORITY); err != nil {
-					return err
-				}
+	cam.sendZulu = func(hours, minutes uint32) error {
+		for ev, v := range map[uint32]uint32{evZuluHours: hours, evZuluMinutes: minutes} {
+			if err := client.TransmitClientEvent(types.SIMCONNECT_OBJECT_ID_USER, ev, v, types.SIMCONNECT_GROUP_PRIORITY_HIGHEST, types.SIMCONNECT_EVENT_FLAG_GROUPID_IS_PRIORITY); err != nil {
+				return err
 			}
-			return nil
-		})
+		}
+		return nil
+	}
+	cam.setZulu = func(hours, minutes uint32) error {
+		return cc.do(func() error { return cam.sendZulu(hours, minutes) })
 	}
 	st.camera = cam
 	st.mu.Unlock()
