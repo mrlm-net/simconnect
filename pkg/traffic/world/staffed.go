@@ -324,7 +324,8 @@ func (it *controlled) amendClearance(a ClearanceAmend) error {
 
 // climbTo clears a departure handed over on to ft (the player's "climb",
 // #1096): said against the transition altitude, flown from where it is.
-func (it *controlled) climbTo(ft float64) error {
+// Expedited, the whole way or only through throughFt (#1331).
+func (it *controlled) climbTo(ft, throughFt float64, expedite bool) error {
 	it.mu.Lock()
 	pos, alt, id, done := it.view.Position, it.heightFt, it.objectID, it.dep != nil && it.view.State == traffic.TaxiComplete.String()
 	it.mu.Unlock()
@@ -342,14 +343,25 @@ func (it *controlled) climbTo(ft float64) error {
 	if ft <= alt+100 {
 		return fmt.Errorf("at %.0f ft: %.0f ft is no climb", alt, ft)
 	}
-	if err := it.cc.do(func() error { return it.dep.ClimbTo(pos, alt, ft) }); err != nil {
+	if throughFt > 0 && (throughFt <= alt || throughFt >= ft) {
+		return fmt.Errorf("at %.0f ft, climbing to %.0f ft: %.0f ft is not on the way", alt, ft, throughFt)
+	}
+	fast := throughFt
+	if expedite && fast == 0 {
+		fast = ft
+	}
+	if err := it.cc.do(func() error { return it.dep.ClimbExpedited(pos, alt, ft, fast) }); err != nil {
 		return err
 	}
 	it.mu.Lock()
 	it.clearedFt, it.higherAt = ft, time.Time{}
 	it.mu.Unlock()
 	ta := it.cc.taOf(it.ICAO)
-	it.say(traffic.Climb(traffic.PosDeparture, it.Tail, ft, ta))
+	said := traffic.Climb(traffic.PosDeparture, it.Tail, ft, ta)
+	if expedite {
+		said = traffic.Expedited(said, throughSaid(throughFt, ta))
+	}
+	it.say(said)
 	it.cc.log.printf("%-6s departure: climb to %s (the player)", it.Tail, traffic.LevelSaidAbove(ft, ta))
 	return nil
 }

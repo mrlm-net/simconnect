@@ -44,6 +44,14 @@ An arrival's `Actions` follow its phase the same way: `land` and `goaround` whil
 
 `vacate` names the exit, as `taxi` and `upto` name a point: `POST /api/control/{id}/vacate?node=N`, where N is any node on the exit — the turn-off, the taxiway behind it, or the runway centreline where it begins. `?side=left` or `?side=right` takes the first exit on that side it can make, and is said with the exit it takes. It is the tower's word until the aircraft is off the runway (`ErrExitFixed` after that); on the roll the braking is planned again to the new exit. An exit already passed or one it cannot slow down for is refused (`ErrExitTooClose`), and so is one it cannot vacate by at any speed, because its wings do not fit or the turn is too sharp (`ErrExitTooTight`).
 
+Some clearances take a word more:
+
+- **Expedite:** `POST /api/control/{id}/climb?level=12000&expedite=1` is "expedite climb to FL 120", flown at 3000 ft/min; `&through=8000` is "climb to FL 120, expedite through FL 80", at that rate as far as 8000 ft. Approach takes the same in its body: `POST /api/approach/{icao}/{callsign}/descend` with `{"ft":4000,"expedite":true}` or `"throughFt"`, and `speed` with `"expedite":true`, which changes only what is said.
+- **Take-off:** `takeoff?immediate=1` is "cleared for immediate take-off"; `takeoff?nodelay=1` is "no delay", with the distance of the nearest arrival on final within 10 NM. The crew does not linger on either. Both work on `GET …/takeoff/phrase` too.
+- **Landing:** `land` names the traffic by itself: "cleared to land, traffic departing ahead" with a departure on its roll on that runway, "traffic landing ahead" with an arrival on its landing roll or under 3 NM from the threshold ahead in the sequence.
+- **A limit by name:** `upto?taxiway=B` holds short where its route next meets B, instead of a node ("taxi via A, hold short of B"); 422 if the route does not meet it. A limit given by node is said as the taxiway crossing there, or "the marked point" where none does.
+- **Line up while taxiing:** `lineup` is offered to a taxiing departure once the runway is the next thing it meets, with no limit or crossing on the way and 800 m or less to go. Further out it is still withheld, and `takeoff` stays withheld until the holding point.
+
 
 The player gives clearances through the same calls as any host: `World.Clear(id, action)` (`POST /api/control/{id}/{action}`), `World.Approach(icao, callsign, action)` for the arrivals' sequence, `World.ApproachDescend(icao, callsign, ft)` for a lower level on the STAR (said against the transition altitude, never a climb), and `World.Phrase(id, action)` for what a clearance would say. Each is said on the radio with its readback, as the automatic controllers' are.
 

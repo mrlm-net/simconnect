@@ -7,6 +7,20 @@ This project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 ---
 
+## [0.154.0] - 2026-10-31
+
+### Added
+
+- Expedite on climb, descent and speed: `climb?level=&expedite=1`, `&through=` for "expedite through", and on approach `descend` and `speed` `{"expedite":true}`, `{"throughFt":…}`. A climb and a descent are flown at 3000 ft/min that far. `traffic.Expedited`, `TaxiController.ClimbExpedited`, `ArrivalController.DescendExpedited` (#1331).
+- `takeoff?immediate=1` and `takeoff?nodelay=1`: the qualifier chosen by the player, said and hurried. `traffic.NoDelayed` (#1331).
+- A landing clearance names the traffic on the runway: "traffic departing ahead", "traffic landing ahead". `traffic.LandingAhead` (#1331).
+- `upto?taxiway=B`: a clearance limit by name, where the route next meets it. `traffic.HoldShortOf` (#1331).
+- `lineup` offered while taxiing with the runway next and within 800 m (#1331). `TaxiController.RunwayNext`.
+
+### Fixed
+
+- A limit at a node part-way along a taxiway was said as holding short of the taxiway it is on; now the taxiway crossing there, or the marked point (#1331).
+
 ## [0.153.0] - 2026-10-30
 
 ### Added

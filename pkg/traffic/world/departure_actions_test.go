@@ -21,6 +21,7 @@ type standDep struct {
 
 func (f *standDep) FacesOut() bool        { return f.facesOut }
 func (f *standDep) Route() *airport.Route { return nil }
+func (f *standDep) RunwayNext() bool      { return false }
 
 // Cleared mirrors TaxiController.Cleared for the flags these tests set.
 func (f *standDep) Cleared(action string) bool {

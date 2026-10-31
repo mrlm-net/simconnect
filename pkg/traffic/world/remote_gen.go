@@ -37,6 +37,17 @@ func (r *remoteDep) ClimbTo(pos airport.LatLon, altFt float64, ft float64) error
 	return err
 }
 
+func (r *remoteDep) ClimbExpedited(pos airport.LatLon, altFt float64, ft float64, throughFt float64) error {
+	err := r.c.call(r.t, "ClimbExpedited", []any{pos, altFt, ft, throughFt})
+	return err
+}
+
+func (r *remoteDep) RunwayNext() bool {
+	var o0 bool
+	r.c.dropped(r.c.call(r.t, "RunwayNext", []any{}, &o0))
+	return o0
+}
+
 func (r *remoteDep) SetPushbackAt(at time.Time) bool {
 	var o0 bool
 	r.c.dropped(r.c.call(r.t, "SetPushbackAt", []any{at}, &o0))
@@ -277,6 +288,11 @@ func (r *remoteArr) DirectToJoin() error {
 
 func (r *remoteArr) DescendTo(altFt float64) error {
 	err := r.c.call(r.t, "DescendTo", []any{altFt})
+	return err
+}
+
+func (r *remoteArr) DescendExpedited(fromFt float64, altFt float64, throughFt float64, kts float64) error {
+	err := r.c.call(r.t, "DescendExpedited", []any{fromFt, altFt, throughFt, kts})
 	return err
 }
 

@@ -492,6 +492,9 @@ func Readback(t Transmission) (Transmission, bool) {
 		}
 	case IntentTakeoff:
 		s = capital(runwayAt(p)) + ", cleared for take-off" // CAP 413: runway first
+		if p[ParamRush] != "" {
+			s = capital(runwayAt(p)) + ", cleared for immediate take-off"
+		}
 		if p[ParamNoDelay] != "" {
 			s += ", no delay"
 		}
@@ -567,11 +570,17 @@ func Readback(t Transmission) (Transmission, bool) {
 			verb = "Reduce"
 		}
 		s = verb + " speed to " + spokenSpeed(p[ParamSpeed])
+		if p[ParamRush] != "" {
+			s += ", expedite"
+		}
 		if p[ParamResume] == "true" {
 			s = "Resume normal speed"
 		}
 	case IntentLevel:
 		s = capital(p[ParamClimb]) + " to " + p[ParamLevel]
+		if p[ParamRush] != "" {
+			s = capital(levelExpedited(p))
+		}
 		switch p[ParamClimb] {
 		case "stop":
 			s = "Stop descent at " + p[ParamLevel]
