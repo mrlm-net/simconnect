@@ -92,6 +92,7 @@ type injected struct {
 	// whatever we send: a change of the flag blends (smoothCG).
 	sentGround int8
 	sent       lastSent // the last placement sent (traceJump)
+	simStep    float64  // the simulator's step behind the coming placement, seconds (noteSimStep)
 	// groundShownFt: the ground height it was last placed on, at
 	// groundShownPos and groundShownAt (groundShown).
 	groundShownFt  float64

@@ -7,6 +7,12 @@ This project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 ---
 
+## [0.159.2] - 2026-10-31
+
+### Fixed
+
+- The jump trace reported a steady turn on a long frame as a jump: its heading limit now grows with the frame. Each line also gives the simulator's own step, to tell a simulator hitch from a wrong placement (#1357).
+
 ## [0.159.1] - 2026-10-31
 
 ### Fixed
