@@ -68,6 +68,24 @@ type Scene struct {
 	Schedule *SceneSchedule `json:"schedule,omitempty"`
 	// EndActions run however the scene ends (a closed runway opened again).
 	EndActions []ScenarioAction `json:"endActions,omitempty"`
+	// Lines are said to the timetable. Mute: the host hears only them, the rest
+	// of the radio goes on unheard (still in the "radio" events, marked muted).
+	Lines []SceneLine `json:"lines,omitempty"`
+	Mute  bool        `json:"mute,omitempty"`
+}
+
+// SceneLine is a line of a scene's radio, said word for word at its time.
+type SceneLine struct {
+	// AtSec: since the scene began, as a "t:" cue.
+	AtSec float64 `json:"atSec"`
+	// Who: a role of the cast (its crew) or a station's name ("Prague Tower",
+	// one voice for all its lines).
+	Who string `json:"who"`
+	// To: for a station, the call sign it is talking to.
+	To string `json:"to,omitempty"`
+	// Frequency: a station must name it; a role left without is on its own.
+	Frequency string `json:"frequency,omitempty"`
+	Text      string `json:"text"`
 }
 
 // SceneSchedule is the scheduled traffic a scene plays among.
@@ -387,6 +405,7 @@ func (m *cameraMan) runScene(g *airport.Graph, sc Scene) {
 	m.scene, m.subject, m.shot = r, "", sc.Name
 	r.emit(SceneEvent{Kind: "start"})
 	m.mu.Unlock()
+	go r.sayLines(g.Layout.ICAO) // before the cast: it talks from when it spawns
 	defer func() {
 		m.mu.Lock()
 		m.scene = nil

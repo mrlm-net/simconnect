@@ -1,13 +1,17 @@
 package world
 
 import (
+	"cmp"
 	"errors"
 	"fmt"
 	"net/http"
 	"net/url"
+	"slices"
 	"strconv"
 	"strings"
 	"time"
+
+	"github.com/mrlm-net/simconnect/pkg/traffic"
 )
 
 // A scene from the host (#1324): World.PlayScene takes the Scene itself,
@@ -16,7 +20,8 @@ import (
 
 // SceneEvent is what a scene playing has reached: Kind "start", "cue" (a
 // beat's cue came, its delay still to run), "beat" (Beat began, numbered
-// from 1), "shot" (Shot began), "end" (Err why, if it could not go on).
+// from 1), "shot" (Shot began), "radio" (a transmission), "end" (Err why, if it
+// could not go on).
 type SceneEvent struct {
 	Kind    string  `json:"kind"`
 	Scene   string  `json:"scene"`
@@ -26,6 +31,16 @@ type SceneEvent struct {
 	Subject string  `json:"subject,omitempty"` // the aircraft on screen
 	AtSec   float64 `json:"atSec"`             // since the scene began
 	Err     string  `json:"err,omitempty"`
+	// Kind "radio": a transmission. AtSec is when it starts, later than now when
+	// it waits for the frequency; DurSec how long it takes to say. Speaker is the
+	// call sign of a crew or the station, Callsign who a station talks to.
+	Speaker   string  `json:"speaker,omitempty"`
+	Callsign  string  `json:"callsign,omitempty"`
+	Frequency string  `json:"frequency,omitempty"`
+	Text      string  `json:"text,omitempty"`
+	DurSec    float64 `json:"durSec,omitempty"`
+	Scripted  bool    `json:"scripted,omitempty"`
+	Muted     bool    `json:"muted,omitempty"`
 }
 
 // SceneProgress is the scene playing, on GET /api/camera.
@@ -35,6 +50,36 @@ type SceneProgress struct {
 	Beats      int     `json:"beats"`
 	Cue        string  `json:"cue,omitempty"` // the cue of the beat begun
 	ElapsedSec float64 `json:"elapsedSec"`
+}
+
+// validLines checks a scene's lines: each said by someone, on a frequency, and
+// none over another on the same one.
+func validLines(sc Scene, roles map[string]bool) error {
+	ends := map[string]float64{}
+	lines := slices.Clone(sc.Lines)
+	slices.SortStableFunc(lines, func(a, b SceneLine) int { return cmp.Compare(a.AtSec, b.AtSec) })
+	for _, l := range lines {
+		switch {
+		case l.Who == "":
+			return fmt.Errorf("scene: line %q: nobody says it", l.Text)
+		case l.Text == "":
+			return fmt.Errorf("scene: line of %s: no text", l.Who)
+		case l.AtSec < 0:
+			return fmt.Errorf("scene: line %q: at %.0f s", l.Text, l.AtSec)
+		case l.Frequency != "" && !isFrequency(l.Frequency):
+			return fmt.Errorf("scene: line %q: frequency %q", l.Text, l.Frequency)
+		case l.Frequency == "" && !roles[l.Who]:
+			return fmt.Errorf("scene: line %q: station %s without a frequency", l.Text, l.Who)
+		}
+		if l.Frequency == "" {
+			continue
+		}
+		if end := ends[l.Frequency]; l.AtSec < end {
+			return fmt.Errorf("scene: line %q at %.1f s: the one before on %s lasts until %.1f s", l.Text, l.AtSec, l.Frequency, end)
+		}
+		ends[l.Frequency] = l.AtSec + traffic.SpeakingTime(l.Text).Seconds()
+	}
+	return nil
 }
 
 // sceneEventQueue is how many events wait for a slow host; more are dropped,
@@ -108,6 +153,9 @@ func (sc Scene) validate() error {
 		}
 		return nil
 	}
+	if err := validLines(sc, roles); err != nil {
+		return err
+	}
 	listen := func(what, l string) error {
 		if l != "" && !roles[l] && !isFrequency(l) {
 			return fmt.Errorf("scene: %s: listen %q: a role or a frequency", what, l)
@@ -154,7 +202,10 @@ func (r *sceneRun) emit(e SceneEvent) {
 	if r.ended {
 		return
 	}
-	e.Scene, e.AtSec = r.sc.Name, time.Since(r.start).Seconds()
+	e.Scene = r.sc.Name
+	if e.Kind != "radio" {
+		e.AtSec = time.Since(r.start).Seconds()
+	}
 	select {
 	case r.events <- e:
 	default:
@@ -182,6 +233,83 @@ func (r *sceneRun) listenEvents() {
 			}
 		}
 	}()
+}
+
+// lineLeadSec: a line takes its frequency this long before it starts, so that what
+// else is said on it is over by then or waits.
+const lineLeadSec = 15.0
+
+// sayLines says the scene's lines to the timetable.
+func (r *sceneRun) sayLines(icao string) {
+	lines := slices.Clone(r.sc.Lines)
+	slices.SortStableFunc(lines, func(a, b SceneLine) int { return cmp.Compare(a.AtSec, b.AtSec) })
+	tails := map[string]string{}
+	for _, c := range r.sc.Cast {
+		tails[c.Role] = c.Tail
+	}
+	cc := r.m.cc
+	held := 0
+	for said := 0; said < len(lines); {
+		r.m.mu.Lock()
+		on := r.m.mode == "scene" && r.m.scene == r
+		r.m.mu.Unlock()
+		if !on {
+			return
+		}
+		sec := time.Since(r.start).Seconds()
+		for ; held < len(lines) && sec >= lines[held].AtSec-lineLeadSec; held++ {
+			if l := lines[held]; !r.sc.Mute && l.Frequency != "" {
+				until := time.Duration((l.AtSec - sec) * float64(time.Second))
+				cc.radio.Occupy(icao, l.Frequency, cc.clock.Now().Add(until+traffic.SpeakingTime(l.Text)+time.Second))
+			}
+		}
+		for ; said < len(lines) && sec >= lines[said].AtSec; said++ {
+			l := lines[said]
+			tx := traffic.Transmission{Frequency: l.Frequency, Text: l.Text}
+			if tail, ok := tails[l.Who]; ok {
+				tx.Pilot, tx.Callsign = true, tail
+				if tx.Frequency == "" {
+					r.m.mu.Lock()
+					it := r.cast[l.Who]
+					r.m.mu.Unlock()
+					if it != nil {
+						it.mu.Lock()
+						tx.Frequency = it.view.Frequency
+						it.mu.Unlock()
+					}
+				}
+			} else {
+				tx.Controller, tx.Callsign = l.Who, l.To
+			}
+			cc.radio.Script(icao, tx)
+		}
+		time.Sleep(50 * time.Millisecond)
+	}
+}
+
+// sceneRadio tells the host of a transmission and says whether the scene mutes it.
+func (m *cameraMan) sceneRadio(t traffic.Transmission) (muted bool) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	r := m.scene
+	if r == nil || m.mode != "scene" {
+		return false
+	}
+	muted = r.sc.Mute && !t.Scripted
+	speaker := t.Controller
+	switch {
+	case t.Pilot:
+		speaker = t.Callsign
+	case speaker == "":
+		speaker = string(t.Position)
+	}
+	callsign := t.Callsign
+	if t.Pilot {
+		callsign = ""
+	}
+	r.emit(SceneEvent{Kind: "radio", AtSec: time.Since(r.start).Seconds() + t.At.Sub(m.cc.clock.Now()).Seconds(), Speaker: speaker, Callsign: callsign,
+		Frequency: t.Frequency, Text: t.Text, DurSec: t.SpeakingTime().Seconds(), Scripted: t.Scripted, Muted: muted})
+	return muted
 }
 
 // finish is the scene's last event, why if it could not go on.

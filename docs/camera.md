@@ -179,6 +179,14 @@ A cue holds once reached, so a beat is not missed when two things happen close t
 | `ROLE:rescue` | Rescue vehicles have been sent for it (it has priority: an emergency). |
 | `ROLE:rescue:with` | It is down and one of its rescue vehicles is within 80 m. |
 
+### Radio
+
+Scene events of kind `radio` give each transmission: `speaker` (a crew's call sign or the station), `callsign` (who a station talks to), `frequency`, `text`, `atSec` and `durSec`. `atSec` is when it starts, later than the event when it waits for the frequency. `durSec` is the speaking time worked out from the words, not what a voice took. Events of kind `shot` and `beat` give the `subject` on screen.
+
+`lines` is the scene's own radio, to a timetable: `{"atSec": 12, "who": "dep", "text": "..."}`. `who` is a cast role (its crew) or a station's name, given as the controller so that all its lines are one voice; a station needs `frequency` and can name `to`. A line is said word for word at its time and never moves. Traffic on the frequency is kept off it for 15 s before and until it ends, and lines overlapping on one frequency are refused. These times are the scene's clock, as `t:` cues.
+
+`mute` keeps the rest of the radio from the host: traffic goes on talking and acting, and its transmissions still come as `radio` events with `muted`, but `OnTransmission` hears only the lines. A host's voice still chooses what it plays, for example by `SceneFrequency`.
+
 ### The airport, emergencies and actions
 
 A scene can do more than film. These fields make one a whole demonstration, as the built-in `4-showcase` does:
