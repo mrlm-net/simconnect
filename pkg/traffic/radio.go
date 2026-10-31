@@ -231,6 +231,8 @@ type Transmission struct {
 	// above 1 faster): a busy frequency, an urgent call (RadioOptions.TempoOf).
 	// SpeakingTime shrinks with it.
 	Tempo float64 `json:"tempo,omitempty"`
+	// Scripted: said word for word at its time (Radio.Script).
+	Scripted bool `json:"scripted,omitempty"`
 }
 
 // Say is t with its text: the ATC phrase (ICAO phraseology, the
@@ -1851,6 +1853,39 @@ func (r *Radio) transmit(airport string, t Transmission, readBack bool) Transmis
 	if readBack && !t.Pilot && t.Callsign != "" {
 		plain.At = t.At
 		r.readBack(t.Airport, plain, busy)
+	}
+	return t
+}
+
+// Script says t as written and exactly at t.At (zero: now), past whoever is on
+// the frequency: no wording, no variety, no readback. What the radio says next
+// waits for it as for any other.
+func (r *Radio) Script(airport string, t Transmission) Transmission {
+	if t.At.IsZero() {
+		t.At = r.opts.Now()
+	}
+	if t.Airport == "" {
+		t.Airport = airport
+	}
+	if t.Intent == "" {
+		t.Intent = IntentCustom
+	}
+	t.Scripted = true
+	r.mu.Lock()
+	end := t.At.Add(t.SpeakingTime())
+	for key, until := range map[string]time.Time{"aircraft " + t.Airport + " " + t.Callsign: end, "controller " + t.Airport + " " + t.Controller: end, t.Airport + " " + t.Frequency: end.Add(time.Second)} {
+		if until.After(r.busy[key]) {
+			r.busy[key] = until
+		}
+	}
+	r.kept = append(r.kept, t)
+	if len(r.kept) > r.opts.Keep {
+		r.kept = r.kept[len(r.kept)-r.opts.Keep:]
+	}
+	on := r.opts.OnTransmission
+	r.mu.Unlock()
+	if on != nil {
+		on(t)
 	}
 	return t
 }

@@ -7,6 +7,14 @@ This project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 ---
 
+## [0.157.0] - 2026-10-31
+
+### Added
+
+- Scene events of kind `radio`: each transmission with speaker, frequency, text, actual start and speaking time (#1349).
+- `Scene.Lines`: scripted radio to a timetable, by a cast role or a named station, word for word and never moved, with traffic kept off the frequency around it. `traffic.Radio.Script`, `Transmission.Scripted` (#1349).
+- `Scene.Mute`: the host hears only the scene's lines (#1349).
+
 ## [0.156.0] - 2026-10-31
 
 ### Added

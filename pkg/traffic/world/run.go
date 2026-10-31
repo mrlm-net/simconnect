@@ -443,6 +443,13 @@ func (st *state) startWorld(cc *controlCenter) (stopWorld func()) {
 	go func() {
 		for t := range heard {
 			scenarioHeard(t) // a scenario's "ROLE:heard"
+			st.mu.Lock()
+			m := st.camera
+			st.mu.Unlock()
+			if m != nil && m.sceneRadio(t) {
+				heardOnCamera(t) // not for the host, but a cue all the same
+				continue
+			}
 			if h := st.core.hooks.OnTransmission; h != nil {
 				h(t) // the host: its voice (#419), which cuts the camera as heard
 			} else {

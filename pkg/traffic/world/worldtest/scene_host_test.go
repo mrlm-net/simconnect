@@ -40,7 +40,9 @@ func TestPlaySceneFromHost(t *testing.T) {
 		defer mu.Unlock()
 		var k []string
 		for _, e := range got {
-			k = append(k, e.Kind)
+			if e.Kind != "radio" {
+				k = append(k, e.Kind)
+			}
 		}
 		return strings.Join(k, " ")
 	}
