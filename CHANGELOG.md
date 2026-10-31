@@ -7,6 +7,12 @@ This project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 ---
 
+## [0.154.2] - 2026-10-31
+
+### Fixed
+
+- The jump trace reported simulator time catching up after a late frame as a jump: motion steps on simulator time, the trace on the clock. It now also allows for the gap before (#1341). Trace only; nothing moves differently.
+
 ## [0.154.1] - 2026-10-31
 
 ### Fixed

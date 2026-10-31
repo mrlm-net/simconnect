@@ -25,6 +25,7 @@ const (
 
 type lastSent struct {
 	at       time.Time
+	gap      time.Duration // since the placement before this one
 	pos      airport.LatLon
 	hdg, kts float64
 }
@@ -33,22 +34,31 @@ type lastSent struct {
 func (i *Injector) traceJump(objectID uint32, o *injected, kind string, pos airport.LatLon, hdg, kts float64) {
 	now := i.now()
 	last := o.sent
-	o.sent = lastSent{at: now, pos: pos, hdg: hdg, kts: kts}
+	dt := now.Sub(last.at)
+	o.sent = lastSent{at: now, gap: dt, pos: pos, hdg: hdg, kts: kts}
 	if last.at.IsZero() {
 		return
 	}
-	dt := now.Sub(last.at)
 	if dt <= 0 || dt > jumpTraceGap {
 		return
 	}
 	d := localDist(last.pos, pos)
-	allowed := math.Max(last.kts, kts)*ktsToMS*math.Max(dt.Seconds(), 2.0/60)*1.5 + jumpTraceMarginM // two frames: frames come in pairs
+	allowed := jumpAllowedM(math.Max(last.kts, kts), dt, last.gap)
 	turn := math.Abs(math.Remainder(hdg-last.hdg, 360))
 	if d <= allowed && turn <= jumpTraceDeg {
 		return
 	}
 	fmt.Fprintf(os.Stderr, "%s  jump trace: object %d %s %.1f m (%.1f allowed), %.1f° in %s at %.0f kt; %s\n",
 		now.Format("15:04:05.000"), objectID, kind, d, allowed, turn, dt.Round(time.Millisecond), kts, callers())
+}
+
+// jumpAllowedM is how far a placement dt after the last may lie at kts. Motion
+// steps on simulator time and dt is the clock's: a frame delivered late and the
+// next one early carry steps longer than the gap between them, so the gap before
+// counts too (8.5 m in 59 ms at 135 kt is 122 ms of flight, not a jump). At least
+// two frames: frames come in pairs.
+func jumpAllowedM(kts float64, dt, gap time.Duration) float64 {
+	return kts*ktsToMS*math.Max(math.Max(dt.Seconds(), gap.Seconds()), 2.0/60)*1.5 + jumpTraceMarginM
 }
 
 // callers names the functions that led to a placement, outside the injector.
