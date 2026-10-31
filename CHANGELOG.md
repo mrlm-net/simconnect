@@ -7,6 +7,12 @@ This project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 ---
 
+## [0.155.1] - 2026-10-31
+
+### Fixed
+
+- Spotting director: the `ours` kind and the `Types` filter matched nothing, ours counted as `other`, and `subject` could be the object's ATC ID rather than its call sign. The scan it reads now carries them as `GET /api/traffic` does (#1345).
+
 ## [0.155.0] - 2026-10-31
 
 ### Added

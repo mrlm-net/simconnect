@@ -142,3 +142,44 @@ func TestSpottingPlayer(t *testing.T) {
 		t.Fatalf("the player taxiing not picked: %+v", v)
 	}
 }
+
+// TestSpottingFilterOurs: the kind and type filters see our traffic, under its
+// call sign.
+func TestSpottingFilterOurs(t *testing.T) {
+	h := spottingStart(t)
+	no := false
+	if err := h.World.SetSchedule(world.ScheduleSettings{Enabled: true, Airports: []string{"LKPR"}, Density: 3, MaxAircraft: 4, VFR: &no}); err != nil {
+		t.Fatal(err)
+	}
+	var kind string
+	if !h.Until(30*time.Minute, func() bool {
+		var list []world.Traffic
+		if err := h.World.Get("/api/traffic", &list); err != nil {
+			t.Fatal(err)
+		}
+		for _, a := range list {
+			if a.Ours && a.Type != "" {
+				kind = a.Type
+				return true
+			}
+		}
+		return false
+	}) {
+		t.Fatal("no aircraft of ours with a type")
+	}
+	if err := h.World.StartSpotting(world.SpottingRequest{ICAO: "LKPR", Kinds: []string{"ours"}, Types: []string{kind}}); err != nil {
+		t.Fatal(err)
+	}
+	if !h.Until(40*time.Minute, func() bool {
+		v := spottingNow(t, h)
+		if v.Subject == "" {
+			return false
+		}
+		if _, ok := h.Aircraft(v.Subject); !ok {
+			t.Fatalf("subject %q is no call sign of ours", v.Subject)
+		}
+		return true
+	}) {
+		t.Fatalf("no %s of ours picked: %+v", kind, spottingNow(t, h))
+	}
+}

@@ -4980,7 +4980,7 @@ func (cc *controlCenter) reportTraffic(scan []Traffic) {
 	cc.mu.Lock()
 	cc.scan = scan
 	cc.mu.Unlock()
-	cc.scanNow.Store(&scanned{at: traffic.Now(), list: scan})
+	cc.scanNow.Store(&scanned{at: traffic.Now(), list: cc.labelled(scan)})
 	for _, t := range scan {
 		if t.User {
 			cc.detail.SetViewer(airport.LatLon{Lat: t.Latitude, Lon: t.Longitude})
@@ -4995,6 +4995,21 @@ func (cc *controlCenter) reportTraffic(scan []Traffic) {
 	// Ground pictures and stand allocators get it from here; our own
 	// aircraft report themselves (SetOwn in update).
 	cc.world.Observe(cc.clock.Now(), obs)
+}
+
+// labelled is a copy of scan with what the simulator does not say: which are
+// ours, their call signs and the type designators.
+func (cc *controlCenter) labelled(scan []Traffic) []Traffic {
+	ours, tails := cc.ownIDs(), cc.ownTails()
+	out := append(make([]Traffic, 0, len(scan)), scan...)
+	for i := range out {
+		out[i].Ours = ours[out[i].ObjectID]
+		if tail := tails[out[i].ObjectID]; tail != "" {
+			out[i].Tail = tail // our call sign, not the object's first ATC ID
+		}
+		out[i].Type = typeOfTitle(out[i].Title)
+	}
+	return out
 }
 
 // gaRamps are the general aviation parking types: where a VFR light
