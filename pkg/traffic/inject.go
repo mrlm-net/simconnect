@@ -3,8 +3,6 @@ package traffic
 import (
 	"fmt"
 	"math"
-	"strconv"
-	"strings"
 	"sync"
 	"time"
 	"unsafe"
@@ -55,9 +53,9 @@ type Injector struct {
 	// (an arrival, created in the air), so it is placed at its rest pitch
 	// too, not on extended struts (MovingPitchDeg).
 	rests map[string][2]float64
-	// gearPartial: by aircraft title, models that refuse the gear's own
-	// positions (HoldGearDown): the handle and the nose gear only.
-	gearPartial map[string]bool
+	// gearStep: by aircraft title, how far down the writes HoldGearDown has
+	// come for a model that refuses them.
+	gearStep map[string]int
 	// ground: the ground elevation seen under our aircraft, by position.
 	ground groundMap
 }
@@ -104,9 +102,9 @@ type injected struct {
 	groundShownPos airport.LatLon
 	groundShownAt  time.Time
 	// gearSends: HoldGearDown writes tracked for an exception (the first
-	// few); gearPartial: the model refused the gear's positions.
-	gearSends   int
-	gearPartial bool
+	// few after each change of gearStep); gearStep: as Injector.gearStep.
+	gearSends int
+	gearStep  int
 }
 
 // Injector definition, request and event offsets.
@@ -236,16 +234,16 @@ func InjectorWithIDs(definitionBase, requestBase, eventBase uint32) InjectorOpti
 // NewInjector returns an Injector using client.
 func NewInjector(client engine.Client, opts ...InjectorOption) *Injector {
 	i := &Injector{
-		client:      client,
-		now:         Now,
-		defBase:     DefaultInjectDefinitionBase,
-		reqBase:     DefaultInjectRequestBase,
-		evtBase:     DefaultInjectEventBase,
-		objects:     map[uint32]*injected{},
-		byRequest:   map[uint32]uint32{},
-		sent:        map[uint32]string{},
-		rests:       map[string][2]float64{},
-		gearPartial: map[string]bool{},
+		client:    client,
+		now:       Now,
+		defBase:   DefaultInjectDefinitionBase,
+		reqBase:   DefaultInjectRequestBase,
+		evtBase:   DefaultInjectEventBase,
+		objects:   map[uint32]*injected{},
+		byRequest: map[uint32]uint32{},
+		sent:      map[uint32]string{},
+		rests:     map[string][2]float64{},
+		gearStep:  map[string]int{},
 	}
 	for _, o := range opts {
 		o(i)
@@ -639,17 +637,18 @@ func (i *Injector) Handle(msg engine.Message) (bool, error) {
 		if !ok {
 			return false, nil
 		}
-		if id, err := strconv.ParseUint(strings.TrimPrefix(call, holdGearCall), 10, 32); strings.HasPrefix(call, holdGearCall) && err == nil {
-			if o := i.objects[uint32(id)]; o != nil {
-				if o.gearPartial {
-					return true, nil // said once
-				}
-				o.gearPartial = true
-				if o.title != "" {
-					i.gearPartial[o.title] = true
-				}
+		var id uint32
+		var step int
+		if n, _ := fmt.Sscanf(call, holdGearCall+"%d step %d", &id, &step); n == 2 {
+			o := i.objects[id]
+			if o == nil || step != o.gearStep {
+				return true, nil // said once: the frames sent before the first answer
 			}
-			return true, fmt.Errorf("traffic: SimConnect exception %d on %s (parameter %d): its gear held down by the handle and nose gear only", e.DwException, call, e.DwIndex)
+			o.gearStep, o.gearSends = step+1, 0
+			if o.title != "" {
+				i.gearStep[o.title] = step + 1
+			}
+			return true, fmt.Errorf("traffic: SimConnect exception %d on %s (parameter %d): its gear held down by %s", e.DwException, call, e.DwIndex, gearStepNames[step+1])
 		}
 		return true, fmt.Errorf("traffic: SimConnect exception %d on %s (parameter %d)", e.DwException, call, e.DwIndex)
 	}
@@ -921,23 +920,36 @@ func (i *Injector) HoldGearDown(objectID uint32) error {
 		return ErrNotInjected
 	}
 	// A model refusing the main gears' positions (live, the FSLTL Phenom:
-	// an exception every frame of the take-off roll) gets the handle and
-	// the nose gear only.
-	if o.gearPartial || i.gearPartial[o.title] && o.title != "" {
-		g := [2]float64{1, 1}
-		return i.client.SetDataOnSimObject(i.defBase+injDefGearDownPartial, objectID, types.SIMCONNECT_DATA_SET_FLAG_DEFAULT, 0, uint32(unsafe.Sizeof(g)), unsafe.Pointer(&g))
-	}
+	// an exception every frame of the take-off roll) gets the handle and the
+	// nose gear only; refusing those too (live, the passive Phenom: 1,850
+	// exceptions in 31 s), the handle; refusing that, nothing.
+	o.gearStep = max(o.gearStep, i.gearStep[o.title])
 	g := [4]float64{1, 1, 1, 1}
-	err := i.client.SetDataOnSimObject(i.defBase+injDefGearDown, objectID, types.SIMCONNECT_DATA_SET_FLAG_DEFAULT, 0, uint32(unsafe.Sizeof(g)), unsafe.Pointer(&g))
+	var def, size uint32
+	switch o.gearStep {
+	case 0:
+		def, size = i.defBase+injDefGearDown, uint32(unsafe.Sizeof(g))
+	case 1:
+		def, size = i.defBase+injDefGearDownPartial, uint32(unsafe.Sizeof([2]float64{}))
+	case 2:
+		def, size = i.defBase+injDefGear, uint32(unsafe.Sizeof([1]float64{}))
+	default:
+		return nil
+	}
+	err := i.client.SetDataOnSimObject(def, objectID, types.SIMCONNECT_DATA_SET_FLAG_DEFAULT, 0, size, unsafe.Pointer(&g))
 	if o.gearSends < gearTrackSends {
 		o.gearSends++
-		err = i.track(fmt.Sprintf("%s%d", holdGearCall, objectID), err)
+		err = i.track(fmt.Sprintf("%s%d step %d", holdGearCall, objectID, o.gearStep), err)
 	}
 	return err
 }
 
-// holdGearCall names a tracked HoldGearDown write, the object ID after it.
+// holdGearCall names a tracked HoldGearDown write, the object ID and its
+// step after it.
 const holdGearCall = "hold gear down "
+
+// gearStepNames: what holds the gear down at each step of HoldGearDown.
+var gearStepNames = [...]string{"the handle and all its gear", "the handle and nose gear only", "the handle only", "nothing"}
 
 // SetGear moves the gear handle of objectID; the sim animates the gear
 // (about 4 s on an A320) even while the aircraft is frozen.
