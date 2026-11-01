@@ -274,8 +274,10 @@ type TaxiController struct {
 	// Level of detail (#370): how often the injected aircraft is driven.
 	detail  *Detail
 	detailS detailState
-	mu      sync.Mutex
-	fleet   *Fleet
+	// monitorStopped: the monitor's data request is stopped (stopMonitor).
+	monitorStopped bool
+	mu             sync.Mutex
+	fleet          *Fleet
 	// services: the airport's tugs and fuel trucks (#830), nil unlimited.
 	services ServiceFleet
 	defBase  uint32
@@ -672,6 +674,7 @@ func (c *TaxiController) onSpawned(objectID uint32) {
 		c.fail(ErrNotConnected)
 		return
 	}
+	c.monitorStopped = false
 	if err := client.RequestDataOnSimObject(c.reqBase+reqOffMonitor, c.defBase+defOffMonitor, objectID,
 		types.SIMCONNECT_PERIOD_SECOND, types.SIMCONNECT_DATA_REQUEST_FLAG_DEFAULT, 0, 0, 0); err != nil {
 		c.fail(err)
@@ -781,7 +784,8 @@ func (c *TaxiController) Cancel() error {
 }
 
 func (c *TaxiController) stopMonitor() {
-	if client := c.fleet.clientOrNil(); client != nil && c.objectID != 0 {
+	if client := c.fleet.clientOrNil(); client != nil && c.objectID != 0 && !c.monitorStopped {
+		c.monitorStopped = true // stopped twice, the simulator refuses the second (exception 3)
 		client.RequestDataOnSimObject(c.reqBase+reqOffMonitor, c.defBase+defOffMonitor, c.objectID,
 			types.SIMCONNECT_PERIOD_NEVER, types.SIMCONNECT_DATA_REQUEST_FLAG_DEFAULT, 0, 0, 0)
 	}

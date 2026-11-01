@@ -244,6 +244,8 @@ type ArrivalController struct {
 	// Level of detail (#370): how often the injected aircraft is driven.
 	detail  *Detail
 	detailS detailState
+	// monitorStopped: the monitor's data request is stopped (stopMonitor).
+	monitorStopped bool
 	// procSpeed is the speed assigned on the STAR by AbsorbDelay (#391).
 	procSpeed float64
 	// holding is the hold the arrival flies, nil when none (#392).
@@ -662,6 +664,7 @@ func (c *ArrivalController) onSpawned(objectID uint32) {
 		c.fail(err)
 		return
 	}
+	c.monitorStopped = false
 	if err := client.RequestDataOnSimObject(c.reqBase+arrReqMonitor, c.defBase+arrDefMonitor, objectID,
 		types.SIMCONNECT_PERIOD_SECOND, types.SIMCONNECT_DATA_REQUEST_FLAG_DEFAULT, 0, 0, 0); err != nil {
 		c.fail(err)
@@ -865,7 +868,8 @@ func (c *ArrivalController) Cancel() error {
 }
 
 func (c *ArrivalController) stopMonitor() {
-	if client := c.fleet.clientOrNil(); client != nil && c.objectID != 0 {
+	if client := c.fleet.clientOrNil(); client != nil && c.objectID != 0 && !c.monitorStopped {
+		c.monitorStopped = true // stopped twice, the simulator refuses the second (exception 3)
 		client.RequestDataOnSimObject(c.reqBase+arrReqMonitor, c.defBase+arrDefMonitor, c.objectID,
 			types.SIMCONNECT_PERIOD_NEVER, types.SIMCONNECT_DATA_REQUEST_FLAG_DEFAULT, 0, 0, 0)
 	}

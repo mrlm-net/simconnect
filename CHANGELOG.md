@@ -7,6 +7,12 @@ This project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 ---
 
+## [0.160.10] - 2026-11-01
+
+### Fixed
+
+- Removing an aircraft already parked or handed over no longer draws SimConnect exception 3: its monitor request was stopped a second time.
+
 ## [0.160.9] - 2026-11-01
 
 ### Fixed

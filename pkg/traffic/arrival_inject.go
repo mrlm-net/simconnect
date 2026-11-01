@@ -98,6 +98,7 @@ func (c *ArrivalController) watchGround() {
 
 func (c *ArrivalController) monitorEvery(p types.SIMCONNECT_PERIOD) {
 	if client := c.fleet.clientOrNil(); client != nil {
+		c.monitorStopped = false
 		c.note("monitor period", client.RequestDataOnSimObject(c.reqBase+arrReqMonitor, c.defBase+arrDefMonitor, c.objectID,
 			p, types.SIMCONNECT_DATA_REQUEST_FLAG_DEFAULT, 0, 0, 0))
 	}
@@ -288,6 +289,7 @@ func (c *ArrivalController) frameDetail(pose GroundPose) {
 	full := c.state <= ArrivalVacating || c.followMeDriving()
 	if n, changed := c.detailS.want(c.detail, c.now(), pose.Position, pose.GroundSpeedKts > 0.5 || c.detailS.moved(pose.Position, pose.Heading), full); changed {
 		if client := c.fleet.clientOrNil(); client != nil {
+			c.monitorStopped = false
 			c.note("monitor detail", requestFrames(client, c.reqBase+arrReqMonitor, c.defBase+arrDefMonitor, c.objectID, n))
 		}
 	}
