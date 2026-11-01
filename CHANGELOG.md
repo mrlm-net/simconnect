@@ -7,6 +7,12 @@ This project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 ---
 
+## [0.160.9] - 2026-11-01
+
+### Fixed
+
+- An aircraft rolling down a slope no longer goes up and down each frame between a ground cell and its own older sample (live, 0.11 ft at 117 kt on the take-off roll): between cells, the last cell's difference from the sample is kept and fades out.
+
 ## [0.160.8] - 2026-11-01
 
 ### Fixed
