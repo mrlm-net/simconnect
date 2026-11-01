@@ -7,6 +7,12 @@ This project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 ---
 
+## [0.160.5] - 2026-11-01
+
+### Fixed
+
+- Each airport's airway read after the first registered the facility definitions again, and the simulator answered 34 exceptions per airport. All reads now share one loader (#1369).
+
 ## [0.160.4] - 2026-11-01
 
 ### Fixed
