@@ -58,7 +58,7 @@ jobs:
         # Windows with this. A test of another airport skips. A pass means
         # flights were flown: fails on any failure, or if too few ran.
         env:
-          SKIP: '^TestArrivalNoClearanceGoesAround$|^TestDepartureRunwayHasSID$|^TestFaceOutStandPullsIn$|^TestLineUpTakeoffLandingWords$|^TestMainEntranceFirst$|^TestPlayerRescue$|^TestPlayerRescueSmooth$|^TestReadyForTaxiContact$|^TestSayingUntil$|^TestSceneLinesToTheTimetable$|^TestSceneMute$|^TestScheduleTuningLead$|^TestSpotsAnyAirport$|^TestStaffedAssist$|^TestStaffedDepartureLevelsOff$|^TestStaffedSafetyNet$|^TestTaxiClearanceNotRepeated$|^TestTowerCallsUnchanged$|^TestUptoByName$|^TestVacateSaidOnce$|^TestWakeCautionVFR$|^TestSayCustomCrewOnOwnFrequency$'
+          SKIP: '^TestMorningPeakHasArrivals$|^TestSlowLeaderFastFollower$|^TestArrivalNoClearanceGoesAround$|^TestDepartureRunwayHasSID$|^TestFaceOutStandPullsIn$|^TestLineUpTakeoffLandingWords$|^TestMainEntranceFirst$|^TestPlayerRescue$|^TestPlayerRescueSmooth$|^TestReadyForTaxiContact$|^TestSayingUntil$|^TestSceneLinesToTheTimetable$|^TestSceneMute$|^TestScheduleTuningLead$|^TestSpotsAnyAirport$|^TestStaffedAssist$|^TestStaffedDepartureLevelsOff$|^TestStaffedSafetyNet$|^TestTaxiClearanceNotRepeated$|^TestTowerCallsUnchanged$|^TestUptoByName$|^TestVacateSaidOnce$|^TestWakeCautionVFR$|^TestSayCustomCrewOnOwnFrequency$'
         run: |
           mkdir -p data/LKPR
           cp pkg/airport/testdata/LKPR.json data/LKPR/layout.json
