@@ -59,3 +59,45 @@ func TestHoldGearDownPartial(t *testing.T) {
 		t.Errorf("the next of the model: def %d, want %d", c.setDefs[len(c.setDefs)-1], partial)
 	}
 }
+
+// TestHoldGearDownRefusedAll: a model refusing the handle and nose gear too
+// goes on to the handle alone, then to nothing, and the frames already sent
+// when the first refusal comes don't take it further (live, the passive
+// Phenom: an exception every frame of its take-off roll, 1,850 of them).
+func TestHoldGearDownRefusedAll(t *testing.T) {
+	c := &gearClient{}
+	inj := NewInjector(c)
+	if err := inj.Takeover(42); err != nil {
+		t.Fatal(err)
+	}
+	inj.SetModel(42, "Passive E55P")
+	full, partial, handle := inj.defBase+injDefGearDown, inj.defBase+injDefGearDownPartial, inj.defBase+injDefGear
+	for _, want := range []uint32{full, partial, handle} {
+		inj.HoldGearDown(42)
+		first := c.sendID
+		inj.HoldGearDown(42) // the next frame, before the answer
+		if got := c.setDefs[len(c.setDefs)-1]; got != want {
+			t.Fatalf("def %d, want %d", got, want)
+		}
+		if _, err := inj.Handle(exceptionMsg(first, 2)); err == nil {
+			t.Fatal("the first refusal not told")
+		}
+		if handled, err := inj.Handle(exceptionMsg(c.sendID, 2)); !handled || err != nil {
+			t.Fatalf("the second refusal: %v %v", handled, err)
+		}
+	}
+	n := len(c.setDefs)
+	inj.HoldGearDown(42)
+	if len(c.setDefs) != n {
+		t.Errorf("refused everything and still written: def %d", c.setDefs[len(c.setDefs)-1])
+	}
+	// The next of the model starts where this one ended.
+	if err := inj.Takeover(43); err != nil {
+		t.Fatal(err)
+	}
+	inj.SetModel(43, "Passive E55P")
+	inj.HoldGearDown(43)
+	if len(c.setDefs) != n {
+		t.Errorf("the next of the model written: def %d", c.setDefs[len(c.setDefs)-1])
+	}
+}

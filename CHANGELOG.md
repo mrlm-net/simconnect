@@ -7,6 +7,12 @@ This project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 ---
 
+## [0.160.8] - 2026-11-01
+
+### Fixed
+
+- A model refusing the partial gear write answered an exception on every frame of its take-off roll, 1,850 in 31 s for the passive Phenom 100. The hold now steps down to the handle alone, then to nothing (#1374).
+
 ## [0.160.7] - 2026-11-01
 
 ### Fixed
