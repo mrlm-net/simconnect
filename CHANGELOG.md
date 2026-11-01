@@ -7,6 +7,12 @@ This project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 ---
 
+## [0.160.11] - 2026-11-01
+
+### Fixed
+
+- Director: errors from the actuator keep their identity over the link (#1385). They arrived as plain text, so every errors.Is on the director was false: an arrival on the final was never slowed or sent around early by the sequencer, and logged "absorbing failed: not flying the STAR"; blocked spawns, taken stands and the other known errors were missed the same way. No change to the wire format.
+
 ## [0.160.10] - 2026-11-01
 
 ### Fixed
