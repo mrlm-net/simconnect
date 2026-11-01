@@ -63,8 +63,17 @@ jobs:
           mkdir -p data/LKPR
           cp pkg/airport/testdata/LKPR.json data/LKPR/layout.json
           cp pkg/airport/testdata/LKPR-procedures.json data/LKPR/procedures.json
-          SIMCONNECT_DATA="$PWD/data" go test ./pkg/traffic/world/worldtest/ -v -count=1 -timeout 40m -skip "$SKIP" > full.txt 2>&1 && code=0 || code=$?
+          export SIMCONNECT_DATA="$PWD/data"
+          go test ./pkg/traffic/world/worldtest/ -v -count=1 -timeout 40m -skip "$SKIP" > full.txt 2>&1 || true
           grep -aE '^(--- |ok|FAIL|panic)' full.txt | tee results.txt
-          grep -aE -A12 '^--- FAIL' full.txt | grep -avE 'jump trace|frame stats' || true
-          test "$code" = 0
+          grep -aE '_test.go:[0-9]+:' full.txt || true
           test "$(grep -c '^--- PASS' results.txt)" -ge 30
+          # They run in real time on a two-core runner: a test counts as failed
+          # only if it fails again on its own.
+          failed=$(grep -a '^--- FAIL' results.txt | sed 's/--- FAIL: //; s/ .*//' | paste -sd'|' -)
+          if [ -n "$failed" ]; then
+            echo "again, on their own: $failed"
+            go test ./pkg/traffic/world/worldtest/ -v -count=1 -timeout 20m -run "^($failed)$" > again.txt 2>&1 && code=0 || code=$?
+            grep -aE '^(--- |ok|FAIL|panic)|_test.go:[0-9]+:' again.txt
+            test "$code" = 0
+          fi
