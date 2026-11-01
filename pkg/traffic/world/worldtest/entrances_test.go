@@ -47,7 +47,7 @@ func TestDeparturesShareEndEntrances(t *testing.T) {
 	}
 	at := map[string]map[string]bool{} // entrance → departures
 	departed := map[string]bool{}
-	for range 40 * 60 / 10 {
+	for range 55 * 60 / 10 {
 		h.Advance(10 * time.Second)
 		for _, v := range h.World.Snapshot().Aircraft {
 			if v.Kind != "departure" || v.Runway != "24" || v.Entry != "" || len(v.Nodes) == 0 {
@@ -80,7 +80,9 @@ func TestDeparturesShareEndEntrances(t *testing.T) {
 	// 3: a take-off leaves the arrival behind 3 NM out once airborne
 	// (traffic.LandingClearanceNM); the 4–5 before went with it on a 5–6
 	// mile final, airborne with it at under 3.
-	if len(departed) < 3 {
-		t.Errorf("%d departures in 40 minutes", len(departed))
+	// 55 minutes: over 40 the schedule gets only 2 to 4 away, whatever the gap.
+	// At 3 NM 7 to 9 go in 55 minutes; a 6 NM gap lets only 4 to 5 go.
+	if len(departed) < 6 {
+		t.Errorf("%d departures in 55 minutes", len(departed))
 	}
 }
