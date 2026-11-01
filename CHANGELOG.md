@@ -7,6 +7,12 @@ This project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 ---
 
+## [0.160.4] - 2026-11-01
+
+### Fixed
+
+- An arrival for a stand whose stop sits far back on its spot could lose its whole taxi route: it counted as vacated seconds after touchdown and drove from the runway straight to the stand at speed (live, LKTB 3M: a B738 at 137 kt). The route is now kept and joins the stand at the point furthest behind the stop, or the aircraft turns on the stand (#1366).
+
 ## [0.160.3] - 2026-10-31
 
 ### Fixed

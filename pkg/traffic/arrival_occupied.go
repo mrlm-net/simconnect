@@ -135,13 +135,11 @@ func (c *ArrivalController) taxiPathFrom(nose airport.LatLon, from int) (*Ground
 	prof := c.profile()
 	route := c.plan.Route.Points
 	stopNose := NoseGear(c.plan.Stop, c.standHeading, prof)
-	axis := offsetHeading(stopNose, c.standHeading, -standAxisMeters)
-	faceOut := turnsOnStand(c.req.Graph, c.req.Parking, route, from)
-	last := from - 1
-	for i := from; i < len(route)-1; i++ {
-		if faceOut || alongHeading(stopNose, c.standHeading, route[i]) <= -standAxisMeters {
-			last = i
-		}
+	last, axisM := standJoin(route, from, nose, stopNose, c.standHeading)
+	axis := offsetHeading(stopNose, c.standHeading, -axisM)
+	faceOut := axisM == 0 || turnsOnStand(c.req.Graph, c.req.Parking, route, from)
+	if faceOut {
+		last = max(last, len(route)-2)
 	}
 	pts := []airport.LatLon{nose}
 	apron := apronSpans{g: c.req.Graph}
