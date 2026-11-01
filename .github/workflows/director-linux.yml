@@ -1,0 +1,79 @@
+name: Traffic director on Linux
+
+# The traffic director (#710) on a real Linux machine: the World's tests,
+# director and actuator linked as they are in production, and the binary
+# itself answering /healthz and listening for an actuator. Nothing here needs
+# a simulator.
+
+on:
+  pull_request:
+    paths:
+      - 'pkg/traffic/**'
+      - 'pkg/airport/**'
+      - 'pkg/nav/**'
+      - 'cmd/traffic-director/**'
+      - '.github/workflows/director-linux.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  director:
+    name: Run the director on Linux
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+
+      - name: Link tests (director and actuator over TCP)
+        run: go test ./pkg/traffic/world/ -count=1 -timeout 20m
+
+      - name: Build the director
+        run: CGO_ENABLED=0 go build -trimpath -o traffic-director ./cmd/traffic-director
+
+      - name: Run it, listening for an actuator
+        run: |
+          mkdir -p run
+          ./traffic-director -listen 127.0.0.1:7710 -addr 127.0.0.1:8080 -log-dir run -data-dir run > run/out.txt 2>&1 &
+          pid=$!
+          ok=
+          for i in $(seq 1 30); do
+            if curl -fsS -m 2 http://127.0.0.1:8080/healthz; then ok=1; break; fi
+            sleep 1
+          done
+          kill -0 "$pid"
+          bash -c 'exec 3<>/dev/tcp/127.0.0.1/7710' || ok=
+          kill "$pid" || true
+          cat run/out.txt
+          test -n "$ok"
+
+      - name: Director and actuator through whole flights
+        # LKPR from the repository's own test data, older than simconnect-data
+        # (private): the tests in SKIP need the newer data and fail the same on
+        # Windows with this. A test of another airport skips. A pass means
+        # flights were flown: fails on any failure, or if too few ran.
+        env:
+          SKIP: '^TestMorningPeakHasArrivals$|^TestSlowLeaderFastFollower$|^TestArrivalNoClearanceGoesAround$|^TestDepartureRunwayHasSID$|^TestFaceOutStandPullsIn$|^TestLineUpTakeoffLandingWords$|^TestMainEntranceFirst$|^TestPlayerRescue$|^TestPlayerRescueSmooth$|^TestReadyForTaxiContact$|^TestSayingUntil$|^TestSceneLinesToTheTimetable$|^TestSceneMute$|^TestScheduleTuningLead$|^TestSpotsAnyAirport$|^TestStaffedAssist$|^TestStaffedDepartureLevelsOff$|^TestStaffedSafetyNet$|^TestTaxiClearanceNotRepeated$|^TestTowerCallsUnchanged$|^TestUptoByName$|^TestVacateSaidOnce$|^TestWakeCautionVFR$|^TestSayCustomCrewOnOwnFrequency$'
+        run: |
+          mkdir -p data/LKPR
+          cp pkg/airport/testdata/LKPR.json data/LKPR/layout.json
+          cp pkg/airport/testdata/LKPR-procedures.json data/LKPR/procedures.json
+          export SIMCONNECT_DATA="$PWD/data"
+          go test ./pkg/traffic/world/worldtest/ -v -count=1 -timeout 40m -skip "$SKIP" > full.txt 2>&1 || true
+          grep -aE '^(--- |ok|FAIL|panic)' full.txt | tee results.txt
+          grep -aE '_test.go:[0-9]+:' full.txt || true
+          test "$(grep -c '^--- PASS' results.txt)" -ge 30
+          # They run in real time on a two-core runner: a test counts as failed
+          # only if it fails again on its own.
+          failed=$(grep -a '^--- FAIL' results.txt | sed 's/--- FAIL: //; s/ .*//' | paste -sd'|' -)
+          if [ -n "$failed" ]; then
+            echo "again, on their own: $failed"
+            go test ./pkg/traffic/world/worldtest/ -v -count=1 -timeout 20m -run "^($failed)$" > again.txt 2>&1 && code=0 || code=$?
+            grep -aE '^(--- |ok|FAIL|panic)|_test.go:[0-9]+:' again.txt
+            test "$code" = 0
+          fi
