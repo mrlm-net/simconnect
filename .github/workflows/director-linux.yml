@@ -60,9 +60,11 @@ jobs:
         env:
           SKIP: '^TestArrivalNoClearanceGoesAround$|^TestDepartureRunwayHasSID$|^TestFaceOutStandPullsIn$|^TestLineUpTakeoffLandingWords$|^TestMainEntranceFirst$|^TestPlayerRescue$|^TestPlayerRescueSmooth$|^TestReadyForTaxiContact$|^TestSayingUntil$|^TestSceneLinesToTheTimetable$|^TestSceneMute$|^TestScheduleTuningLead$|^TestSpotsAnyAirport$|^TestStaffedAssist$|^TestStaffedDepartureLevelsOff$|^TestStaffedSafetyNet$|^TestTaxiClearanceNotRepeated$|^TestTowerCallsUnchanged$|^TestUptoByName$|^TestVacateSaidOnce$|^TestWakeCautionVFR$|^TestSayCustomCrewOnOwnFrequency$'
         run: |
-          set -o pipefail
           mkdir -p data/LKPR
           cp pkg/airport/testdata/LKPR.json data/LKPR/layout.json
           cp pkg/airport/testdata/LKPR-procedures.json data/LKPR/procedures.json
-          SIMCONNECT_DATA="$PWD/data" go test ./pkg/traffic/world/worldtest/ -v -count=1 -timeout 40m -skip "$SKIP" | grep -aE '^(--- |ok|FAIL|panic)' | tee results.txt
+          SIMCONNECT_DATA="$PWD/data" go test ./pkg/traffic/world/worldtest/ -v -count=1 -timeout 40m -skip "$SKIP" > full.txt 2>&1 && code=0 || code=$?
+          grep -aE '^(--- |ok|FAIL|panic)' full.txt | tee results.txt
+          grep -aE -A12 '^--- FAIL' full.txt | grep -avE 'jump trace|frame stats' || true
+          test "$code" = 0
           test "$(grep -c '^--- PASS' results.txt)" -ge 30
