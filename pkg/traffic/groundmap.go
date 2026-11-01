@@ -90,15 +90,21 @@ const groundMapTrustFt = 3.0
 // Under a standing aircraft the ground does not change: a new value there
 // is the scenery's ground swapping detail, and followed at once the
 // aircraft dropped with it in a frame (live, OKSLS 0.48 ft at 0 kt).
+// Rolling, it follows at up to groundRollFtPerSec: a step in the ground, or
+// a cell read before at another detail, took it in a frame too (live, LKPR
+// 06: EZY1403 and TVS1326 0.3 to 0.5 ft at 54 and 75 kt).
 func (i *Injector) groundShown(o *injected, pose GroundPose) float64 {
 	g := i.groundUnder(o, pose.Position)
 	now := i.now()
-	if o.groundShownAt.IsZero() || pose.GroundSpeedKts >= groundEaseMaxKts || localDist(o.groundShownPos, pose.Position) > groundEaseStillM ||
-		math.Abs(g-o.groundShownFt) > groundMapTrustFt {
+	if o.groundShownAt.IsZero() || math.Abs(g-o.groundShownFt) > groundMapTrustFt {
 		o.groundShownFt, o.groundShownPos, o.groundShownAt = g, pose.Position, now
 		return g
 	}
-	step := groundEaseFtPerSec * math.Max(0, now.Sub(o.groundShownAt).Seconds())
+	rate := groundEaseFtPerSec
+	if pose.GroundSpeedKts >= groundEaseMaxKts || localDist(o.groundShownPos, pose.Position) > groundEaseStillM {
+		rate = groundRollFtPerSec
+	}
+	step := rate * math.Max(0, now.Sub(o.groundShownAt).Seconds())
 	o.groundShownFt += math.Max(-step, math.Min(step, g-o.groundShownFt))
 	o.groundShownPos, o.groundShownAt = pose.Position, now
 	return o.groundShownFt
@@ -112,3 +118,7 @@ const (
 	groundEaseStillM   = 0.3
 	groundEaseFtPerSec = 1.0
 )
+
+// groundRollFtPerSec: well above what a runway's slope asks at take-off speed
+// (1% at 140 kt is about 2.4 ft/s), about 0.13 ft a frame at 60 Hz.
+const groundRollFtPerSec = 8.0
