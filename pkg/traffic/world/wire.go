@@ -229,7 +229,7 @@ func (c *wireClient) callVia(send func(wireMsg) error, target, method string, ar
 		}
 	}
 	if r.Err != "" {
-		return errors.New(r.Err)
+		return wireError(r.Err)
 	}
 	return nil
 }

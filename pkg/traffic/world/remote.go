@@ -3,7 +3,6 @@ package world
 import (
 	"bytes"
 	"encoding/json"
-	"errors"
 	"fmt"
 	"math"
 	"sync"
@@ -97,7 +96,7 @@ func (r *remoteSim) StartDeparture(defBase, reqBase uint32, req traffic.TaxiRequ
 			var ev traffic.TaxiEvent
 			if len(m.Args) > 0 && json.Unmarshal(m.Args[0], &ev) == nil {
 				if m.Err != "" {
-					ev.Err = errors.New(m.Err)
+					ev.Err = wireError(m.Err)
 				}
 				out <- ev
 			}
@@ -127,7 +126,7 @@ func (r *remoteSim) StartArrival(defBase, reqBase uint32, req traffic.ArrivalReq
 			var ev traffic.ArrivalEvent
 			if len(m.Args) > 0 && json.Unmarshal(m.Args[0], &ev) == nil {
 				if m.Err != "" {
-					ev.Err = errors.New(m.Err)
+					ev.Err = wireError(m.Err)
 				}
 				out <- ev
 			}
@@ -421,7 +420,7 @@ func feedIn(m wireMsg, to simFeed, cache *airport.Cache) error {
 		_ = arg(2, &e)
 		var err error
 		if e != "" {
-			err = errors.New(e)
+			err = wireError(e)
 		}
 		if l != nil && cache != nil {
 			cache.Put(l)
