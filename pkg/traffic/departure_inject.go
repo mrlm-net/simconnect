@@ -185,6 +185,7 @@ func (c *TaxiController) startInjectedDeparture() error {
 	if client == nil {
 		return ErrNotConnected
 	}
+	c.monitorStopped = false
 	if err := client.RequestDataOnSimObject(c.reqBase+reqOffMonitor, c.defBase+defOffMonitor, c.objectID,
 		types.SIMCONNECT_PERIOD_SIM_FRAME, types.SIMCONNECT_DATA_REQUEST_FLAG_DEFAULT, 0, 0, 0); err != nil {
 		return err
@@ -227,6 +228,7 @@ func (c *TaxiController) frameDetail(now time.Time, pos airport.LatLon) {
 	full := c.state >= TaxiLiningUp || tugDriving
 	if n, changed := c.detailS.want(c.detail, now, pos, moving, full); changed {
 		if client := c.fleet.clientOrNil(); client != nil {
+			c.monitorStopped = false
 			c.note("monitor detail", requestFrames(client, c.reqBase+reqOffMonitor, c.defBase+defOffMonitor, c.objectID, n))
 		}
 	}
