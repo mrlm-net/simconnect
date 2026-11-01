@@ -7,6 +7,12 @@ This project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 ---
 
+## [0.160.6] - 2026-11-01
+
+### Fixed
+
+- The simulator reports a wrong ground height for a single frame at some spots, and an aircraft placed on it hopped by 0.15 to 0.39 ft. Ground samples now pass through a median of three, and spikes stay out of the ground map (#1370).
+
 ## [0.160.5] - 2026-11-01
 
 ### Fixed
