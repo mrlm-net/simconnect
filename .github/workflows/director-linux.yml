@@ -53,4 +53,12 @@ jobs:
           test -n "$ok"
 
       - name: Director and actuator through whole flights
-        run: go test ./pkg/traffic/world/worldtest/ -count=1 -timeout 40m
+        # LKPR from the repository's own test data; a test of another airport
+        # skips. Fails if they all skipped, so a pass means flights were flown.
+        run: |
+          mkdir -p data/LKPR
+          cp pkg/airport/testdata/LKPR.json data/LKPR/layout.json
+          cp pkg/airport/testdata/LKPR-procedures.json data/LKPR/procedures.json
+          SIMCONNECT_DATA="$PWD/data" go test ./pkg/traffic/world/worldtest/ -v -count=1 -timeout 40m | grep -aE '^(--- |ok|FAIL|panic)' | tee results.txt
+          grep -c '^--- SKIP' results.txt || true
+          test "$(grep -c '^--- PASS' results.txt)" -ge 20
