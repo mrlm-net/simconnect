@@ -41,7 +41,7 @@ func TestOffRest(t *testing.T) {
 }
 
 // Under a standing aircraft a new ground height (the scenery swapping
-// detail) is eased in, not taken in a frame; rolling, taken at once.
+// detail) is eased in, not taken in a frame; rolling, followed faster.
 func TestGroundShownEasedStanding(t *testing.T) {
 	at := time.Unix(1000, 0)
 	i := &Injector{now: func() time.Time { return at }}
@@ -62,7 +62,18 @@ func TestGroundShownEasedStanding(t *testing.T) {
 	}
 	i.ground.put(p, 1177.40)
 	at = at.Add(20 * time.Millisecond)
+	if got := i.groundShown(o, GroundPose{Position: p, GroundSpeedKts: 10}); math.Abs(got-(1176.92+0.16)) > 0.01 {
+		t.Errorf("rolling: %.2f, want %.2f in 20 ms", got, 1176.92+0.16)
+	}
+	at = at.Add(100 * time.Millisecond)
 	if got := i.groundShown(o, GroundPose{Position: p, GroundSpeedKts: 10}); math.Abs(got-1177.40) > 0.01 {
-		t.Errorf("rolling: %.2f, want the ground at once", got)
+		t.Errorf("rolling, later: %.2f, want the ground", got)
+	}
+	// A bridge or a stale cell's distance away: at once.
+	i.ground.cells = nil
+	o.groundFt = 1190
+	at = at.Add(20 * time.Millisecond)
+	if got := i.groundShown(o, GroundPose{Position: p, GroundSpeedKts: 10}); got != 1190 {
+		t.Errorf("far off: %.2f, want 1190", got)
 	}
 }

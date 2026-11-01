@@ -7,6 +7,12 @@ This project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 ---
 
+## [0.160.7] - 2026-11-01
+
+### Fixed
+
+- Rolling, a step in the ground or an older ground reading moved the aircraft 0.3 to 0.5 ft in one frame. The height now follows at up to 8 ft/s (#1373).
+
 ## [0.160.6] - 2026-11-01
 
 ### Fixed
