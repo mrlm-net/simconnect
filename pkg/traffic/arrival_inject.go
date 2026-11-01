@@ -46,6 +46,36 @@ func ArrivalWithGroundPicture(p *GroundPicture) ArrivalOption {
 // the stand heading, so the aircraft stops aligned with the stand.
 const standAxisMeters = 25.0
 
+// standJoin is where an arrival at nose leaves route for the way onto the stand:
+// the last point from from on at least standAxisMeters behind the stop, and the
+// axis to it. A stop further back on the stand (a longer nose offset) can leave
+// no point that far behind. Then the point furthest behind it with an axis as
+// long as that, or, none behind it at all, the route's last point and no axis
+// (0): the aircraft turns on the stand. Never nothing of the route, while the
+// aircraft is ahead of the axis: that drove straight at the stand from the
+// runway, over the grass (live, LKTB 3M: a B738 at 137 kt).
+func standJoin(route []airport.LatLon, from int, nose, stopNose airport.LatLon, heading float64) (last int, axisM float64) {
+	last = from - 1
+	far, behind := -1, -1.0 // a metre or less is not behind it
+	for i := from; i < len(route)-1; i++ {
+		a := alongHeading(stopNose, heading, route[i])
+		if a <= -standAxisMeters {
+			last = i
+		}
+		if a < behind {
+			far, behind = i, a
+		}
+	}
+	switch {
+	case last >= from || from >= len(route)-1,
+		alongHeading(stopNose, heading, nose) <= -standAxisMeters && localDist(nose, stopNose) <= pullInMeters:
+		return last, standAxisMeters
+	case far >= 0:
+		return far, -behind
+	}
+	return len(route) - 2, 0
+}
+
 // currentLights is the light state the sim reports.
 func (m arrivalMonitor) currentLights() Lights {
 	return Lights{
@@ -92,7 +122,8 @@ func (c *ArrivalController) takeover(m arrivalMonitor, pos airport.LatLon, onRun
 		from = c.track.segmentAt(c.track.pos+prof.WheelbaseMeters-prof.RefAheadMeters) + 1
 	}
 	stopNose := NoseGear(c.plan.Stop, c.standHeading, prof)
-	axis := offsetHeading(stopNose, c.standHeading, -standAxisMeters)
+	last, axisM := standJoin(route, from, nose, stopNose, c.standHeading)
+	axis := offsetHeading(stopNose, c.standHeading, -axisM)
 	pts := []airport.LatLon{nose}
 	hold, clear, onRwy := 0.0, 0.0, localDist(nose, route[0])
 	var holds []holdOnPath
@@ -100,12 +131,9 @@ func (c *ArrivalController) takeover(m arrivalMonitor, pos airport.LatLon, onRun
 	// final stretch onto the stand is replaced by the axis. (Earlier points
 	// may lie in front of the stand; the route can pass it before looping
 	// round to its lead-in.)
-	faceOut := turnsOnStand(c.req.Graph, c.req.Parking, route, from)
-	last := from - 1
-	for i := from; i < len(route)-1; i++ {
-		if faceOut || alongHeading(stopNose, c.standHeading, route[i]) <= -standAxisMeters {
-			last = i // face-out stands keep the route to the lead-in junction
-		}
+	faceOut := axisM == 0 || turnsOnStand(c.req.Graph, c.req.Parking, route, from)
+	if faceOut {
+		last = max(last, len(route)-2) // face-out stands keep the route to the lead-in junction
 	}
 	apron := apronSpans{g: c.req.Graph}
 	for i := from; i <= last; i++ {
