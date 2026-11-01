@@ -1,0 +1,56 @@
+name: Traffic director on Linux
+
+# The traffic director (#710) on a real Linux machine: the World's tests,
+# director and actuator linked as they are in production, and the binary
+# itself answering /healthz and listening for an actuator. Nothing here needs
+# a simulator.
+
+on:
+  pull_request:
+    paths:
+      - 'pkg/traffic/**'
+      - 'pkg/airport/**'
+      - 'pkg/nav/**'
+      - 'cmd/traffic-director/**'
+      - '.github/workflows/director-linux.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  director:
+    name: Run the director on Linux
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+
+      - name: Link tests (director and actuator over TCP)
+        run: go test ./pkg/traffic/world/ -count=1 -timeout 20m
+
+      - name: Build the director
+        run: CGO_ENABLED=0 go build -trimpath -o traffic-director ./cmd/traffic-director
+
+      - name: Run it, listening for an actuator
+        run: |
+          mkdir -p run
+          ./traffic-director -listen 127.0.0.1:7710 -addr 127.0.0.1:8080 -log-dir run -data-dir run > run/out.txt 2>&1 &
+          pid=$!
+          ok=
+          for i in $(seq 1 30); do
+            if curl -fsS -m 2 http://127.0.0.1:8080/healthz; then ok=1; break; fi
+            sleep 1
+          done
+          kill -0 "$pid"
+          bash -c 'exec 3<>/dev/tcp/127.0.0.1/7710' || ok=
+          kill "$pid" || true
+          cat run/out.txt
+          test -n "$ok"
+
+      - name: Director and actuator through whole flights
+        run: go test ./pkg/traffic/world/worldtest/ -count=1 -timeout 40m
