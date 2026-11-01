@@ -83,6 +83,11 @@ type injected struct {
 	title       string
 	placedAt    time.Time // when it was last placed on the ground (place)
 	onGroundRun int
+	// groundPrev: the last two ground samples (groundSeen of them), the
+	// later one at groundPrevAt (groundSample).
+	groundPrev   [2]float64
+	groundSeen   int
+	groundPrevAt airport.LatLon
 	// cgShown: the height above the ground last sent (its rest or static
 	// CG term), at cgShownAt: a new value blends in (smoothCG).
 	cgShown   float64
@@ -595,9 +600,13 @@ func (i *Injector) Handle(msg engine.Message) (bool, error) {
 		}
 		if o := i.objects[obj]; o != nil {
 			g := engine.CastDataAs[injectGround](&d.DwData)
-			o.groundFt, o.cgFt, o.staticPitch, o.haveGround = g.GroundFt, g.CGFt, g.StaticPitch, true
-			i.ground.put(airport.LatLon{Lat: g.Lat, Lon: g.Lon}, g.GroundFt)
-			rest := g.PlaneFt - g.GroundFt
+			at := airport.LatLon{Lat: g.Lat, Lon: g.Lon}
+			ground := o.groundSample(at, g.GroundFt)
+			o.groundFt, o.cgFt, o.staticPitch, o.haveGround = ground, g.CGFt, g.StaticPitch, true
+			if math.Abs(g.GroundFt-ground) < groundSpikeFt {
+				i.ground.put(at, g.GroundFt)
+			}
+			rest := g.PlaneFt - ground
 			// Placed and left alone a while (standing, placed at the standing
 			// rate): where the simulator settled it is its rest, not where it
 			// was first seen (frozen at its static height as created); placed

@@ -28,6 +28,33 @@ func cellOf(p airport.LatLon) groundCell {
 	return groundCell{int32(math.Round(p.Lat / groundCellDeg)), int32(math.Round(p.Lon / groundCellDeg))}
 }
 
+// groundSpikeFt: a sample this far from the median of the last three is a
+// spike, not kept in the map.
+const groundSpikeFt = 0.1
+
+// groundSampleResetM: a sample this far from the last one starts again (placed
+// elsewhere, or sampled rarely): the ground there has nothing to do with it.
+const groundSampleResetM = 50.0
+
+// groundSample is the ground height to use for a new sample ft at p: the median
+// of the last three samples. The simulator reports a wrong ground for a single
+// frame at some spots, the same ones each time, and the aircraft placed on it
+// hopped a frame later (live, LKPR: 0.15 to 0.39 ft, ground and height the same
+// amount apart). A real change of the ground passes a sample later.
+func (o *injected) groundSample(p airport.LatLon, ft float64) float64 {
+	if o.groundSeen > 0 && localDist(o.groundPrevAt, p) > groundSampleResetM {
+		o.groundSeen = 0
+	}
+	a, b := o.groundPrev[0], o.groundPrev[1]
+	seen := o.groundSeen
+	o.groundPrev, o.groundPrevAt = [2]float64{b, ft}, p
+	o.groundSeen = min(seen+1, 2)
+	if seen < 2 {
+		return ft
+	}
+	return max(min(a, b), min(max(a, b), ft))
+}
+
 // put records the ground elevation ft at p.
 func (m *groundMap) put(p airport.LatLon, ft float64) {
 	if p == (airport.LatLon{}) {
