@@ -53,12 +53,16 @@ jobs:
           test -n "$ok"
 
       - name: Director and actuator through whole flights
-        # LKPR from the repository's own test data; a test of another airport
-        # skips. Fails if they all skipped, so a pass means flights were flown.
+        # LKPR from the repository's own test data, older than simconnect-data
+        # (private): the tests in SKIP need the newer data and fail the same on
+        # Windows with this. A test of another airport skips. A pass means
+        # flights were flown: fails on any failure, or if too few ran.
+        env:
+          SKIP: '^TestArrivalNoClearanceGoesAround$|^TestDepartureRunwayHasSID$|^TestFaceOutStandPullsIn$|^TestLineUpTakeoffLandingWords$|^TestMainEntranceFirst$|^TestPlayerRescue$|^TestPlayerRescueSmooth$|^TestReadyForTaxiContact$|^TestSayingUntil$|^TestSceneLinesToTheTimetable$|^TestSceneMute$|^TestScheduleTuningLead$|^TestSpotsAnyAirport$|^TestStaffedAssist$|^TestStaffedDepartureLevelsOff$|^TestStaffedSafetyNet$|^TestTaxiClearanceNotRepeated$|^TestTowerCallsUnchanged$|^TestUptoByName$|^TestVacateSaidOnce$|^TestWakeCautionVFR$|^TestSayCustomCrewOnOwnFrequency$'
         run: |
+          set -o pipefail
           mkdir -p data/LKPR
           cp pkg/airport/testdata/LKPR.json data/LKPR/layout.json
           cp pkg/airport/testdata/LKPR-procedures.json data/LKPR/procedures.json
-          SIMCONNECT_DATA="$PWD/data" go test ./pkg/traffic/world/worldtest/ -v -count=1 -timeout 40m | grep -aE '^(--- |ok|FAIL|panic)' | tee results.txt
-          grep -c '^--- SKIP' results.txt || true
-          test "$(grep -c '^--- PASS' results.txt)" -ge 20
+          SIMCONNECT_DATA="$PWD/data" go test ./pkg/traffic/world/worldtest/ -v -count=1 -timeout 40m -skip "$SKIP" | grep -aE '^(--- |ok|FAIL|panic)' | tee results.txt
+          test "$(grep -c '^--- PASS' results.txt)" -ge 30
