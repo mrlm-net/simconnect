@@ -39,10 +39,14 @@ type airwayKeeper struct {
 	defBase, reqBase uint32
 	logf             func(string, ...any)
 
-	queue []airwayJob
-	cur   *airwayJob
-	read  map[string]time.Time // airport → when its graph was read or loaded
-	seeds map[string]airwayJob // airport → its job, to read it again
+	// loader reads every airport's fixes: a loader of its own per airport
+	// registered the same definitions again, and the simulator refused each
+	// field (live, 34 exception 20s per airport after the first).
+	loader *nav.NavLoader
+	queue  []airwayJob
+	cur    *airwayJob
+	read   map[string]time.Time // airport → when its graph was read or loaded
+	seeds  map[string]airwayJob // airport → its job, to read it again
 }
 
 type airwayJob struct {
@@ -208,12 +212,14 @@ func (k *airwayKeeper) tick(now time.Time) {
 	}
 	job := k.queue[0]
 	k.queue = k.queue[1:]
-	loader := nav.NewNavLoaderWithIDs(k.client, k.defBase, k.reqBase, airwayCrawlSlots)
+	if k.loader == nil {
+		k.loader = nav.NewNavLoaderWithIDs(k.client, k.defBase, k.reqBase, airwayCrawlSlots)
+	}
 	opts := nav.CrawlOptions{Center: job.center, RadiusNM: airwayCrawlRadiusNM}
 	if job.opts != nil {
 		opts = *job.opts
 	}
-	job.crawler = nav.NewAirwayCrawler(loader, opts)
+	job.crawler = nav.NewAirwayCrawler(k.loader, opts)
 	job.started = now
 	if err := job.crawler.Start(job.seeds...); err != nil {
 		k.logf("airways %s: %v", job.icao, err)
