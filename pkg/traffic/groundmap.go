@@ -72,14 +72,40 @@ func (m *groundMap) at(p airport.LatLon) (float64, bool) {
 	return float64(v), ok
 }
 
-// groundUnder is the ground under o placed at p: as seen there before,
-// else its last sample. i.mu held.
+// groundUnder is the ground under o placed at p: as seen there before, else
+// its last sample, moved by what the last cell read differed from the sample
+// then. The sample is some frames old: on a slope it is off by a steady amount,
+// and between cells seen and not seen the aircraft flipped by that amount, frame
+// after frame (live, TVS148 at 117 kt on LKPR 06: 0.11 ft). The difference fades
+// with distance and time (groundOffFadeM, groundOffFadeSec). i.mu held.
 func (i *Injector) groundUnder(o *injected, p airport.LatLon) float64 {
-	if ft, ok := i.ground.at(p); ok && math.Abs(ft-o.groundFt) < groundMapTrustFt {
-		return ft
+	now := i.now()
+	if ft, ok := i.ground.at(p); ok {
+		if math.Abs(ft-o.groundFt) < groundMapTrustFt {
+			o.groundOff, o.groundOffFrom, o.groundOffPos, o.groundOffAt = ft-o.groundFt, o.groundFt, p, now
+			return ft
+		}
+		o.groundOff = 0 // a bridge, a stale cell: nothing to go by
+	}
+	if math.Abs(o.groundFt-o.groundOffFrom) >= groundMapTrustFt {
+		o.groundOff = 0 // the sample itself moved on: a bridge
+	}
+	if o.groundOff != 0 {
+		w := 1 - localDist(o.groundOffPos, p)/groundOffFadeM - now.Sub(o.groundOffAt).Seconds()/groundOffFadeSec
+		if w > 0 {
+			return o.groundFt + w*o.groundOff
+		}
+		o.groundOff = 0
 	}
 	return o.groundFt
 }
+
+// A cell's difference from the sample fades out over this distance and this
+// time, the two added.
+const (
+	groundOffFadeM   = 100.0
+	groundOffFadeSec = 2.0
+)
 
 // groundMapTrustFt: a cell further than this from the aircraft's own
 // sample is not taken (a bridge, a stale cell).

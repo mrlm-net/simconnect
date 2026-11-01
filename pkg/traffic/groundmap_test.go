@@ -11,7 +11,7 @@ import (
 // A step in the runway mesh: placed where the ground was seen before, not
 // on the last sample a frame behind (live, LKPR 24 at 76 kt).
 func TestGroundUnderUsesTheMap(t *testing.T) {
-	i := &Injector{}
+	i := &Injector{now: time.Now}
 	a, b := airport.LatLon{Lat: 50.1, Lon: 14.25}, airport.LatLon{Lat: 50.1, Lon: 14.25003}
 	i.ground.put(a, 1200)
 	i.ground.put(b, 1199.69)

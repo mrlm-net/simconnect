@@ -83,9 +83,14 @@ type injected struct {
 	onGroundRun int
 	// groundPrev: the last two ground samples (groundSeen of them), the
 	// later one at groundPrevAt (groundSample).
-	groundPrev   [2]float64
-	groundSeen   int
-	groundPrevAt airport.LatLon
+	groundPrev [2]float64
+	groundSeen int
+	// groundOff: what the last cell read differed from the sample then
+	// (groundOffFrom), at groundOffPos and groundOffAt (groundUnder).
+	groundOff, groundOffFrom float64
+	groundOffPos             airport.LatLon
+	groundOffAt              time.Time
+	groundPrevAt             airport.LatLon
 	// cgShown: the height above the ground last sent (its rest or static
 	// CG term), at cgShownAt: a new value blends in (smoothCG).
 	cgShown   float64
