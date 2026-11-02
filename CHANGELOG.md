@@ -7,6 +7,12 @@ This project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 ---
 
+## [0.161.3] - 2026-11-02
+
+### Fixed
+
+- A hand-flown go-around presses TOGA, as the autopilot's does. It only pushed the throttle: a model's own TOGA action (the Fenix's levers) was never used.
+
 ## [0.161.2] - 2026-11-02
 
 ### Fixed

@@ -50,7 +50,7 @@ func TestClassAt(t *testing.T) {
 		{lkpr.Lat, lkpr.Lon, 914, "RUZYNE CTR", ClassD},
 		{lkpr.Lat, lkpr.Lon, 1219, "PRAGUE TMA II", ClassC},
 		{49.9675, 14.26, 579, "", 0},
-		{49.9675, 14.26, 701, "PRAGUE CTA 2", ClassE},
+		{49.9675, 14.26, 701, "PRAGUE CTA CECHY WEST", ClassE}, // over PRAGUE CTA 2 too: the lowest ID
 	} {
 		a, err := s.ClassAt(c.lat, c.lon, c.altM, ground)
 		if err != nil {
@@ -59,7 +59,7 @@ func TestClassAt(t *testing.T) {
 		switch {
 		case c.name == "" && a != nil:
 			t.Errorf("%v %.0f m: %s, want none", c, c.altM, a.Name)
-		case c.name != "" && (a == nil || a.Type != c.class):
+		case c.name != "" && (a == nil || a.Type != c.class || a.Name != c.name):
 			t.Errorf("%v %.0f m: %v, want %s (%s)", c, c.altM, a, c.name, c.class)
 		}
 	}

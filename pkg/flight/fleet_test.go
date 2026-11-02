@@ -78,6 +78,9 @@ func TestGhostFleet(t *testing.T) {
 	if !slices.Contains(c.removed, 501) || f.Live() != 1 || c.creates[len(c.creates)-1] != "C172" {
 		t.Errorf("at 155: removed %v, %d live, created %v", c.removed, f.Live(), c.creates)
 	}
+	if !slices.Contains(inj.forgot, 501) {
+		t.Errorf("an ended aircraft still on the injector: forgot %v", inj.forgot)
+	}
 	f.Handle(assigned(farReq, 777)) // FAR's object, too late
 	if !slices.Contains(c.removed, 777) {
 		t.Error("an object no longer due kept")

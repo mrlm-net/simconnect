@@ -3,6 +3,7 @@ package flight
 import (
 	"bytes"
 	"math"
+	"os"
 	"path/filepath"
 	"strings"
 	"testing"
@@ -42,6 +43,10 @@ func TestTrackRoundTrip(t *testing.T) {
 	path := filepath.Join(t.TempDir(), "flight.jsonl.gz")
 	if err := tr.WriteFile(path); err != nil {
 		t.Fatal(err)
+	}
+	raw, err := os.ReadFile(path)
+	if err != nil || len(raw) < 2 || raw[0] != 0x1f || raw[1] != 0x8b {
+		t.Errorf("not compressed: %v, % x", err, raw[:min(2, len(raw))])
 	}
 	gz, err := ReadTrackFile(path)
 	if err != nil || len(gz.Samples) != 3 || gz.Samples[2] != tr.Samples[2] {

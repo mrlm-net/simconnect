@@ -333,6 +333,7 @@ func (e *Engine) goAround(in Input, c Config, out *Output) bool {
 		if in.State.AP.Master {
 			e.act(in, out, set(systems.APMaster, false), true)
 		}
+		e.act(in, out, Action{Name: systems.TOGA}, true)
 		if k := flapsIndex(in); k > 0 && !h.flapsAsked {
 			h.flapsAsked = true
 			want := k - 1
