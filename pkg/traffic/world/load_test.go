@@ -22,7 +22,7 @@ func TestLoadCancelledFirstAsksAgain(t *testing.T) {
 		t.Fatalf("%d waiters left behind", n)
 	}
 	asked := make(chan string, 1)
-	ctx2, cancel2 := context.WithTimeout(context.Background(), 200*time.Millisecond)
+	ctx2, cancel2 := context.WithCancel(context.Background())
 	defer cancel2()
 	go st.load(ctx2, "LKPR", false, asked)
 	select {

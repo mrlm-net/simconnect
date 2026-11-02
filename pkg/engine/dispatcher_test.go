@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"io"
 	"log/slog"
+	"slices"
 	"sync"
 	"sync/atomic"
 	"testing"
@@ -196,27 +197,32 @@ func TestDispatchWaitsOnTheEvent(t *testing.T) {
 		logger: slog.New(slog.NewTextHandler(io.Discard, nil)), queue: make(chan Message, 16)}
 	e.dispatch()
 	defer func() { e.cancel(); e.sync.Wait() }()
+	idleFrom := time.Now()
 	time.Sleep(500 * time.Millisecond) // idle, backed off
 	if api.waits.Load() == 0 {
 		t.Fatalf("never waited on the event (%d polls)", api.polls.Load())
 	}
-	if n := api.polls.Load(); n > 500/int64(maxSleep/time.Millisecond)+2 {
-		t.Errorf("%d polls in 500 ms idle", n)
+	n := api.polls.Load()
+	idle := time.Since(idleFrom) // a late sleep gives more polls, not a failure
+	if n > int64(idle/maxSleep)+2 {
+		t.Errorf("%d polls in %s idle", n, idle)
 	}
-	var worst time.Duration
-	for range 5 {
+	var took []time.Duration
+	for range 7 {
 		at := time.Now()
 		api.send(recvBytes(types.SIMCONNECT_RECV_ID_OPEN))
 		select {
 		case m := <-e.queue:
 			m.Release()
-			worst = max(worst, time.Since(at))
+			took = append(took, time.Since(at))
 		case <-time.After(time.Second):
 			t.Fatal("a message sent was not taken in a second")
 		}
 		time.Sleep(300 * time.Millisecond) // idle again between
 	}
-	if worst > 10*time.Millisecond {
-		t.Errorf("a message taken %s after it was sent", worst)
+	// The middle one: a backed-off sleep delays them all, one stalled machine one.
+	slices.Sort(took)
+	if mid := took[len(took)/2]; mid > 10*time.Millisecond {
+		t.Errorf("messages taken a middle %s after they were sent (%v)", mid, took)
 	}
 }

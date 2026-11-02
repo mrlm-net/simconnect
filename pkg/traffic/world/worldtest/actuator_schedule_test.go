@@ -34,7 +34,12 @@ func TestActuatorNoLocalSchedule(t *testing.T) {
 		defer close(linked)
 		_ = h.World.LinkDirector(ctx, "127.0.0.1:9", "")
 	}()
-	time.Sleep(200 * time.Millisecond)
+	for i := 0; h.World.Snapshot().Link == ""; i++ {
+		if i == 500 {
+			t.Fatal("not linked within 5 s")
+		}
+		time.Sleep(10 * time.Millisecond)
+	}
 	if err := h.World.SetSchedule(world.ScheduleSettings{Enabled: true, Airports: []string{"LKPR"}, Density: 3, MaxAircraft: 6}); err != nil {
 		t.Fatal(err)
 	}

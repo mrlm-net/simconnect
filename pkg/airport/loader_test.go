@@ -288,14 +288,14 @@ func TestLoaderConcurrentAirports(t *testing.T) {
 }
 
 func TestLoaderExpire(t *testing.T) {
-	l := NewLoader(&fakeClient{}, LoaderWithTimeout(time.Second))
+	l := NewLoader(&fakeClient{}, LoaderWithTimeout(time.Hour))
 	if err := l.Request("ZZZZ"); err != nil {
 		t.Fatal(err)
 	}
 	if res := l.Expire(time.Now()); len(res) != 0 {
 		t.Fatalf("expired early: %+v", res)
 	}
-	res := l.Expire(time.Now().Add(2 * time.Second))
+	res := l.Expire(time.Now().Add(2 * time.Hour))
 	if len(res) != 1 || !errors.Is(res[0].Err, ErrTimeout) || res[0].ICAO != "ZZZZ" {
 		t.Fatalf("Expire = %+v", res)
 	}

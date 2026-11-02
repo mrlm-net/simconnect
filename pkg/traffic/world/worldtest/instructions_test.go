@@ -1,6 +1,7 @@
 package worldtest
 
 import (
+	"maps"
 	"fmt"
 	"net/http"
 	"os"
@@ -177,7 +178,7 @@ func TestUptoByName(t *testing.T) {
 		}
 	}
 	met := ""
-	for name := range names {
+	for _, name := range slices.Sorted(maps.Keys(names)) { // the same limit each run
 		b, err := h.World.Do(http.MethodGet, fmt.Sprintf("/api/control/%d/upto/phrase?taxiway=%s", dep.ID, name), nil)
 		if err != nil {
 			continue

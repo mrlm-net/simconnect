@@ -3,7 +3,6 @@ package traffic
 import (
 	"strings"
 	"testing"
-	"time"
 
 	"github.com/mrlm-net/simconnect/pkg/airport"
 	"github.com/mrlm-net/simconnect/pkg/calc"
@@ -26,14 +25,16 @@ func TestMissedJoin(t *testing.T) {
 		InjectApproach: true, Procedure: route}); err != nil {
 		t.Fatal(err)
 	}
-	missed := make(chan string, 64)
-	go func() {
-		for ev := range ctl.Events() {
-			if ev.MissedJoin != "" {
-				missed <- ev.MissedJoin
+	// Handle emits as it runs: what it reported is in the queue on return.
+	missed := func() string {
+		m := ""
+		for len(ctl.Events()) > 0 {
+			if ev := <-ctl.Events(); ev.MissedJoin != "" && m == "" {
+				m = ev.MissedJoin
 			}
 		}
-	}()
+		return m
+	}
 	ctl.Handle(assignedMsg(DefaultArrivalRequestBase, 77))
 	wps := ctl.ProcedurePlan()
 	if len(wps) < 2 {
@@ -44,10 +45,8 @@ func TestMissedJoin(t *testing.T) {
 	}
 	// On its way, at the STAR's start: no report.
 	fly(wps[0].Position, 90)
-	select {
-	case m := <-missed:
+	if m := missed(); m != "" {
 		t.Fatalf("on its route: %q", m)
-	case <-time.After(200 * time.Millisecond):
 	}
 	// At ERASU (the downwind's end), then on heading 065 away, 1 NM a step.
 	var p airport.LatLon
@@ -57,18 +56,20 @@ func TestMissedJoin(t *testing.T) {
 		}
 	}
 	fly(p, 65)
+	m := ""
 	for range 25 {
 		lat, lon := calc.DisplaceByHeading(p.Lat, p.Lon, 65, 1852)
 		p = airport.LatLon{Lat: lat, Lon: lon}
 		fly(p, 65)
-	}
-	select {
-	case m := <-missed:
-		if !strings.Contains(m, "off its route") || !strings.Contains(m, "heading 065") {
-			t.Errorf("reported %q", m)
+		if s := missed(); s != "" && m == "" {
+			m = s
 		}
-	case <-time.After(2 * time.Second):
+	}
+	if m == "" {
 		t.Fatal("flying away past its procedure's end: no MissedJoin")
+	}
+	if !strings.Contains(m, "off its route") || !strings.Contains(m, "heading 065") {
+		t.Errorf("reported %q", m)
 	}
 }
 
@@ -87,14 +88,16 @@ func TestMissedJoinNotAtSpawn(t *testing.T) {
 		InjectApproach: true, Procedure: route}); err != nil {
 		t.Fatal(err)
 	}
-	missed := make(chan string, 8)
-	go func() {
-		for ev := range ctl.Events() {
-			if ev.MissedJoin != "" {
-				missed <- ev.MissedJoin
+	// Handle emits as it runs: what it reported is in the queue on return.
+	missed := func() string {
+		m := ""
+		for len(ctl.Events()) > 0 {
+			if ev := <-ctl.Events(); ev.MissedJoin != "" && m == "" {
+				m = ev.MissedJoin
 			}
 		}
-	}()
+		return m
+	}
 	ctl.Handle(assignedMsg(DefaultArrivalRequestBase, 77))
 	ctl.mu.Lock()
 	sp := airport.LatLon{Lat: ctl.proc.Spawn.Latitude, Lon: ctl.proc.Spawn.Longitude}
@@ -102,9 +105,7 @@ func TestMissedJoinNotAtSpawn(t *testing.T) {
 	for range 3 {
 		ctl.Handle(arrivalPositionMsg(DefaultArrivalRequestBase+arrReqMonitor, 77, sp, 10000, 93, 250, false))
 	}
-	select {
-	case m := <-missed:
+	if m := missed(); m != "" {
 		t.Errorf("at its STAR entry: %q", m)
-	case <-time.After(300 * time.Millisecond):
 	}
 }

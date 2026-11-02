@@ -32,7 +32,7 @@ func TestArrivalFollowMe(t *testing.T) {
 	fm := NewSimObjectFollowMe(ec, inj, "FSDT_FollowMe_Hilux", 9100, prof)
 	fm.Layout, fm.Graph = g.Layout, g
 	ctl := NewArrivalController(NewFleet(ec), ArrivalWithInjector(inj), ArrivalWithServices(fleet))
-	if err := ctl.Start(ArrivalRequest{Graph: g, Runway: "24", Parking: stand, Model: "FSLTL_CRJ7_CLH-Lufthansa CityLine", Tail: "DLH1531", FollowMe: fm}); err != nil {
+	if err := ctl.Start(ArrivalRequest{RollThroughChance: -1, Graph: g, Runway: "24", Parking: stand, Model: "FSLTL_CRJ7_CLH-Lufthansa CityLine", Tail: "DLH1531", FollowMe: fm}); err != nil {
 		t.Fatal(err)
 	}
 	p := ctl.Plan()
@@ -156,7 +156,7 @@ func TestArrivalFollowMeNoneFree(t *testing.T) {
 	fm.Layout = g.Layout
 	c18, _ := g.Layout.ParkingIndex("C18")
 	ctl := NewArrivalController(NewFleet(ec), ArrivalWithInjector(inj), ArrivalWithServices(fleet))
-	if err := ctl.Start(ArrivalRequest{Graph: g, Runway: "24", Parking: c18, Model: "FSLTL_CRJ7_CLH-Lufthansa CityLine", Tail: "DLH1531", FollowMe: fm}); err != nil {
+	if err := ctl.Start(ArrivalRequest{RollThroughChance: -1, Graph: g, Runway: "24", Parking: c18, Model: "FSLTL_CRJ7_CLH-Lufthansa CityLine", Tail: "DLH1531", FollowMe: fm}); err != nil {
 		t.Fatal(err)
 	}
 	p := ctl.Plan()

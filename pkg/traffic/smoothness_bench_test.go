@@ -141,6 +141,7 @@ func BenchmarkSpawnArrivalStart(b *testing.B) {
 			for range ctl.Events() {
 			}
 		}()
+		ctl.Cancel()
 	}
 }
 
