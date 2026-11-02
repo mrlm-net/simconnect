@@ -91,6 +91,11 @@ func TestKeysOf(t *testing.T) {
 	if p.Validate() != nil {
 		t.Fatal(p.Validate())
 	}
+	for _, k := range keys {
+		if e := p.PoseAt(k.T).Eye; math.Abs(e.Lat-k.Lat) > 1e-9 || math.Abs(e.Lon-k.Lon) > 1e-9 {
+			t.Errorf("at %s plays at %v, %v, the key says %v, %v", k.T, e.Lat, e.Lon, k.Lat, k.Lon)
+		}
+	}
 }
 
 func TestFocalMM(t *testing.T) {

@@ -20,6 +20,8 @@ import (
 // the climb gives the speed; the climb is the pitch over the angle of
 // attack the speed needs. 20 steps a second. Runway 26 at 300 ft.
 type plane struct {
+	toga bool // TOGA pressed
+
 	in                        Input
 	x, y                      float64 // metres east, north of the threshold
 	elev, ail, rud, thr       float64
@@ -69,9 +71,14 @@ func (p *plane) step(e *Engine) Output {
 			if ac.Name == systems.GearDown && ac.On != nil {
 				a.GearHandle = *ac.On
 			}
+			if ac.Name == systems.TOGA {
+				p.toga = true
+			}
 			continue
 		}
 		switch ac.Name {
+		case systems.APAltitudeSel:
+			p.in.State.AP.AltitudeSel = *ac.Value
 		case systems.Elevator:
 			p.elev = *ac.Value
 		case systems.Aileron:
@@ -179,6 +186,9 @@ func TestHandTakeoff(t *testing.T) {
 	if v := p.in.Air.IAS; v < 145 || v > 185 {
 		t.Errorf("at the engage height %.0f kt, V2 + 10 = 160", v)
 	}
+	if h := p.in.AGLFt(); h < 950 || h > 1100 {
+		t.Errorf("autopilot on at %.0f ft, want 1000", h)
+	}
 	if p.maxX > 8 {
 		t.Errorf("off the centreline up to %.1f m", p.maxX)
 	}
@@ -225,6 +235,9 @@ func TestHandLanding(t *testing.T) {
 			}
 			if !handback {
 				t.Fatalf("no handback: phase %v, %.0f kt, touched %v, %s", e.Phase(), a.IAS, p.touched, p.says)
+			}
+			if a.IAS > 41 {
+				t.Errorf("handed back at %.0f kt, want below 40", a.IAS)
 			}
 			if !p.touched || p.touchVS < -400 || p.touchVS > -30 {
 				t.Errorf("touchdown at %.0f ft/min", p.touchVS)
@@ -296,6 +309,15 @@ func TestHandGoAround(t *testing.T) {
 	}
 	if f := p.in.State.Values[systems.FlapsIndex]; f != 3 {
 		t.Errorf("flaps %v, want one step up (3)", f)
+	}
+	if h := p.in.AGLFt(); h < 950 || h > 1100 {
+		t.Errorf("autopilot on at %.0f ft, want 1000", h)
+	}
+	if sel := p.in.State.AP.AltitudeSel; sel != 3000 {
+		t.Errorf("selected %.0f ft, cleared to 3000", sel)
+	}
+	if !p.toga {
+		t.Error("no TOGA")
 	}
 	for _, s := range []string{"Go around, flaps", "Positive climb, gear up", "Autopilot on"} {
 		if !slices.Contains(p.says, s) {

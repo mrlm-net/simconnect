@@ -392,7 +392,7 @@ func TestPressOnSet(t *testing.T) {
 	if err := c.Press(TOGA, State{}); err != nil {
 		t.Fatal(err)
 	}
-	if len(f.set) != 2 || f.set[0] != 5 || f.set[1] != 5 {
+	if len(f.set) != 2 || f.set[0] != 5 || f.set[1] != 5 || f.setVar[0] != "L:LEVER_L" || f.setVar[1] != "L:LEVER_R" {
 		t.Errorf("set %v on %v", f.set, f.setVar)
 	}
 }

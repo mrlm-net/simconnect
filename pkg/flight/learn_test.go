@@ -93,6 +93,15 @@ func TestLearn(t *testing.T) {
 		}
 	}
 	near("rotate", l.RotateKts, 141, 2)
+	// Three flights: the middle one, not the first, the mean or the fastest.
+	faster := func(kts float64) *Track {
+		f := syntheticFlight()
+		for i := range f.Samples {
+			f.Samples[i].IAS += kts
+		}
+		return f
+	}
+	near("rotate, the median", Learn("A320", tr, faster(6), faster(30)).RotateKts, 147, 2)
 	near("lift-off", l.LiftoffKts, 148, 2)
 	near("climb pitch", l.ClimbPitch, 15, 0.5)
 	near("gear up", l.GearUpAGLFt, 150, 10)
