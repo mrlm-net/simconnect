@@ -1,6 +1,7 @@
 package traffic
 
 import (
+	"os"
 	"fmt"
 	"math"
 	"slices"
@@ -43,8 +44,8 @@ func crossingsOf(route *airport.Route, rwy string) []string {
 // pose (a push onto a taxiway, nose along the way out). Every stand and runway without one is reported; as in
 // TestPushToPoseEverywhere nearly all must have one.
 func TestValidatePushPoses(t *testing.T) {
-	if testing.Short() {
-		t.Skip("plans every stand for every runway end: several minutes")
+	if os.Getenv("SIMCONNECT_SWEEPS") == "" {
+		t.Skip("plans every stand for every runway end, several minutes: SIMCONNECT_SWEEPS=1 (nightly)")
 	}
 	for _, icao := range validatedAirports {
 		g := airportGraph(t, icao)

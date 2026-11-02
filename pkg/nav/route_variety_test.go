@@ -47,6 +47,7 @@ func crossing(fp *FlightPlan) string {
 func TestOverflightRouteVariety(t *testing.T) {
 	g := loadLKPRAirways(t)
 	count := map[string]int{}
+	shortest := map[string]float64{} // by departure and arrival: the same each variant
 	n := 0
 	for _, a := range southEast {
 		for _, b := range northWest {
@@ -59,12 +60,18 @@ func TestOverflightRouteVariety(t *testing.T) {
 					if airwayLegs(fp) < 3 {
 						t.Errorf("%s→%s variant %d: %d airway legs: %s", p[0].ICAO, p[1].ICAO, v, airwayLegs(fp), fp.Route)
 					}
-					base, err := Plan(FlightPlanRequest{Departure: p[0], Arrival: p[1], Type: "A320"}, g)
-					if err != nil {
-						t.Fatal(err)
+					key := p[0].ICAO + p[1].ICAO
+					baseNM, ok := shortest[key]
+					if !ok {
+						base, err := Plan(FlightPlanRequest{Departure: p[0], Arrival: p[1], Type: "A320"}, g)
+						if err != nil {
+							t.Fatal(err)
+						}
+						baseNM = base.DistanceNM
+						shortest[key] = baseNM
 					}
-					if fp.DistanceNM > 1.05*base.DistanceNM {
-						t.Errorf("%s→%s variant %d: %.0f NM, the shortest choice %.0f: %s", p[0].ICAO, p[1].ICAO, v, fp.DistanceNM, base.DistanceNM, fp.Route)
+					if fp.DistanceNM > 1.05*baseNM {
+						t.Errorf("%s→%s variant %d: %.0f NM, the shortest choice %.0f: %s", p[0].ICAO, p[1].ICAO, v, fp.DistanceNM, baseNM, fp.Route)
 					}
 					pairs := map[string]bool{}
 					ws := strings.Fields(crossing(fp))
