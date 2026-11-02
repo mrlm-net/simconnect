@@ -12,7 +12,14 @@ func TestMoves(t *testing.T) {
 	if len(ms) != 19 {
 		t.Fatalf("%d moves", len(ms))
 	}
+	kinds := map[Kind]int{}
+	defer func() {
+		if kinds[Wide] == 0 || kinds[Detail] == 0 {
+			t.Errorf("kinds: %v", kinds)
+		}
+	}()
 	for _, m := range ms {
+		kinds[m.Kind]++
 		if m.Name == "" || m.Doc == "" || m.Func == nil {
 			t.Errorf("move %+v", m)
 		}

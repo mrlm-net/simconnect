@@ -41,7 +41,6 @@ func TestTransmissionPhrases(t *testing.T) {
 		{GoAround("CSA1", "traffic on the runway"), PosTower, IntentGoAround, "CSA1, go around, I say again, go around, traffic on the runway", ParamReason, "traffic on the runway"},
 		{Sequenced("CSA1", 2, 8*time.Minute, Absorption{SpeedKts: 210, ExtraNM: 4.9, Left: 3 * time.Minute}), PosApproach, IntentSequence, "CSA1, number 2, for spacing reduce speed to 210 knots, expect 8 minutes delay", ParamNumber, "2"}, // CAP 413 6.23, 6.24
 		{Sequenced("CSA1", 2, 5*time.Minute, Absorption{SpeedKts: 210, ExtraNM: 4.9}), PosApproach, IntentSequence, "CSA1, number 2, for spacing reduce speed to 210 knots", ParamNumber, "2"},                                                // five minutes or less: not said
-		{Sequenced("OKYDV", 3, 2*time.Minute, Absorption{ExtraNM: 4, Orbit: "left"}), PosApproach, IntentSequence, "OKYDV, number 3, orbit left for spacing", ParamNumber, "3"},
 		{Sequenced("CSA1", 0, 2*time.Minute, Absorption{SpeedKts: 190}), PosApproach, IntentSequence, "CSA1, reduce speed to 190 knots", ParamSpeed, "190"}, // the number told already: so is the reason
 		{Sequenced("CSA1", 1, 0, Absorption{SpeedKts: 233}), PosApproach, IntentSequence, "CSA1, number 1, for spacing reduce speed to 233 knots", ParamSpeed, "233"},
 		{DirectToFinal("CSA1", 3), PosApproach, IntentDirect, "CSA1, proceed direct to final, number 3", ParamNumber, "3"},

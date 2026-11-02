@@ -69,7 +69,14 @@ func (k testKeys) jwks() []byte {
 // sign makes a token of claims signed by alg with the key kid.
 func (k testKeys) sign(t *testing.T, alg, kid string, claims map[string]any) string {
 	t.Helper()
-	h, _ := json.Marshal(map[string]string{"alg": alg, "kid": kid, "typ": "JWT"})
+	return k.signHead(t, map[string]any{"alg": alg, "kid": kid, "typ": "JWT"}, claims)
+}
+
+// signHead is sign with the header as given.
+func (k testKeys) signHead(t *testing.T, head, claims map[string]any) string {
+	t.Helper()
+	alg, _ := head["alg"].(string)
+	h, _ := json.Marshal(head)
 	c, _ := json.Marshal(claims)
 	signed := b64.EncodeToString(h) + "." + b64.EncodeToString(c)
 	sum := sha256.Sum256([]byte(signed))
@@ -142,7 +149,10 @@ func TestJWKSVerify(t *testing.T) {
 	bad("unsigned", keys.sign(t, "none", "r1", good), ErrTokenSignature)
 	bad("key of another alg", keys.sign(t, "ES256", "r1", good), ErrTokenSignature)
 	tok := keys.sign(t, "RS256", "r1", good)
-	bad("forged claims", tok[:len(tok)-10]+"AAAAAAAAAA", ErrTokenSignature)
+	bad("altered signature", tok[:len(tok)-10]+"AAAAAAAAAA", ErrTokenSignature)
+	parts := strings.Split(tok, ".")
+	forged, _ := json.Marshal(with("aud", "forged"))
+	bad("forged claims", parts[0]+"."+b64.EncodeToString(forged)+"."+parts[2], ErrTokenSignature)
 	bad("not a token", "abc", ErrTokenMalformed)
 	before := fetches.Load()
 	j.mu.Lock()
@@ -257,9 +267,14 @@ func TestSecureLink(t *testing.T) {
 	untrusting := LinkOptions{TLS: &tls.Config{}, Token: "x"}
 	dctx, dcancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer dcancel()
-	if c, err := untrusting.dial(dctx, ln.Addr().String()); err == nil {
+	c, err := untrusting.dial(dctx, ln.Addr().String())
+	if err == nil {
 		c.Close()
-		t.Error("dialled a director whose certificate it does not trust")
+		t.Fatal("dialled a director whose certificate it does not trust")
+	}
+	var unverified *tls.CertificateVerificationError
+	if !errors.As(err, &unverified) {
+		t.Errorf("refused for another reason than the certificate: %v", err)
 	}
 }
 
@@ -306,6 +321,10 @@ func TestJWKSStrict(t *testing.T) {
 	}
 	if _, err := NewJWKS(jw.URL, "", "").Verify(context.Background(), keys.sign(t, "ES256", "e1", map[string]any{"aud": "svc", "exp": time.Now().Add(time.Hour).Unix()})); err == nil {
 		t.Error("an unscoped key set took a token")
+	}
+	crit := map[string]any{"alg": "ES256", "kid": "e1", "crit": []string{"nope"}}
+	if _, err := j.Verify(context.Background(), keys.signHead(t, crit, map[string]any{"aud": "svc", "exp": time.Now().Add(time.Hour).Unix()})); !errors.Is(err, ErrTokenMalformed) {
+		t.Errorf("a critical header: %v", err)
 	}
 }
 

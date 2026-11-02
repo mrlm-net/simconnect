@@ -300,7 +300,7 @@ func TestAbsorbWithinVectorsBeforeTheMeeting(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if a.Downwind || ctl.tromboneNM != 0 || a.ExtraNM < 1 || a.Orbit != "" {
+	if a.Downwind || ctl.tromboneNM != 0 || a.ExtraNM < 1 {
 		t.Fatalf("%+v (downwind extended %.1f NM), want a vector off the STAR", a, ctl.tromboneNM)
 	}
 	if ctl.dogLeg == nil {
@@ -441,15 +441,15 @@ func TestAbsorbDelayNoOrbitNearTheEnd(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if a.Orbit != "" || a.ExtraNM <= 0 {
+	if a.ExtraNM <= 0 {
 		t.Errorf("3 minutes near the end: %+v, want vectors, no 360 (orbits for emergencies only)", a)
 	}
 	a, err = start().AbsorbDelay(20 * time.Second)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if a.Orbit != "" {
-		t.Errorf("20 s near the end: %+v, want no 360", a)
+	if a.ExtraNM != 0 {
+		t.Errorf("20 s near the end: %+v, want no stretch", a)
 	}
 }
 

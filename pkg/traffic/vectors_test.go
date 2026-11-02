@@ -120,7 +120,7 @@ func TestVectorsExtendedDownwind(t *testing.T) {
 func TestVectorsDogLeg(t *testing.T) {
 	ctl, _ := vectorArrival(t, "LOMKI") // no downwind to extend: a dog-leg
 	a, err := ctl.AbsorbDelay(4 * time.Minute)
-	if err != nil || a.ExtraNM <= 0 || a.Orbit != "" {
+	if err != nil || a.ExtraNM <= 0 {
 		t.Fatalf("%+v %v, want a dog-leg", a, err)
 	}
 	if len(ctl.vectors) != 2 || ctl.vectors[0].For != "spacing" {

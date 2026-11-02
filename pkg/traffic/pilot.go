@@ -542,9 +542,6 @@ func Readback(t Transmission) (Transmission, bool) {
 		if p[ParamSpeed] != "" {
 			parts = append(parts, "reduce speed to "+p[ParamSpeed]+" knots")
 		}
-		if p[ParamOrbit] != "" {
-			parts = append(parts, "orbit "+p[ParamOrbit])
-		}
 		if p[ParamFinalSpeed] != "" {
 			parts = append(parts, "reduce to final approach speed")
 		}

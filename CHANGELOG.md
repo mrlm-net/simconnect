@@ -7,6 +7,12 @@ This project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 ---
 
+## [0.161.2] - 2026-11-02
+
+### Fixed
+
+- `Absorption.Orbit` and `ParamOrbit` are gone: nothing ever set them, since orbits for spacing were dropped.
+
 ## [0.161.1] - 2026-11-02
 
 ### Fixed

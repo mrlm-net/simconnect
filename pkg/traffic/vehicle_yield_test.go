@@ -40,13 +40,14 @@ func TestVehicleGivesWay(t *testing.T) {
 	for d := 0.0; d <= 120; d += trafficBodyStep {
 		ahead = append(ahead, offsetHeading(at, hdg, d))
 	}
+	// Its own aircraft (77) and a parked one by the road do not count: told
+	// each look, or they would go stale and not be there to count.
 	report := func() {
+		pic.Report(77, pose.Position, pose.Heading, prof, now)
+		pic.Report(2, path.PointAt(60), hdg, prof, now)
 		pic.Report(1, at, hdg, prof, now)
 		pic.ReportPath(1, ahead, DefaultHalfSpanMeters)
 	}
-	// Its own aircraft (77) and a parked one by the road do not count.
-	pic.Report(77, pose.Position, pose.Heading, prof, now)
-	pic.Report(2, path.PointAt(60), hdg, prof, now)
 	report()
 	var stopped float64
 	for k := 0; k < 60*120; k++ {

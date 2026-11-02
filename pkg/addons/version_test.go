@@ -80,11 +80,3 @@ func TestSDK(t *testing.T) {
 	}
 }
 
-// On this machine: what Installs and SDK read (a log, not a check).
-func TestInstallsHere(t *testing.T) {
-	for _, in := range Installs() {
-		t.Logf("%s %s: version %q dir %q", in.Sim, in.Store, in.Version, in.Dir)
-	}
-	dir, v := SDK()
-	t.Logf("SDK %q %q; Store lookup (Calculator): %q", dir, v, func() string { v, _ := storeApp("Microsoft.WindowsCalculator"); return v }())
-}

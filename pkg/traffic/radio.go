@@ -175,7 +175,6 @@ const (
 	ParamExpect     = "expect"      // expect further clearance, HH:MM
 	ParamSpeed      = "speed"       // knots
 	ParamFinalSpeed = "final_speed" // "1": reduce to final approach speed
-	ParamOrbit      = "orbit"       // a 360 for spacing: "left" or "right"
 	ParamLevel      = "level"       // "flight level 210" or "altitude 9000 feet"
 	ParamHeading    = "heading"     // degrees, three digits
 	ParamTurn       = "turn"        // left, right
@@ -553,9 +552,6 @@ func phrase(cs string, in Intent, p map[string]string) string {
 		}
 		if p[ParamSpeed] != "" {
 			s += fmt.Sprintf(", %sreduce speed to %s knots", why, p[ParamSpeed])
-		}
-		if p[ParamOrbit] != "" {
-			s += fmt.Sprintf(", orbit %s for spacing", p[ParamOrbit])
 		}
 		if p[ParamFinalSpeed] != "" {
 			s += ", " + why + "reduce to final approach speed"
@@ -1355,9 +1351,6 @@ func Sequenced(cs string, number int, delay time.Duration, a Absorption) Transmi
 	p := map[string]string{ParamLose: a.String()}
 	if number > 0 {
 		p[ParamNumber] = fmt.Sprint(number) // 0: told already, not said again
-	}
-	if a.Orbit != "" {
-		p[ParamOrbit] = a.Orbit
 	}
 	if a.SpeedKts > 0 {
 		p[ParamSpeed] = fmt.Sprintf("%.0f", a.SpeedKts)

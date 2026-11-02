@@ -35,9 +35,6 @@ func TestClone_IndependentFieldMutation(t *testing.T) {
 func TestClone_EmptyDataSet(t *testing.T) {
 	original := DataSet{}
 	clone := original.Clone()
-	if clone.Definitions == nil {
-		// nil and empty are both acceptable; just verify length is 0.
-	}
 	if len(clone.Definitions) != 0 {
 		t.Fatalf("clone of empty dataset should have 0 definitions, got %d", len(clone.Definitions))
 	}

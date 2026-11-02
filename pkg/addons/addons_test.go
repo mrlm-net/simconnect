@@ -139,24 +139,6 @@ func TestProcesses(t *testing.T) {
 	t.Errorf("%s not among %d processes", exe, len(names))
 }
 
-// TestInstalled scans this machine's simulator when there is one.
-func TestInstalled(t *testing.T) {
-	in, err := Find()
-	if err != nil {
-		t.Skip("no simulator installed")
-	}
-	pkgs, err := Scan(in.Packages)
-	if err != nil {
-		t.Fatal(err)
-	}
-	airports := 0
-	for _, p := range pkgs {
-		if p.ICAO != "" {
-			airports++
-		}
-	}
-	t.Logf("MSFS %s %s: %d packages, %d streamed airports, fingerprint %s", in.Sim, in.Store, len(pkgs), airports, Fingerprint(pkgs)[:12])
-}
 
 // TestLayoutCache: a layout.json is read once while unchanged, and again
 // when it changes (E13).
