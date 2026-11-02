@@ -7,6 +7,12 @@ This project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 ---
 
+## [0.162.0] - 2026-11-02
+
+### Added
+
+- A registration call sign is abbreviated once two-way contact is established (`traffic.AbbreviatedRegistration`): first character and last two (SERA.14050(b)), the controller first and the crew only after it, full again on a new frequency or with the same abbreviation on the frequency.
+
 ## [0.161.4] - 2026-11-02
 
 ### Fixed

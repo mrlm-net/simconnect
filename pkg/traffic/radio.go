@@ -1701,6 +1701,10 @@ type Radio struct {
 	// firstCalls are crews' first calls on a frequency not yet answered:
 	// whether the crew greeted (#721).
 	firstCalls map[string]bool
+	// contacts and abbreviations: who has talked on which frequency, for
+	// abbreviating a registration (#1412, radio_abbreviated.go).
+	contacts      map[string]*radioContact
+	abbreviations map[string]map[string]time.Time
 }
 
 // NewRadio creates a radio.
@@ -1711,7 +1715,7 @@ func NewRadio(opts RadioOptions) *Radio {
 	if opts.Now == nil {
 		opts.Now = Now
 	}
-	r := &Radio{opts: opts, busy: map[string]time.Time{}, firstCalls: map[string]bool{}}
+	r := &Radio{opts: opts, busy: map[string]time.Time{}, firstCalls: map[string]bool{}, contacts: map[string]*radioContact{}, abbreviations: map[string]map[string]time.Time{}}
 	r.SetVariety(opts.Variety)
 	return r
 }
@@ -1821,7 +1825,11 @@ func (r *Radio) transmit(airport string, t Transmission, readBack bool) Transmis
 	}
 	t = r.varied(t, busy)
 	if r.opts.SaidCallsign != nil && t.Callsign != "" {
-		if said := r.opts.SaidCallsign(t.Callsign); said != t.Callsign {
+		said := r.opts.SaidCallsign(t.Callsign)
+		if r.abbreviate(t) {
+			said = AbbreviatedRegistration(t.Callsign)
+		}
+		if said != t.Callsign {
 			t.Text = strings.ReplaceAll(t.Text, t.Callsign, said)
 		}
 	}
