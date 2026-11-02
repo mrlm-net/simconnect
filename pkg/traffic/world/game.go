@@ -39,8 +39,6 @@ const (
 	gameDefaultInterval = 3 * time.Minute
 )
 
-var gameAirlines = []string{"CSA", "AUA", "DLH", "BAW", "AFR", "KLM", "WZZ", "RYR", "LOT", "SWR", "EZY", "UAE"}
-
 type game struct {
 	log      *trafficLog
 	mu       sync.Mutex
@@ -77,6 +75,48 @@ func (g *game) event(points int, format string, args ...any) {
 	g.log.printf("GAME %s (score %d)", msg, g.Score)
 }
 
+// gameFlights is how many draws a game's flight gets to find one the simulator
+// has a model for.
+const gameFlights = 5
+
+// gameFlight fills r with a flight of the schedule's airlines: its call sign,
+// the other end of its route (said in the delivery call, weighed for its stand)
+// and a model of the airline's type.
+func (cc *controlCenter) gameFlight(r *SpawnRequest, graph *airport.Graph, now time.Time, used map[string]bool) error {
+	cfg := traffic.DefaultScheduleConfig()
+	airlines := make(map[string]traffic.Airline, len(cfg.Airlines))
+	for _, a := range cfg.Airlines {
+		airlines[a.ICAO] = a
+	}
+	opts := traffic.ScheduleOptions{Layouts: map[string]*airport.Layout{r.ICAO: graph.Layout}, Used: used}
+	models := cc.modelList()
+	drew := false
+	for range gameFlights {
+		opts.Seed = uint64(traffic.RandomInt64N(1 << 62))
+		f, ok := traffic.DrawFlight(cfg, opts, r.ICAO, now, r.Kind == "arrival")
+		if !ok {
+			continue
+		}
+		drew = true
+		m := traffic.ModelsForFlight(models, f.Airline, airlines[f.Airline].Name, f.Type, f.Callsign, 1)
+		if len(m) == 0 {
+			continue
+		}
+		r.Tail, r.Model, r.Other = f.Callsign, m[0], f.Destination
+		if r.Kind == "arrival" {
+			r.Other = f.Origin
+		}
+		if airlines[f.Airline].Cargo {
+			r.StandUse = standCargo
+		}
+		return nil
+	}
+	if !drew {
+		return fmt.Errorf("no airline flies to %s", r.ICAO)
+	}
+	return fmt.Errorf("no model of a flight drawn for %s", r.ICAO)
+}
+
 // gameTick runs the game once a second, in the connection goroutine.
 func (cc *controlCenter) gameTick(now time.Time) {
 	g := cc.game
@@ -108,11 +148,13 @@ func (cc *controlCenter) gameTick(now time.Time) {
 	defer g.mu.Unlock()
 	// New traffic.
 	active := 0
+	used := map[string]bool{}
 	for _, it := range items {
 		it.mu.Lock()
 		if !it.view.Done {
 			active++
 		}
+		used[it.Tail] = true
 		it.mu.Unlock()
 	}
 	if g.Interval > 0 && !now.Before(g.next) && active < gameMaxActive {
@@ -122,11 +164,17 @@ func (cc *controlCenter) gameTick(now time.Time) {
 			kind = "arrival"
 		}
 		g.arrival = !g.arrival
-		tail := fmt.Sprintf("%s%d", gameAirlines[traffic.RandomIntN(len(gameAirlines))], 100+traffic.RandomIntN(900))
 		// Runway "active": the runway in use at spawn time.
-		r := SpawnRequest{Kind: kind, ICAO: icao, Stand: -1, Runway: g.Runway, Model: "FSLTL A320 Air France SL", Tail: tail,
+		r := SpawnRequest{Kind: kind, ICAO: icao, Stand: -1, Runway: g.Runway,
 			Gates: true, Tug: kind == "departure", Procedure: true, Deice: "auto"}
-		if it, err := cc.spawn(graph, r); err != nil {
+		tail := "A flight"
+		var err error
+		if err = cc.gameFlight(&r, graph, now, used); err == nil {
+			tail = r.Tail
+		}
+		if err != nil {
+			g.event(0, "%s %s could not be spawned: %v", tail, kind, err)
+		} else if it, err := cc.spawn(graph, r); err != nil {
 			g.event(0, "%s %s could not be spawned: %v", tail, kind, err)
 		} else {
 			g.Spawned++

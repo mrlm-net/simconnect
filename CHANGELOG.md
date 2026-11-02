@@ -7,6 +7,12 @@ This project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 ---
 
+## [0.161.4] - 2026-11-02
+
+### Fixed
+
+- Game mode's flights are drawn from the schedule (new `traffic.DrawFlight`): a departure asks for its clearance to its destination, the other end of the route reaches stand assignment, and each aircraft flies a model of its airline's type, not one Air France A320 for every call sign.
+
 ## [0.161.3] - 2026-11-02
 
 ### Fixed
