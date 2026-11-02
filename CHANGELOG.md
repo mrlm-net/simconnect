@@ -7,6 +7,12 @@ This project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 ---
 
+## [0.160.12] - 2026-11-01
+
+### Fixed
+
+- Director: keep clear asks the actuator what a departure occupies only in the three states where it can answer (#1387). It asked every departure over the link once a second; no change to what traffic does. Also a test that waited only 10 simulated minutes for a randomly scheduled departure now waits 25 (it failed about 1 run in 30).
+
 ## [0.160.11] - 2026-11-01
 
 ### Fixed

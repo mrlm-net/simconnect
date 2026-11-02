@@ -41,7 +41,7 @@ func (cc *controlCenter) keepClear() {
 		if it.dep == nil {
 			continue
 		}
-		if o, ok := it.dep.Occupies(); ok {
+		if o, ok := occupiedBy(it.dep); ok {
 			occ = append(occ, taken{it, o})
 			// Its state only: a push's place shrinks every frame as it goes,
 			// and re-planned for each, every taxiing aircraft searched its
@@ -212,6 +212,17 @@ func (cc *controlCenter) keepClearOfOncoming(items []*controlled) {
 			})
 		}
 	}
+}
+
+// occupiedBy is what dep takes on the taxiways. Asked only in the states where
+// TaxiController.Occupies can answer: over a link each asking is a round trip,
+// and State comes from the snapshot.
+func occupiedBy(dep departureCtl) (airport.Occupied, bool) {
+	switch dep.State() {
+	case traffic.TaxiAwaitingPushback, traffic.TaxiPushback, traffic.TaxiAwaitingTaxi:
+		return dep.Occupies()
+	}
+	return airport.Occupied{}, false
 }
 
 // awayFrom is pts without those within opposedEndMeters of end.
