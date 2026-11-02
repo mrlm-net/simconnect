@@ -184,6 +184,30 @@ func Schedule(cfg ScheduleConfig, opts ScheduleOptions, from, to time.Time) []Fl
 	return out
 }
 
+// DrawFlight is one flight of the schedule's kind at icao at time at, one at a
+// time for a generator with its own pace (the game): the airline, the type,
+// the call sign and the other end as Schedule would draw them. opts gives
+// Seed, Layouts and Used. False when nothing flies there.
+func DrawFlight(cfg ScheduleConfig, opts ScheduleOptions, icao string, at time.Time, arrival bool) (Flight, bool) {
+	g := scheduler{cfg: cfg, rng: rand.New(rand.NewPCG(opts.Seed, 0x5ced)), used: map[string]bool{}, airports: map[string]ScheduleAirport{}}
+	for cs := range opts.Used {
+		g.used[cs] = true
+	}
+	for _, a := range cfg.Airports {
+		g.airports[a.ICAO] = a
+	}
+	focus, ok := g.focusAirport(icao, opts.Layouts[icao])
+	if !ok {
+		return Flight{}, false
+	}
+	known := map[string]bool{}
+	for _, a := range cfg.Airlines {
+		known[strings.ToUpper(a.ICAO)] = true
+	}
+	focus.Carriers = standCarriers(cfg, opts.Layouts[icao], known, icao)
+	return g.flight(focus, standShares(opts.Layouts[icao]), at, arrival)
+}
+
 // focusTime is when a flight is at a focus airport: its departure from
 // one, else its arrival.
 func focusTime(f Flight, focus []string) time.Time {
