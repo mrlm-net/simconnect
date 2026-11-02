@@ -15,6 +15,11 @@ func (sc *SimConnect) Connect() error {
 	}
 
 	procedure := sc.library.LoadProcedure("SimConnect_Open")
+	// Call panics on a DLL that does not load (#1402: an empty file, a corrupt
+	// install): an error here, for the manager to go on retrying.
+	if err := procedure.Find(); err != nil {
+		return fmt.Errorf("SimConnect.dll %q: %w", sc.library.Path(), err)
+	}
 
 	var event uintptr
 	if sc.wantEvent {
