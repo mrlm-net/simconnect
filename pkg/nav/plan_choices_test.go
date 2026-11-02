@@ -17,7 +17,7 @@ func TestPlanChoices(t *testing.T) {
 	lkpr := lkprInfo(t)
 	sids := lkpr.Procedures.SIDsFor("24")
 	if len(sids) < 2 {
-		t.Skip("too few SIDs from 24")
+		t.Fatal("too few SIDs from 24")
 	}
 	want := sids[len(sids)-1].Name
 	fp, err := Plan(FlightPlanRequest{Departure: lkpr, Arrival: eddm, Type: "A20N", DepartureRunway: "24", SID: want, CruiseFL: 240}, g)

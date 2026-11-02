@@ -203,12 +203,12 @@ func TestCircuitGoAroundNotRetaken(t *testing.T) {
 		ctl.Handle(arrivalPositionMsg(mon, 85, airport.LatLon{Lat: w.Latitude, Lon: w.Longitude}, w.Altitude, end.Heading+90, 70, false))
 	}
 	if !ctl.flyingProc {
-		t.Skip("taken over at its base: no final to check")
+		t.Fatal("taken over at its base: no final to check")
 	}
 	on := offsetHeading(end.Threshold, end.Heading+180, 2*1852)
 	now = now.Add(time.Second)
 	ctl.Handle(arrivalPositionMsg(mon, 85, on, 600, end.Heading, 70, false))
-	if ctl.flyingProc && !ctl.CircuitFinal() {
+	if !ctl.CircuitFinal() {
 		t.Error("not on its final 2 NM out after going round again")
 	}
 }

@@ -47,6 +47,10 @@ func TestTugJoinsTheNoseFacingIt(t *testing.T) {
 						t.Fatal(err)
 					}
 				}
+				if !tug.Connected() {
+					t.Errorf("%s %s %s: never joined", icao, typ, p.Label())
+					continue
+				}
 				d, turn := localDist(last, tug.pose.Position), math.Abs(headingDiff(lastH, tug.pose.Heading))
 				if d > 0.5 || turn > 5 {
 					if bad++; bad <= 5 {

@@ -27,7 +27,7 @@ func TestBalancedDeparture(t *testing.T) {
 	}
 	stand, err := l.ParkingIndex("214")
 	if err != nil {
-		t.Skip("no stand 214:", err)
+		t.Fatal("no stand 214:", err)
 	}
 	var ends []airport.RunwayEnd
 	for _, n := range []string{"26L", "26R"} {

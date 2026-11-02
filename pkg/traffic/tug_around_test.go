@@ -40,7 +40,7 @@ func TestRoundAircraft(t *testing.T) {
 func TestTugsKeepOffAircraftLROP(t *testing.T) {
 	b, err := os.ReadFile("../airport/testdata/LROP-layout.json")
 	if err != nil {
-		t.Skip(err)
+		t.Fatal(err)
 	}
 	var l airport.Layout
 	if err := json.Unmarshal(b, &l); err != nil {

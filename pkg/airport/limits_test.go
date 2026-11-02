@@ -115,6 +115,7 @@ func TestLimitsTransitionFromSim(t *testing.T) {
 		meters float64
 		want   float64
 	}{
+		{"ZZZZ", 3048, 10000}, // no published value: the sim's
 		{"EHAM", 914.4, 3000},
 		{"KJFK", 5486.4, 18000},
 		{"LOWW", 0, 10000},   // published (AIP), nothing from the sim

@@ -179,7 +179,7 @@ func TestSimObjectFuelTruck(t *testing.T) {
 		if d := localDist(f.pose.Position, spot.Position); d > 1.5 {
 			t.Errorf("%s: parked %.1f m off the spot", label, d)
 		}
-		if h := math.Abs(headingDiff(f.pose.Heading, pose.Heading)); h > 10 && h < 170 {
+		if h := math.Abs(headingDiff(f.pose.Heading, pose.Heading)); min(h, 180-h) > 10 { // parallel to it: either way round, as the road allows (inbound)
 			t.Errorf("%s: parked %.0f° off the aircraft heading", label, h)
 		}
 		drove := float64(steps) / 60

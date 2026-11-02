@@ -32,7 +32,7 @@ func TestExitTight(t *testing.T) {
 		}
 	}
 	if !named {
-		t.Skip("the exit's first edge has no name")
+		t.Fatal("the exit's first edge has no name")
 	}
 	if why := g.ExitTight(wide, end.Heading, opts); why == "" {
 		t.Error("wider than the taxiway allows, and not too tight")

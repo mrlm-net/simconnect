@@ -770,7 +770,7 @@ func TestNoLineUpBehindOneWaiting(t *testing.T) {
 	ga := RunwayUser{Callsign: "AFR765", Wake: WakeFor("A320"), Phase: RunwayAirborne, Arrival: true, GoingAround: true, End: "24"}
 	c := r.Decide(time.Now(), []RunwayUser{b, thr, ga})
 	if slices.Contains(c.Takeoff, "OKWMV") {
-		t.Skip("cleared for take-off: not the case under test")
+		t.Fatal("cleared for take-off: not the case under test")
 	}
 	if c.LineUpBehindDeparting["RYR1416"] != "" || slices.Contains(c.LineUp, "RYR1416") {
 		t.Errorf("RYR1416 lined up behind %q (line-up %v) with OKWMV waiting for AFR765", c.LineUpBehindDeparting["RYR1416"], c.LineUp)
@@ -792,7 +792,7 @@ func TestLineUpAndWaitTime(t *testing.T) {
 	in := r.opts.LineUpTime + occ + r.opts.Margin + 12*time.Second // room for 60 s, not 85 s (arrivalClear adds the margin again)
 	a := final("AFR765", in.Hours()*140)
 	if a.DistanceNM < r.opts.MinArrivalNM+1 {
-		t.Skipf("arrival %.1f NM: inside the minimum", a.DistanceNM)
+		t.Fatalf("arrival %.1f NM: inside the minimum", a.DistanceNM)
 	}
 	c := r.Decide(now, []RunwayUser{u, a})
 	if slices.Contains(c.LineUp, "OKWMV") {

@@ -140,7 +140,7 @@ func TestVehiclesRespectEachOther(t *testing.T) {
 		tugs, poses = append(tugs, tug), append(poses, pose)
 	}
 	if localDist(tugs[0].pose.Position, tugs[1].pose.Position) > 1 {
-		t.Skip("the two stands have different depots: nothing to share")
+		t.Fatal("the two stands have different depots: nothing to share")
 	}
 	closest := math.Inf(1)
 	for step := 0; step < 60*600 && !(tugs[0].Connected() && tugs[1].Connected()); step++ {

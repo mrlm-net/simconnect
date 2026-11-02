@@ -95,7 +95,7 @@ func TestVehicleHoldsUntilCleared(t *testing.T) {
 		}
 	}
 	if path == nil {
-		t.Skip("no EGLL vehicle route across a runway")
+		t.Fatal("no EGLL vehicle route across a runway")
 	}
 	atc := &fakeVehicleATC{asks: 5, got: map[string]int{}}
 	y := &vehicleYield{self: 7}
@@ -166,6 +166,6 @@ func TestVehicleAsksWhenNear(t *testing.T) {
 		}
 	}
 	if asked == 0 {
-		t.Skip("no EGLL vehicle route with a gate far from its start")
+		t.Fatal("no EGLL vehicle route with a gate far from its start")
 	}
 }

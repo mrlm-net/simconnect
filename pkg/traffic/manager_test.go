@@ -286,11 +286,9 @@ func TestManagerTurnaroundKeepsRegistration(t *testing.T) {
 	if s := statusOf(m, "departure OKJET"); s != FlightScheduled {
 		t.Fatalf("the departure did not take OKJET's registration (%v)", s)
 	}
-	if s := statusOf(m, "departure OKXYZ"); s != 0 {
-		for _, f := range m.Flights() {
-			if f.Callsign == "OKXYZ" {
-				t.Fatalf("OKXYZ still scheduled: %+v", f)
-			}
+	for _, f := range m.Flights() {
+		if f.Callsign == "OKXYZ" {
+			t.Fatalf("OKXYZ still scheduled: %+v", f)
 		}
 	}
 	now := t0.Add(35 * time.Minute)

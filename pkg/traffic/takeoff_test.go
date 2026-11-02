@@ -181,7 +181,7 @@ func TestEntryTooShort(t *testing.T) {
 		}
 	}
 	if short == "" || long == "" {
-		t.Skipf("LKPR 06 entries not all long or short for an A320 (%.0f m)", need)
+		t.Fatalf("LKPR 06 entries not all long or short for an A320 (%.0f m)", need)
 	}
 	for _, c := range []struct {
 		entry string
@@ -190,7 +190,7 @@ func TestEntryTooShort(t *testing.T) {
 		ec := &eventClient{}
 		ctl := NewTaxiController(NewFleet(ec), TaxiWithInjector(NewInjector(ec)))
 		err := ctl.Start(TaxiRequest{Graph: g, Parking: c22, Runway: "06", Entry: c.entry, Model: "A320"})
-		if c.ok && err != nil && !errors.Is(err, airport.ErrNoRoute) {
+		if c.ok && err != nil {
 			t.Errorf("06 at %s: %v", c.entry, err)
 		}
 		if !c.ok && !errors.Is(err, ErrEntryTooShort) {

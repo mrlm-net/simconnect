@@ -969,7 +969,7 @@ func TestArrivalVacateAt(t *testing.T) {
 		}
 	}
 	if other.Node == 0 && other.RunwayNode == 0 {
-		t.Skip("this runway end has only one exit")
+		t.Fatal("this runway end has only one exit")
 	}
 
 	if err := ctl.VacateAt(other); err != nil {

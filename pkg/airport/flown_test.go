@@ -183,7 +183,7 @@ func TestFlownRouteWrongRunway(t *testing.T) {
 		}
 	}
 	if other == "" {
-		t.Skip("no SID family serving both 12 and 30")
+		t.Fatal("no SID family serving both 12 and 30")
 	}
 	r, err := FlownRouteFor(FlownRequest{Departure: lkpr, Arrival: lkpr, DepartureRunway: "30", ArrivalRunway: "24",
 		DepartureProcedures: p, ArrivalProcedures: p, SID: other, Approach: "ILS 06"})
