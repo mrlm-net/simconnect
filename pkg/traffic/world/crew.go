@@ -24,6 +24,11 @@ const (
 	crewUnstableShare = 0.0005
 )
 
+// crewNoClearanceLimit is the go-around for want of a landing clearance after
+// which a crew stops coming back (#1411). A clearance in between does not
+// reset it: the flight has still used the fuel.
+const crewNoClearanceLimit = 3
+
 // crewDecides lets the crews of icao's arrivals in list decide.
 func (t *towers) crewDecides(icao string, list []traffic.RunwayUser, ours map[string]*controlled) {
 	for _, u := range list {
@@ -47,6 +52,9 @@ func (t *towers) crewDecides(icao string, list []traffic.RunwayUser, ours map[st
 			continue
 		}
 		cs := u.Callsign
+		if t.cc.crewDiverting != nil && t.cc.crewDiverting(cs) {
+			continue // on its way to its alternate
+		}
 		t.mu.Lock()
 		cleared, sent, checked := t.given[cs+" land"] || landCleared, t.given[cs+" goaround"], t.given[cs+" crew"]
 		t.given[cs+" crew"] = true // the stability is judged once an approach
@@ -66,7 +74,22 @@ func (t *towers) crewDecides(icao string, list []traffic.RunwayUser, ours map[st
 		}
 		t.mu.Lock()
 		t.given[cs+" goaround"] = true
+		diverts := false
+		if !cleared {
+			if t.noClearance == nil {
+				t.noClearance = map[string]int{}
+			}
+			t.noClearance[cs]++
+			diverts = t.noClearance[cs] >= crewNoClearanceLimit
+		}
 		t.mu.Unlock()
+		// The same go-around again would change nothing: the crew takes the
+		// flight elsewhere (#1411). With no alternate known it goes round again.
+		if diverts && t.cc.crewDivert != nil {
+			if to := t.cc.crewDivert(icao, cs); to != "" {
+				why += ", diverting to " + t.cc.clearanceLimit(to)
+			}
+		}
 		t.cc.log.printf("%-6s crew: going around — %s", cs, why)
 		it.say(traffic.GoingAroundFor(cs, why))
 		if !cleared {

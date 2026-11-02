@@ -551,6 +551,10 @@ type controlCenter struct {
 	// rejoin sequences an arrival afresh after a go-around (#394);
 	// sequencesAt gives an airport's landing sequences by runway (#396).
 	rejoin func(icao, tail string)
+	// crewDivert sends an arrival's crew to an alternate, whose code it returns
+	// ("" none known); crewDiverting: on its way there (#1411).
+	crewDivert    func(icao, tail string) string
+	crewDiverting func(tail string) bool
 	// followed keeps tail landing after lead, as the tower told it
 	// ("number 2, follow …"; ApproachSequencer.Behind).
 	followed func(icao, tail, lead string)

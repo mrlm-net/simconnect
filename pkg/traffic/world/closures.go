@@ -213,6 +213,7 @@ type closedHold struct {
 	since     time.Time
 	to        string    // the alternate, once diverting
 	divertsAt time.Time // when the diversion was given
+	crew      bool      // the crew's own, not for a closure (#1411)
 }
 
 // alternate is the nearest airport to icao's position at least divertMinNM
@@ -234,6 +235,85 @@ func (q *sequences) alternate(icao string, at airport.LatLon) string {
 	return best
 }
 
+// divertPoint is the point an arrival leaving field is sent direct to, toward
+// its alternate.
+func divertPoint(field, alternate airport.LatLon) airport.LatLon {
+	brg := calc.BearingDegrees(field.Lat, field.Lon, alternate.Lat, alternate.Lon)
+	lat, lon := calc.DisplaceByHeading(field.Lat, field.Lon, brg, divertAheadNM*1852)
+	return airport.LatLon{Lat: lat, Lon: lon}
+}
+
+// divertGone removes a diverting arrival once it is out of the area.
+func (q *sequences) divertGone(now time.Time, it *controlled, cs string, ch *closedHold, field airport.LatLon) {
+	it.mu.Lock()
+	pos := it.view.Position
+	it.mu.Unlock()
+	if calc.HaversineNM(pos.Lat, pos.Lon, field.Lat, field.Lon) >= divertAwayNM || now.Sub(ch.divertsAt) >= divertGoneAfter {
+		q.cc.log.printf("%-6s diverted to %s: out of the area", cs, ch.to)
+		_ = q.cc.remove(it)
+		q.mu.Lock()
+		delete(q.closedHolds, cs)
+		q.mu.Unlock()
+	}
+}
+
+// crewDivert has tail's crew divert (#1411): the alternate's code, "" none
+// known. Flown by flyDiversion, once its go-around lets it leave.
+func (q *sequences) crewDivert(icao, tail string) string {
+	g, err := q.cc.graph(icao)
+	if err != nil {
+		return ""
+	}
+	to := q.alternate(icao, airport.LatLon{Lat: g.Layout.Latitude, Lon: g.Layout.Longitude})
+	if to == "" {
+		return ""
+	}
+	q.mu.Lock()
+	defer q.mu.Unlock()
+	if q.closedHolds == nil {
+		q.closedHolds = map[string]*closedHold{}
+	}
+	q.closedHolds[tail] = &closedHold{icao: icao, to: to, crew: true}
+	return to
+}
+
+// crewDiverting reports whether tail's crew has decided to divert.
+func (q *sequences) crewDiverting(tail string) bool {
+	q.mu.Lock()
+	defer q.mu.Unlock()
+	ch := q.closedHolds[tail]
+	return ch != nil && ch.crew
+}
+
+// flyDiversion flies a crew's diversion: true when tail has one, which leaves
+// it out of the sequence. Direct toward the alternate as soon as its go-around
+// allows, then gone once out of the area.
+func (q *sequences) flyDiversion(now time.Time, icao string, it *controlled, e traffic.SequenceEntry) bool {
+	q.mu.Lock()
+	ch := q.closedHolds[e.Callsign]
+	q.mu.Unlock()
+	if ch == nil || !ch.crew {
+		return false
+	}
+	g, err := q.cc.graph(icao)
+	if err != nil {
+		return true
+	}
+	field := airport.LatLon{Lat: g.Layout.Latitude, Lon: g.Layout.Longitude}
+	if ch.divertsAt.IsZero() {
+		st := q.s.st
+		st.mu.Lock()
+		r := st.airportRefs[ch.to]
+		st.mu.Unlock()
+		if q.cc.do(func() error { _, _, err := it.arr.DirectTo(divertPoint(field, r.Position)); return err }) == nil {
+			ch.divertsAt = now
+		}
+		return true
+	}
+	q.divertGone(now, it, e.Callsign, ch, field)
+	return true
+}
+
 // closedAirport handles arrival it at icao with every runway closed: true
 // when it did (held, diverting or gone).
 func (q *sequences) closedAirport(now time.Time, icao string, it *controlled, e traffic.SequenceEntry) bool {
@@ -249,16 +329,7 @@ func (q *sequences) closedAirport(now time.Time, icao string, it *controlled, e 
 	ch := q.closedHolds[e.Callsign]
 	q.mu.Unlock()
 	if ch != nil && ch.to != "" {
-		it.mu.Lock()
-		pos := it.view.Position
-		it.mu.Unlock()
-		if calc.HaversineNM(pos.Lat, pos.Lon, field.Lat, field.Lon) >= divertAwayNM || now.Sub(ch.divertsAt) >= divertGoneAfter {
-			q.cc.log.printf("%-6s diverted to %s: out of the area", e.Callsign, ch.to)
-			_ = q.cc.remove(it)
-			q.mu.Lock()
-			delete(q.closedHolds, e.Callsign)
-			q.mu.Unlock()
-		}
+		q.divertGone(now, it, e.Callsign, ch, field)
 		return true
 	}
 	if _, _, holding := it.arr.Holding(); holding {
@@ -282,9 +353,7 @@ func (q *sequences) closedAirport(now time.Time, icao string, it *controlled, e 
 		st.mu.Lock()
 		r := st.airportRefs[to]
 		st.mu.Unlock()
-		brg := calc.BearingDegrees(field.Lat, field.Lon, r.Position.Lat, r.Position.Lon)
-		lat, lon := calc.DisplaceByHeading(field.Lat, field.Lon, brg, divertAheadNM*1852)
-		_ = q.cc.do(func() error { _, _, err := it.arr.DirectTo(airport.LatLon{Lat: lat, Lon: lon}); return err })
+		_ = q.cc.do(func() error { _, _, err := it.arr.DirectTo(divertPoint(field, r.Position)); return err })
 		ch.to, ch.divertsAt = to, now
 		tx := traffic.Divert(e.Callsign, icao, to)
 		it.call(traffic.PosApproach, prioApproach, func() { it.say(tx) })

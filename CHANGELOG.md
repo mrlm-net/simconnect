@@ -7,6 +7,12 @@ This project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 ---
 
+## [0.162.1] - 2026-11-02
+
+### Fixed
+
+- An arrival that goes around for want of a landing clearance no longer comes back for ever: on the third such go-around its crew says so and diverts to the nearest alternate, then leaves the area.
+
 ## [0.162.0] - 2026-11-02
 
 ### Added

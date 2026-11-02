@@ -261,6 +261,9 @@ func (q *sequences) absorb(now time.Time, icao string, seq []traffic.SequenceEnt
 		// Going around with the tower, not handed back yet: approach has
 		// nothing to say to it (live, FTHAB told "number 3, reduce speed to
 		// 210 knots" 8 s into its go-around, on the tower's frequency).
+		if q.flyDiversion(now, icao, it, e) {
+			continue
+		}
 		it.mu.Lock()
 		withTower := it.atc == traffic.PosTower
 		it.mu.Unlock()
