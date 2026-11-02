@@ -847,6 +847,9 @@ func (c *ArrivalController) onPosition(m arrivalMonitor) {
 func (c *ArrivalController) Cancel() error {
 	c.mu.Lock()
 	defer c.mu.Unlock()
+	if c.objectID == 0 {
+		c.fleet.Abandon(c.reqBase + arrReqSpawn)
+	}
 	if c.picture != nil {
 		c.picture.Forget(c.objectID)
 	}

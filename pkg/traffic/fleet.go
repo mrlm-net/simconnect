@@ -24,6 +24,8 @@ import (
 type Fleet struct {
 	mu      sync.RWMutex
 	pending map[uint32]*Pending  // reqID → pending creation
+	// abandoned: creations nobody waits for any more (Abandon), by reqID.
+	abandoned map[uint32]*Pending
 	members map[uint32]*Aircraft // objectID → active aircraft
 	client  engine.Client
 	// defined are the data definitions controllers registered with this
@@ -35,9 +37,10 @@ type Fleet struct {
 // Pass nil to create an unconnected fleet and call SetClient later.
 func NewFleet(client engine.Client) *Fleet {
 	return &Fleet{
-		pending: make(map[uint32]*Pending),
-		members: make(map[uint32]*Aircraft),
-		client:  client,
+		pending:   make(map[uint32]*Pending),
+		abandoned: make(map[uint32]*Pending),
+		members:   make(map[uint32]*Aircraft),
+		client:    client,
 	}
 }
 
@@ -50,6 +53,7 @@ func (f *Fleet) SetClient(client engine.Client) {
 	defer f.mu.Unlock()
 	f.client = client
 	f.pending = make(map[uint32]*Pending)
+	f.abandoned = make(map[uint32]*Pending)
 	f.members = make(map[uint32]*Aircraft)
 	f.defined = nil // a new connection defines afresh
 }
@@ -150,9 +154,41 @@ func (f *Fleet) RequestNonATC(opts NonATCOpts, reqID uint32) error {
 		return err
 	}
 	f.mu.Lock()
+	delete(f.abandoned, reqID) // its IDs are in new hands: an answer now is theirs
 	f.pending[reqID] = &Pending{ReqID: reqID, Kind: KindNonATC, Model: opts.Model, Livery: opts.Livery, Tail: opts.Tail}
 	f.mu.Unlock()
 	return nil
+}
+
+// Abandon gives up a pending creation: the aircraft, should the simulator
+// create it after all, is removed by HandleAbandoned (#1396). A request not
+// pending is ignored.
+func (f *Fleet) Abandon(reqID uint32) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	if p, ok := f.pending[reqID]; ok {
+		delete(f.pending, reqID)
+		f.abandoned[reqID] = p
+	}
+}
+
+// HandleAbandoned removes an aircraft created after its creation was
+// abandoned, and reports whether msg was that answer and for whom. Whoever
+// asked may be long gone, so the connection's message loop calls it.
+func (f *Fleet) HandleAbandoned(msg engine.Message) (*Pending, bool, error) {
+	if msg.SIMCONNECT_RECV == nil || types.SIMCONNECT_RECV_ID(msg.DwID) != types.SIMCONNECT_RECV_ID_ASSIGNED_OBJECT_ID {
+		return nil, false, nil
+	}
+	m := msg.AsAssignedObjectID()
+	reqID := uint32(m.DwRequestID)
+	f.mu.Lock()
+	p, ok := f.abandoned[reqID]
+	delete(f.abandoned, reqID)
+	f.mu.Unlock()
+	if !ok {
+		return nil, false, nil
+	}
+	return p, true, f.Remove(uint32(m.DwObjectID), reqID)
 }
 
 // ── Acknowledge ────────────────────────────────────────────────────────────
@@ -320,6 +356,7 @@ func (f *Fleet) Clear() {
 	f.mu.Lock()
 	defer f.mu.Unlock()
 	f.pending = make(map[uint32]*Pending)
+	f.abandoned = make(map[uint32]*Pending)
 	f.members = make(map[uint32]*Aircraft)
 	f.defined = nil // a new connection defines afresh
 }

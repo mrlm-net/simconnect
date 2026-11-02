@@ -763,6 +763,9 @@ func (c *TaxiController) ClearForTakeoff() error {
 func (c *TaxiController) Cancel() error {
 	c.mu.Lock()
 	defer c.mu.Unlock()
+	if c.objectID == 0 {
+		c.fleet.Abandon(c.reqBase + reqOffSpawn)
+	}
 	c.removeTug()
 	if c.picture != nil {
 		c.picture.Forget(c.objectID)

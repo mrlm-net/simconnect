@@ -67,6 +67,9 @@ const UserObjectID = 1
 // does not know is 0). Facility, flight-plan and other calls do nothing.
 type Loopback struct {
 	mu sync.Mutex
+	// holdCreates, heldCreates: creations not answered yet (HoldCreates).
+	holdCreates bool
+	heldCreates []func()
 	// cameraOwned, cameraSets: the add-on camera (camera.go).
 	cameraOwned bool
 	cameraPose  types.SIMCONNECT_DATA_CAMERA
@@ -256,6 +259,35 @@ func (l *Loopback) create(title, tail string, lat, lon, altFt, hdg float64, onGr
 func (l *Loopback) createObject(title, tail string, lat, lon, altFt, hdg float64, onGround, vehicle bool, requestID uint32) error {
 	l.mu.Lock()
 	defer l.mu.Unlock()
+	if l.holdCreates {
+		l.heldCreates = append(l.heldCreates, func() { l.createNow(title, tail, lat, lon, altFt, hdg, onGround, vehicle, requestID) })
+		return nil
+	}
+	l.createNow(title, tail, lat, lon, altFt, hdg, onGround, vehicle, requestID)
+	return nil
+}
+
+// HoldCreates keeps the simulator from answering creations until
+// ReleaseCreates: as a live one that drops or delays them.
+func (l *Loopback) HoldCreates() {
+	l.mu.Lock()
+	defer l.mu.Unlock()
+	l.holdCreates = true
+}
+
+// ReleaseCreates creates what was held and answers, late.
+func (l *Loopback) ReleaseCreates() {
+	l.mu.Lock()
+	defer l.mu.Unlock()
+	l.holdCreates = false
+	for _, create := range l.heldCreates {
+		create()
+	}
+	l.heldCreates = nil
+}
+
+// createNow creates the object and answers; under l.mu.
+func (l *Loopback) createNow(title, tail string, lat, lon, altFt, hdg float64, onGround, vehicle bool, requestID uint32) {
 	l.nextID++
 	id := l.nextID
 	if lat == 0 && lon == 0 {
@@ -265,7 +297,6 @@ func (l *Loopback) createObject(title, tail string, lat, lon, altFt, hdg float64
 	m := types.SIMCONNECT_RECV_ASSIGNED_OBJECT_ID{DwRequestID: types.DWORD(requestID), DwObjectID: types.DWORD(id)}
 	m.DwID = types.DWORD(types.SIMCONNECT_RECV_ID_ASSIGNED_OBJECT_ID)
 	l.emit(unsafe.Slice((*byte)(unsafe.Pointer(&m)), unsafe.Sizeof(m)))
-	return nil
 }
 
 func (l *Loopback) AICreateParkedATCAircraft(szContainerTitle string, szTailNumber string, szAirportID string, RequestID uint32) error {

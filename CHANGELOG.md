@@ -7,6 +7,12 @@ This project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 ---
 
+## [0.160.14] - 2026-11-01
+
+### Fixed
+
+- An aircraft the simulator does not create is given up after 3 minutes instead of sitting in "spawning" for good: logged, removed, its stand released (#1396; live: 15 minutes on a stand). An aircraft created after it was given up or removed is taken out of the sim wherever its controller has gone, with a director too, and its IDs wait 10 minutes so a late answer reaches nobody else. New Fleet.Abandon and Fleet.HandleAbandoned.
+
 ## [0.160.13] - 2026-11-01
 
 ### Fixed
