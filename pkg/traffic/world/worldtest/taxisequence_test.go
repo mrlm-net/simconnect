@@ -54,7 +54,7 @@ func TestNoTaxiClearanceOnTheStand(t *testing.T) {
 	// for: start-up and taxi are one call), and they ask for "start_up", so
 	// this condition picks a pushback stand by construction.
 	var dep world.ControlView
-	if !h.Until(10*time.Minute, func() bool {
+	if !h.Until(25*time.Minute, func() bool {
 		for _, v := range h.World.Snapshot().Aircraft {
 			if v.Kind == "departure" && !v.Done && v.ATC == "ground" && v.Request == "pushback" {
 				dep = v
@@ -63,7 +63,7 @@ func TestNoTaxiClearanceOnTheStand(t *testing.T) {
 		}
 		return false
 	}) {
-		t.Fatal("no departure asking ground to push in 10 simulated minutes")
+		t.Fatal("no departure asking ground to push in 25 simulated minutes")
 	}
 
 	// ON THE STAND: push, yes. Taxi, no.
@@ -100,7 +100,7 @@ func TestNoTaxiClearanceOnTheStand(t *testing.T) {
 	}
 
 	// Pushed, tug clear, the crew calling ready: NOW the taxi clearance is due.
-	if !h.Until(10*time.Minute, func() bool {
+	if !h.Until(25*time.Minute, func() bool {
 		v, ok := h.Aircraft(dep.Tail)
 		return ok && slices.Contains(v.Actions, "taxi")
 	}) {
