@@ -147,8 +147,6 @@ func TestTaxiControllerInjectedGates(t *testing.T) {
 	}
 }
 
-var _ = airport.LatLon{}
-
 // TestTaxiControllerInjectedRollingTakeoff: line-up and take-off cleared
 // together, the aircraft rolls into the take-off without stopping on the
 // runway; take-off flaps are set while taxiing and retracted before the
@@ -576,10 +574,6 @@ func TestPushbackFacesRoute(t *testing.T) {
 		nose := NoseGear(pose.Position, pose.Heading, DefaultMotionProfile())
 		ahead := ctl.mover.Path().PointAt(math.Min(25, ctl.mover.Path().Length()))
 		if d := math.Abs(headingDiff(pose.Heading, localBearing(nose, ahead))); d > 110 {
-			if knownBesideJunction[p.Label()] {
-				t.Logf("%s: after the push the taxi-out lies %.0f° off the nose (known, #341)", p.Label(), d)
-				continue
-			}
 			t.Errorf("%s: after the push the taxi-out lies %.0f° off the nose", p.Label(), d)
 		}
 	}
@@ -587,10 +581,6 @@ func TestPushbackFacesRoute(t *testing.T) {
 		t.Fatalf("only %d stands checked", n)
 	}
 }
-
-// knownBesideJunction are LKPR stands whose junction lies beside the stand:
-// the push cannot yet leave them facing the taxi-out (#341).
-var knownBesideJunction = map[string]bool{}
 
 // TestDepartureRoutesBySize: the departure routes for its aircraft — a 777
 // from LKPR B14 keeps off the code C taxilanes JO and JB and leaves by J;
@@ -797,7 +787,7 @@ func TestTaxiControllerExpedite(t *testing.T) {
 // A crew's stand delay (#621): the push request comes that much later; once
 // pushing, there is nothing to delay.
 func TestDelayPushback(t *testing.T) {
-	ctl, _, run, now := injectedDeparture(t, TaxiRequest{HoldForClearances: true})
+	ctl, _, run, _ := injectedDeparture(t, TaxiRequest{HoldForClearances: true})
 	if !run(TaxiAwaitingPushback, 60*900) {
 		t.Fatalf("state %v", ctl.State())
 	}
@@ -808,7 +798,6 @@ func TestDelayPushback(t *testing.T) {
 	if got := ctl.gateAt.Sub(before); got < 10*time.Minute-time.Second {
 		t.Errorf("push request %v later, want 10 min", got)
 	}
-	_ = now
 	ctl.ClearPushback()
 	run(TaxiPushback, 60*900)
 	if ctl.DelayPushback(time.Minute) {

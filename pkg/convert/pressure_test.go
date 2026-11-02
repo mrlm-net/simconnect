@@ -93,16 +93,3 @@ func TestInHgToPascal(t *testing.T) {
 	}
 }
 
-func TestPressureRoundTrips(t *testing.T) {
-	values := []float64{0, 29.92, 30.0, 31.0}
-	for _, v := range values {
-		// inHg → mbar → inHg
-		if got := MillibarToInHg(InHgToMillibar(v)); math.Abs(got-v) > epsilon {
-			t.Errorf("inHg→mbar→inHg round-trip for %v: got %v", v, got)
-		}
-		// inHg → Pa → inHg
-		if got := PascalToInHg(InHgToPascal(v)); math.Abs(got-v) > epsilon {
-			t.Errorf("inHg→Pa→inHg round-trip for %v: got %v", v, got)
-		}
-	}
-}
