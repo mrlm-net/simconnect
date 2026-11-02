@@ -384,10 +384,9 @@ func TestTugArriveWithinCoversTheWayIn(t *testing.T) {
 	}
 }
 
-// TestTugTitleFor: a small tug for a light aircraft, a towbarless one for a
-// business jet, the airliner tug for an A320 or an unknown size. The small
-// robot is never used by default (#1024): the towbarless one instead, unless
-// a local rule takes it back.
+// TestTugTitleFor: a robot for a light aircraft, the airliner tug for a CRJ,
+// an A320 or an unknown size (#495). The small robot is never used by default
+// (#1024): the bigger robot instead, unless a local rule takes it back.
 func TestTugTitleFor(t *testing.T) {
 	if err := dict.Use("traffic.modelRules", []byte(`[{"title":"`+TugSmallTitle+`","never":false}]`)); err != nil {
 		t.Fatal(err)
@@ -401,12 +400,46 @@ func TestTugTitleFor(t *testing.T) {
 	for _, c := range []struct {
 		span float64
 		want string
-	}{{13.4, TugMediumTitle}, {16, TugMediumTitle}, {21.5, TugMediumTitle}, {29, TugMediumTitle}, {35.8, DefaultTugTitle}, {0, DefaultTugTitle}} {
+	}{{13.4, TugMediumTitle}, {16, TugMediumTitle}, {21.5, DefaultTugTitle}, {29, DefaultTugTitle}, {35.8, DefaultTugTitle}, {0, DefaultTugTitle}} {
 		if got := TugTitleFor(c.span); got != c.want {
 			t.Errorf("span %.1f m: %s, want %s", c.span, got, c.want)
 		}
 	}
 	if _, ok := TugAheadFor(DefaultTugTitle); ok {
 		t.Error("the airliner tug sits TugAheadMeters ahead")
+	}
+}
+
+// TestTugTitleOrKeepsRobotsToLightAircraft: a tug asked for is kept, unless
+// it is a robot and the aircraft is not light (#495, the user, live).
+func TestTugTitleOrKeepsRobotsToLightAircraft(t *testing.T) {
+	for _, c := range []struct {
+		asked string
+		span  float64
+		want  string
+	}{
+		{"", 35.8, DefaultTugTitle},
+		{"", 13.4, TugMediumTitle},
+		{TugMediumTitle, 13.4, TugMediumTitle},
+		{TugMediumTitle, 23.2, DefaultTugTitle},
+		{TugMediumTitle, 35.8, DefaultTugTitle},
+		{TugMediumTitle, 0, DefaultTugTitle},
+		{"MyCrew Tug", 35.8, DefaultTugTitle},
+		{"FSDT_TPX_200", 35.8, "FSDT_TPX_200"},
+		{"FSDT_TPX_200", 0, "FSDT_TPX_200"},
+	} {
+		if got := TugTitleOr(c.asked, c.span); got != c.want {
+			t.Errorf("%q, span %.1f m: %s, want %s", c.asked, c.span, got, c.want)
+		}
+	}
+}
+
+// TestTugAheadForMeasured: the places measured live; a towbar's hook and a
+// cradle lie behind the point TugAheadMeters ahead (#495).
+func TestTugAheadForMeasured(t *testing.T) {
+	for _, title := range []string{"FSDT_Pushback_M1A", "FSDT_Pushback_TMX_150", "FSDT_Pushback_Trepel_280", "FSDT_Pushback_Trepel_700", "FSDT_TPX_100_E", "FSDT_TPX_200", "FSDT_TPX_500_MTS"} {
+		if a, ok := TugAheadFor(title); !ok || a >= 0 {
+			t.Errorf("%s: %v %v, want behind the nose gear", title, a, ok)
+		}
 	}
 }
