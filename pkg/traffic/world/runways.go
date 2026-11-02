@@ -56,6 +56,9 @@ type towers struct {
 	grantAt map[string]time.Time
 	// rtoJudged: departures whose crew has judged its take-off roll (#621).
 	rtoJudged map[string]bool
+	// noClearance: go-arounds each arrival flew for want of a landing
+	// clearance (#1411).
+	noClearance map[string]int
 }
 
 // behindClearance is a conditional line-up or crossing (cross) waiting
