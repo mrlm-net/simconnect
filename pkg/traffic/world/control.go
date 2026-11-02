@@ -52,6 +52,10 @@ const (
 )
 
 type controlled struct {
+	// askedAt: when it was spawned; holdIDs: removed before the simulator
+	// answered, so its IDs wait for a late answer (spawnstuck.go).
+	askedAt time.Time
+	holdIDs bool
 	// tug: a departure's pushback tug (SimObjectTug), for its way on the map.
 	tug *traffic.SimObjectTug
 	// fuel: a departure's fuel truck (#582), for its way on the map.
@@ -451,6 +455,8 @@ type controlCenter struct {
 	// traffic log (console, file, /api/control/log).
 	core *core
 	log  *trafficLog
+	// heldIDs: ID blocks of aircraft removed before the simulator answered.
+	heldIDs []heldIDs
 	// startedAt: when this connection's traffic started (jetwaysReady).
 	startedAt time.Time
 	// onTransmission hears every transmission once logged; onChange is told
@@ -747,6 +753,7 @@ func (cc *controlCenter) tick() {
 		cc.standCheckAt = now
 		cc.timed("arrival stands", cc.recheckArrivalStands)
 		cc.timed("prune", cc.pruneDone)
+		cc.timed("stuck spawns", cc.spawnWatch)
 	}
 	cc.timed("keep clear", cc.keepClear)
 	cc.timed("jetways", func() { cc.jetwayTick(cc.clock.Now()) })
@@ -875,6 +882,9 @@ func (cc *controlCenter) recheckArrivalStands() {
 // handle passes a message to the injector and every controller.
 func (cc *controlCenter) handle(msg engine.Message) bool {
 	if svc := cc.jetwayBuilt(); svc != nil && svc.Handle(msg) {
+		return true
+	}
+	if cc.lateCreation(msg) {
 		return true
 	}
 	cc.mu.Lock()
@@ -1215,7 +1225,7 @@ func (cc *controlCenter) spawn(g *airport.Graph, r SpawnRequest) (*controlled, e
 			fixes = append(fixes, airFix{Ident: p.Ident, LatLon: p.Position})
 		}
 	}
-	it := &controlled{approach: approach, fixes: fixes, defBase: defBase, ID: n, Kind: r.Kind, Tail: r.Tail, ICAO: g.Layout.ICAO, graph: g, stands: alloc, stand: r.Stand, other: r.Other, overnight: r.overnight, spoken: map[string]bool{}, removed: make(chan struct{}), cc: cc}
+	it := &controlled{askedAt: spawnAt, approach: approach, fixes: fixes, defBase: defBase, ID: n, Kind: r.Kind, Tail: r.Tail, ICAO: g.Layout.ICAO, graph: g, stands: alloc, stand: r.Stand, other: r.Other, overnight: r.overnight, spoken: map[string]bool{}, removed: make(chan struct{}), cc: cc}
 	it.tugAfter.Store(rand.Float64() < TugAfterJetwayShare)
 	it.tugStand.Store(int32(r.Stand))
 	it.gates.Store(r.Gates)
@@ -3827,7 +3837,11 @@ func (cc *controlCenter) forget(it *controlled) {
 	cc.mu.Lock()
 	if cc.items[it.ID] == it {
 		delete(cc.items, it.ID)
-		cc.ids.Release(it.defBase) // its controller is done: the IDs are free
+		if it.holdIDs {
+			cc.heldIDs = append(cc.heldIDs, heldIDs{defBase: it.defBase, since: traffic.Now()})
+		} else {
+			cc.ids.Release(it.defBase) // its controller is done: the IDs are free
+		}
 	}
 	v := cc.vehATC
 	cc.mu.Unlock()
@@ -3847,6 +3861,7 @@ func (cc *controlCenter) forget(it *controlled) {
 // the connection goroutine.
 func (cc *controlCenter) remove(it *controlled) error {
 	it.mu.Lock()
+	it.holdIDs = it.view.State == traffic.TaxiSpawning.String()
 	it.managed = nil
 	it.mu.Unlock()
 	err := it.act("remove", -1)
