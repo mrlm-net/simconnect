@@ -165,12 +165,17 @@ func TestPushbackDoesNotFaceTheStand(t *testing.T) {
 // north-west — for either runway (#489: for 24 every type was pushed 134 m
 // west into the crossroads of the B1 lanes).
 func TestPushbackNoTowNoHairpin(t *testing.T) {
+	// Each stand's standard push as an airport's load plans it, not as an
+	// earlier test left it: the plan depends on the model it was made for.
+	standardPushes.Clear()
+	t.Cleanup(standardPushes.Clear)
 	g := lkprGraph(t)
 	for _, c := range []struct {
 		stand string
 		nose  float64
 	}{{"A3", 334}, {"A5", 326}} {
 		i, _ := g.Layout.ParkingIndex(c.stand)
+		PlanStandardPushes(g, "FSLTL_B738_RYR", []int{i})
 		for _, m := range []string{"FSLTL_FAIB_A321_WZZ-Wizz Air", "FSLTL_SBAI_BCS3_CSA-Lines", "FSLTL A320 Air France SL", "FSLTL_E190_LOT"} {
 			for _, rwy := range []string{"06", "24"} {
 				ec := &eventClient{}

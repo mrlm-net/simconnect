@@ -294,6 +294,7 @@ func TestPushbackFacing(t *testing.T) {
 // LKPR B9 onto B2 facing north-west for 24 as for 06, not onto B1 for 24
 // alone; and no taxi-out turns back on itself right after the push.
 func TestStandardPush(t *testing.T) {
+	t.Cleanup(standardPushes.Clear) // cached for the stands other tests push from
 	g := airportGraph(t, "LKPR")
 	i, err := g.Layout.ParkingIndex("B9")
 	if err != nil {
@@ -327,6 +328,7 @@ func TestStandardPush(t *testing.T) {
 // LoadStandardPushes): the same push per stand, without planning; a file
 // for another layout is refused.
 func TestStandardPushesSaved(t *testing.T) {
+	t.Cleanup(standardPushes.Clear) // cached for the stands other tests push from
 	g := airportGraph(t, "LKPR")
 	var stands []int
 	for _, name := range []string{"B9", "B14", "C22", "A4"} {

@@ -5,8 +5,10 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"math/rand/v2"
 	"os"
 	"path/filepath"
+	"strconv"
 	"strings"
 	"sync"
 	"time"
@@ -40,10 +42,17 @@ type Options struct {
 	// Start is the manual clock's time at the start; zero: 2026-10-20
 	// 10:00 UTC (midday at LKPR).
 	Start time.Time
+	// Seed seeds the traffic's random choices (traffic.SetRandomSeed); 0:
+	// WORLDTEST_SEED, else a new one each run. It is printed, for a failure
+	// to be run again.
+	Seed uint64
 }
 
 // Harness is a World running on a Loopback: no simulator.
 type Harness struct {
+	// ownData: the settings folder made for it, removed at Close.
+	ownData   string
+	closeOnce sync.Once
 	World *world.World
 	Sim   *Loopback
 	ICAO  string
@@ -73,6 +82,23 @@ func Start(o Options) (*Harness, error) {
 	cache := airport.NewCache()
 	wo := o.World
 	wo.SimlessAI, wo.Cache = true, cache
+	// Its settings in a folder of its own: not a stray file in the package's.
+	if wo.DataDir == "" {
+		dir, err := os.MkdirTemp("", "worldtest")
+		if err != nil {
+			return nil, err
+		}
+		wo.DataDir, h.ownData = dir, dir
+	}
+	seed := o.Seed
+	if s, err := strconv.ParseUint(os.Getenv("WORLDTEST_SEED"), 10, 64); seed == 0 && err == nil {
+		seed = s
+	}
+	for seed == 0 {
+		seed = rand.Uint64()
+	}
+	traffic.SetRandomSeed(seed)
+	fmt.Println("worldtest: WORLDTEST_SEED=" + strconv.FormatUint(seed, 10))
 	if wo.ModelProviders == nil {
 		wo.ModelProviders = map[string]bool{"FSLTL": true} // the live tests' models (DefaultAircraftTitles)
 	}
@@ -170,6 +196,9 @@ func Start(o Options) (*Harness, error) {
 	return h, nil
 }
 
+// stepTimeout: a frame not taken in this long is a hung World, not a slow one.
+const stepTimeout = 30 * time.Second
+
 // Close stops the World and the loopback, and puts the wall clock back.
 func (h *Harness) Close() {
 	h.cancel()
@@ -189,11 +218,19 @@ func (h *Harness) Close() {
 	}
 	select {
 	case <-h.done:
-	case <-time.After(10 * time.Second):
+	case <-time.After(30 * time.Second):
+		// Running on, it would disturb every later test.
+		panic("worldtest: the World did not stop within 30 s of Close")
 	}
-	if h.Clock != nil {
-		traffic.SetTimeSource(nil)
-	}
+	h.closeOnce.Do(func() {
+		if h.ownData != "" {
+			os.RemoveAll(h.ownData)
+		}
+		traffic.SetRandomSeed(0)
+		if h.Clock != nil {
+			traffic.SetTimeSource(nil)
+		}
+	})
 }
 
 // Advance lets d go by: on the manual clock frame by frame (step), on the
@@ -231,9 +268,9 @@ func (h *Harness) Until(max time.Duration, cond func() bool) bool {
 func (h *Harness) step(d time.Duration) {
 	h.Clock.Advance(d)
 	h.Sim.Step()
-	for i := 0; i < 2000; i++ {
-		if len(h.Sim.out) == 0 && h.World.Queued() == 0 {
-			break
+	for deadline := time.Now().Add(stepTimeout); len(h.Sim.out) != 0 || h.World.Queued() != 0; {
+		if time.Now().After(deadline) {
+			panic("worldtest: the World did not take a frame within " + stepTimeout.String())
 		}
 		time.Sleep(50 * time.Microsecond)
 	}

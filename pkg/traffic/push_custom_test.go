@@ -10,6 +10,7 @@ import (
 // at every test airport — from the stand, ending at the planned pose with
 // its facing said — and a push drawn for a stand is flown as drawn.
 func TestStandardPushAirports(t *testing.T) {
+	t.Cleanup(standardPushes.Clear) // cached for the stands other tests push from
 	const model = "FSLTL_B738_RYR"
 	for _, icao := range testAirports {
 		g := airportGraph(t, icao)

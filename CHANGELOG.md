@@ -7,6 +7,12 @@ This project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 ---
 
+## [0.161.0] - 2026-11-02
+
+### Added
+
+- traffic.SetRandomSeed, RandomFloat64, RandomIntN, RandomInt64N and NewRandom: the traffic's random choices can be seeded. Unseeded nothing changes. The worldtest harness prints its seed and takes WORLDTEST_SEED or Options.Seed, fails on a hung or leaked World, and keeps its settings in a folder of its own (#1390).
+
 ## [0.160.15] - 2026-11-02
 
 ### Fixed

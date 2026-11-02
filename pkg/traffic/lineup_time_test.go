@@ -14,6 +14,7 @@ func TestLineUpTimeFromHoldingPoint(t *testing.T) {
 	}{{LineUpSpeedKts, false}, {LineUpRollingKts, false}, {LineUpRollingKts, true}} {
 		kts := c.kts
 		old := LineUpRollingKts
+		t.Cleanup(func() { LineUpRollingKts = old })
 		LineUpRollingKts = kts
 		ctl, _, run, now := injectedDeparture(t, TaxiRequest{HoldForClearances: true})
 		for _, gate := range []struct {
