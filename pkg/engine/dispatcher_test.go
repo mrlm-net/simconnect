@@ -122,6 +122,9 @@ func TestDispatchQuitOnFullQueueEndsOnCancel(t *testing.T) {
 	case <-time.After(2 * time.Second):
 		t.Fatal("the dispatcher did not stop")
 	}
+	if len(api.msgs) != 0 {
+		t.Errorf("%d messages never read: the QUIT was not reached", len(api.msgs))
+	}
 }
 
 // An empty message is dropped, not indexed (it panicked), and a refused

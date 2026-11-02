@@ -22,7 +22,7 @@ func TestStall(t *testing.T) {
 	var got []StallEvent
 	m.OnStall(func(e StallEvent) { mu.Lock(); got = append(got, e); mu.Unlock() })
 	m.stallSeen()
-	time.Sleep(3 * time.Second)
+	time.Sleep(3300 * time.Millisecond) // off the watcher's whole seconds
 	if !m.Stalled() {
 		t.Fatal("silent 3 s: not stalled")
 	}
@@ -32,6 +32,22 @@ func TestStall(t *testing.T) {
 	defer mu.Unlock()
 	if len(got) != 3 || !got[0].Stalled || got[1].Stalled || got[1].Silent < 2*time.Second || got[2].FlightLoaded != `flights\LKKB.FLT` {
 		t.Fatalf("events %+v, want stall, resume, new session", got)
+	}
+}
+
+// TestStallResumeOnTheTick: a message between the watcher reading the last
+// one and acting on it ends the silence: no stall told after the resume.
+func TestStallResumeOnTheTick(t *testing.T) {
+	m := &Instance{config: &Config{}, logger: slog.Default(), ctx: context.Background()}
+	m.state = StateAvailable
+	var got []StallEvent
+	m.stall.handlers = []StallHandler{func(e StallEvent) { got = append(got, e) }}
+	last := time.Now().Add(-time.Minute).UnixNano()
+	m.stall.last.Store(last)
+	m.stallSeen()
+	m.stallCheck(last, time.Second)
+	if m.Stalled() || len(got) != 0 {
+		t.Fatalf("stalled %v, events %+v", m.Stalled(), got)
 	}
 }
 

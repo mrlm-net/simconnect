@@ -364,10 +364,17 @@ func TestTugArriveWithinCoversTheWayIn(t *testing.T) {
 		stand string
 		min   time.Duration
 	}{{"S20A", 7 * time.Minute}, {"B9", TugArriveTimeout}} {
+		found := false
+		defer func(stand string) {
+			if !found {
+				t.Errorf("no stand %s", stand)
+			}
+		}(c.stand)
 		for _, p := range l.Parking {
 			if p.Label() != c.stand {
 				continue
 			}
+			found = true
 			tug := &SimObjectTug{Layout: l, prof: ProfileFor("PC24").Motion}
 			pose := GroundPose{Position: p.Position, Heading: p.Heading}
 			tug.pose = tug.at(pose)

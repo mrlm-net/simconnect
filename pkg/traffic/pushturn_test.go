@@ -1,6 +1,7 @@
 package traffic
 
 import (
+	"fmt"
 	"math"
 	"testing"
 )
@@ -126,25 +127,32 @@ func TestPushbackDoesNotFaceTheStand(t *testing.T) {
 			t.Errorf("%s from A4: nose %.0f°, want about 327° (into the B1 alley)", m, nose)
 		}
 	}
-	// Across the stands, no ordinary push goes straight on across a named
-	// taxiway (straight on along an unnamed lead-in is a push along it).
+	// Across the stands, a push ending with the nose back at its stand is a
+	// rare exception (a short straight push with nowhere to turn).
+	checked := 0
+	var faces []string
+	defer func() {
+		t.Logf("%d checked, facing the stand: %v", checked, faces)
+		if checked < 40 || len(faces)*20 > checked {
+			t.Errorf("%d stands checked, %d end facing the stand: %v", checked, len(faces), faces)
+		}
+	}()
 	for i := range g.Layout.Parking {
 		ec := &eventClient{}
 		ctl := NewTaxiController(NewFleet(ec), TaxiWithInjector(NewInjector(ec)))
-		if err := ctl.Start(TaxiRequest{Graph: g, Parking: i, Runway: "06", Model: "FSLTL_E190_LOT_GRZESKI", Tail: "T1"}); err != nil || !ctl.havePushBranch || ctl.pushPts != nil {
+		if err := ctl.Start(TaxiRequest{Graph: g, Parking: i, Runway: "06", Model: "FSLTL_E190_LOT_GRZESKI", Tail: "T1"}); err != nil {
 			continue
 		}
-		j := ctl.pushJunction
-		in := localBearing(ctl.route.Points[j-1], ctl.route.Points[j])
-		out := localBearing(ctl.route.Points[j], g.Nodes[ctl.pushBranch].Position)
-		name := ""
-		for _, e := range g.Adj[ctl.route.Nodes[j]] {
-			if e.To == ctl.pushBranch {
-				name = e.Name
-			}
+		checked++
+		p, err := ctl.pushPath()
+		if err != nil || p.Length() < 30 {
+			continue
 		}
-		if name != "" && math.Abs(headingDiff(in, out)) < minPushSwingDeg-0.01 {
-			t.Errorf("%s: pushed straight on past the junction (swing %.0f°)", g.Layout.Parking[i].Label(), math.Abs(headingDiff(in, out)))
+		end := p.PointAt(p.Length())
+		nose := localBearing(end, p.PointAt(p.Length()-5))
+		back := localBearing(end, StandPoint(g.Layout.Parking[i], 0))
+		if d := math.Abs(headingDiff(nose, back)); d < 20 {
+			faces = append(faces, fmt.Sprintf("%s %.0f° %.0f m", g.Layout.Parking[i].Label(), d, p.Length()))
 		}
 	}
 }

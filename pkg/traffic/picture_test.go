@@ -149,10 +149,17 @@ func TestPictureOwnAndFeeds(t *testing.T) {
 		{ObjectID: 20, Tail: "OURS", Position: offsetHeading(stand.Position, 90, 300), OnGround: true},
 		{ObjectID: 21, Tail: "AI", Position: stand.Position, OnGround: true, SpanM: 35.8},
 	})
+	seen := false
 	for _, a := range p.Aircraft() {
-		if a.Tail == "OURS" && (!a.Ours || a.Phase != PhaseTaxiing) {
-			t.Errorf("ours: %+v", a)
+		if a.Tail == "OURS" {
+			seen = true
+			if !a.Ours || a.Phase != PhaseTaxiing {
+				t.Errorf("ours: %+v", a)
+			}
 		}
+	}
+	if !seen {
+		t.Error("ours not in the picture")
 	}
 	gp.mu.Lock()
 	_, ours := gp.aircraft[20]
@@ -178,9 +185,16 @@ func TestPictureMeasuresOurVerticalSpeed(t *testing.T) {
 		p.Observe(now.Add(time.Duration(i)*time.Second), []Observation{{ObjectID: 7, Tail: "ENT464", Position: pictureLKPR.Position,
 			AltFt: 4000 - float64(i)*1000.0/60, VSFpm: 560}})
 	}
+	seen := false
 	for _, a := range p.Aircraft() {
-		if a.ObjectID == 7 && math.Abs(a.VSFpm+1000) > 30 {
-			t.Errorf("vertical speed %.0f fpm, want -1000", a.VSFpm)
+		if a.ObjectID == 7 {
+			seen = true
+			if math.Abs(a.VSFpm+1000) > 30 {
+				t.Errorf("vertical speed %.0f fpm, want -1000", a.VSFpm)
+			}
 		}
+	}
+	if !seen {
+		t.Error("the aircraft is not in the picture")
 	}
 }

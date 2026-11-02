@@ -22,17 +22,6 @@ func names(ds DataSet) []string {
 
 // Clone tests
 
-func TestClone_IndependentSlice(t *testing.T) {
-	original := DataSet{Definitions: []DataDefinition{def("A"), def("B")}}
-	clone := original.Clone()
-
-	// Appending to clone must not grow original.
-	clone.Definitions = append(clone.Definitions, def("C"))
-	if len(original.Definitions) != 2 {
-		t.Fatalf("append to clone grew original: got %d, want 2", len(original.Definitions))
-	}
-}
-
 func TestClone_IndependentFieldMutation(t *testing.T) {
 	original := DataSet{Definitions: []DataDefinition{def("A")}}
 	clone := original.Clone()

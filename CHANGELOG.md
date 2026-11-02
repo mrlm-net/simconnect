@@ -11,7 +11,8 @@ This project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 ### Fixed
 
-- A pushback asked to face a direction no push from that stand can end in keeps the plan it had, instead of swapping it for another push with no facing to tell (found by #1392). Tests that could not fail or passed having checked nothing now check: 7 tighter assertions and a working take-off cap test, and skips on checked-in data are failures.
+- A pushback asked to face a direction no push from that stand can end in keeps the plan it had, instead of swapping it for another push with no facing to tell (found by #1392).
+- A message arriving on the stall watcher's tick no longer tells a stall after the resume (seen in CI, `pkg/manager`).
 
 ## [0.160.14] - 2026-11-02
 

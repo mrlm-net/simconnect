@@ -324,6 +324,9 @@ func TestManagerRotation(t *testing.T) {
 	arr.Rotation, leg.Rotation = "OKABC", "OKABC"
 	other := flight("CSA102", "LKPR", "EDDF", t0.Add(2*time.Hour), time.Hour) // STD 10:00, the airline's pairing
 	m.Add([]Flight{arr, leg, other})
+	if n := len(m.Flights()); n < 3 {
+		t.Fatalf("%d flights, want the 3 added", n)
+	}
 	for _, f := range m.Flights() {
 		switch f.Callsign {
 		case "SWR8":
@@ -359,10 +362,17 @@ func TestManagerCancelsArrivalDelayedForever(t *testing.T) {
 	if len(sp.spawned) != 0 {
 		t.Fatalf("spawned %v", sp.spawned[0].Callsign)
 	}
+	seen := false
 	for _, f := range m.Flights() {
-		if f.Callsign == "DLH200" && f.Status != FlightCancelled {
-			t.Errorf("DLH200 %v an hour and more past its STA, want cancelled", f.Status)
+		if f.Callsign == "DLH200" {
+			seen = true
+			if f.Status != FlightCancelled {
+				t.Errorf("DLH200 %v an hour and more past its STA, want cancelled", f.Status)
+			}
 		}
+	}
+	if !seen {
+		t.Error("DLH200 is gone from the flights")
 	}
 }
 

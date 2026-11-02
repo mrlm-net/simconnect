@@ -107,7 +107,7 @@ func TestVehicleHoldsUntilCleared(t *testing.T) {
 	for i := 0; i < 20000 && !m.Pose().Arrived; i++ {
 		y.check(m)
 		pose := m.Step(0.1)
-		if !first.cleared && pose.Distance > first.at+1.5 && atc.got[fmt.Sprintf("%s %s%s", first.Gate, first.Runway, strings.Join(first.Taxiways, ","))] <= atc.asks {
+		if pose.Distance > first.at+1.5 && atc.got[fmt.Sprintf("%s %s%s", first.Gate, first.Runway, strings.Join(first.Taxiways, ","))] <= atc.asks {
 			t.Fatalf("passed its first gate (%s at %.0f m) at %.0f m before cleared", first.Gate, first.at, pose.Distance)
 		}
 		if pose.GroundSpeedKts < 0.2 && pose.Distance > 0 && pose.Distance <= first.at+1 {

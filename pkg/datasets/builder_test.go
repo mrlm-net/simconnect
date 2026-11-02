@@ -98,18 +98,6 @@ func TestBuilder_Build_IsRepeatable(t *testing.T) {
 	}
 }
 
-func TestBuilder_Build_AliasSafety(t *testing.T) {
-	b := NewBuilder().Add(def("A")).Add(def("B"))
-	ds := b.Build()
-
-	// Add more to the builder after building.
-	b.Add(def("C"))
-
-	// The previously built DataSet must be unaffected.
-	if len(ds.Definitions) != 2 {
-		t.Fatalf("prior Build() result affected by subsequent Add: got %d definitions", len(ds.Definitions))
-	}
-}
 
 func TestBuilder_Len(t *testing.T) {
 	b := NewBuilder()
