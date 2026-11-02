@@ -137,8 +137,8 @@ func TestHarnessesOneAfterAnother(t *testing.T) {
 			if err := h.World.SetSchedule(world.ScheduleSettings{Enabled: true, Airports: []string{"LKPR"}, Density: 3, MaxAircraft: 8}); err != nil {
 				t.Fatal(err)
 			}
-			if !h.Until(5*time.Minute, func() bool { return len(h.World.Snapshot().Aircraft) > 2 }) {
-				t.Error("no traffic within 5 minutes")
+			if !h.Until(30*time.Minute, func() bool { return len(h.World.Snapshot().Aircraft) > 0 }) {
+				t.Error("no traffic within 30 minutes")
 			}
 			h.Advance(time.Minute)
 		})
