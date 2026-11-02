@@ -7,6 +7,12 @@ This project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 ---
 
+## [0.161.1] - 2026-11-02
+
+### Fixed
+
+- A SimConnect.dll that does not load (empty, corrupt, missing, or without SimConnect_Open) is an error from Connect, not a panic: the manager goes on retrying (#1402).
+
 ## [0.161.0] - 2026-11-02
 
 ### Added
