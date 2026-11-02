@@ -42,17 +42,31 @@ func TestWatchFlags(t *testing.T) {
 	}
 }
 
-type failingConnect struct{ tries int }
+type failingConnect struct {
+	tries int
+	tried chan struct{}
+}
 
-func (f *failingConnect) Connect() error { f.tries++; return errors.New("no sim") }
+func (f *failingConnect) Connect() error {
+	f.tries++
+	select {
+	case f.tried <- struct{}{}:
+	default:
+	}
+	return errors.New("no sim")
+}
 
 // Ctrl+C ends the connection retries at once, not after the wait (#40).
 func TestConnectWithRetryCancel(t *testing.T) {
 	ctx, cancel := context.WithCancel(context.Background())
-	f := &failingConnect{}
+	f := &failingConnect{tried: make(chan struct{}, 1)}
 	done := make(chan error, 1)
 	go func() { done <- connectWithRetry(ctx, f, io.Discard) }()
-	time.Sleep(50 * time.Millisecond)
+	select {
+	case <-f.tried:
+	case <-time.After(30 * time.Second):
+		t.Fatal("never tried to connect")
+	}
 	cancel()
 	select {
 	case err := <-done:

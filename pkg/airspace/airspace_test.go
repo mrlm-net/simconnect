@@ -13,11 +13,15 @@ import (
 func store(t *testing.T, opts ...StoreOption) *Store {
 	t.Helper()
 	d := os.Getenv("SIMCONNECT_DATA")
-	if d == "" {
+	set := d != ""
+	if !set {
 		d = filepath.Join("..", "..", "..", "simconnect-data")
 	}
 	dir := filepath.Join(d, "airspaces")
 	if _, err := os.Stat(filepath.Join(dir, "index.json")); err != nil {
+		if set {
+			t.Fatalf("SIMCONNECT_DATA set, no airspaces at %s: %v", dir, err)
+		}
 		t.Skipf("no offline airspaces at %s (SIMCONNECT_DATA)", dir)
 	}
 	s, err := Open(os.DirFS(dir), opts...)

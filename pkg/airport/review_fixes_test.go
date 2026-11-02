@@ -7,6 +7,7 @@ import (
 	"slices"
 	"testing"
 	"time"
+	"weak"
 
 	"github.com/mrlm-net/simconnect/pkg/calc"
 	"github.com/mrlm-net/simconnect/pkg/types"
@@ -163,26 +164,23 @@ func TestLimitsForDeepCopy(t *testing.T) {
 // TestVehicleGraphEvicted: a layout's vehicle graph goes with the layout
 // (E18).
 func TestVehicleGraphEvicted(t *testing.T) {
-	count := func() int {
-		n := 0
-		vehicleGraphs.Range(func(any, any) bool { n++; return true })
-		return n
-	}
-	before := count()
+	// Its own entry: other tests' layouts come and go in the same cache.
 	l := loadLKPR(t)
+	key := weak.Make(l)
+	cached := func() bool { _, ok := vehicleGraphs.Load(key); return ok }
 	g := l.vehicleGraph()
-	if l.vehicleGraph() != g || count() != before+1 {
+	if l.vehicleGraph() != g || !cached() {
 		t.Fatal("not cached")
 	}
 	l = nil
 	for range 20 {
 		runtime.GC()
-		if count() == before {
+		if !cached() {
 			return
 		}
 		time.Sleep(10 * time.Millisecond)
 	}
-	t.Errorf("%d graphs cached, want %d", count(), before)
+	t.Error("the layout's graph still cached")
 }
 
 // TestLoaderLateReply: an expired airport keeps its slot until its late

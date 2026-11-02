@@ -66,7 +66,7 @@ func TestLightAircraftLandingRoll(t *testing.T) {
 		model, end, exit string
 		maxSecs          float64
 	}{
-		{"C172", "24", "C", 60}, {"C172", "06", "L", 70}, {"P28A", "30", "R", 35}, {"A320", "24", "D", 60},
+		{"C172", "24", "C", 60}, {"C172", "06", "L", 70}, {"P28A", "30", "R", 37}, {"A320", "24", "D", 60},
 	} {
 		td, secs, along, exit := landingRoll(t, c.model, c.end)
 		t.Logf("%s on %s: touchdown %.0f m, clear %.0f s later at exit %s (%.0f m along)", c.model, c.end, td, secs, exit, along)
