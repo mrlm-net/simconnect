@@ -1,7 +1,7 @@
 name: Tests
 
-# Every package of the module, on Windows as users build it, and on Linux under
-# the race detector. -short leaves the whole-World runs to director-linux.yml.
+# Every package of the module, on Windows as users build it. -short leaves the
+# whole-World runs to director-linux.yml, and race.yml runs -race nightly.
 # Nothing here needs a simulator. simconnect-data is private: tests that need
 # it skip here and run locally.
 
@@ -33,20 +33,3 @@ jobs:
 
       - name: Test
         run: go test ./... -short -count=1 -timeout 50m
-
-  race:
-    name: Race detector on Linux
-    runs-on: ubuntu-latest
-    timeout-minutes: 60
-    steps:
-      - uses: actions/checkout@v4
-
-      - uses: actions/setup-go@v5
-        with:
-          go-version-file: go.mod
-
-      - name: Test
-        # The module's root package and the examples are Windows only.
-        run: |
-          pkgs=$(go list -e -f '{{if .GoFiles}}{{.ImportPath}}{{end}}' ./pkg/... ./internal/... ./cmd/...)
-          go test -race -short -count=1 -timeout 50m $pkgs
