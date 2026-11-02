@@ -56,9 +56,6 @@ type Absorption struct {
 	SpeedKts float64 `json:"speedKts,omitempty"`
 	// ExtraNM is the track added by path stretching.
 	ExtraNM float64 `json:"extraNM,omitempty"`
-	// Orbit: the stretch is a 360 where it is (near the end of the STAR),
-	// the way it turns.
-	Orbit string `json:"orbit,omitempty"` // "left" or "right"
 	// Downwind: the stretch is the STAR's downwind extended (a trombone):
 	// flown on vectors, "fly heading, for spacing" leaving the STAR, then
 	// the turn for base (not the circuit's "extend downwind": Doc 4444
@@ -78,9 +75,6 @@ func (a Absorption) String() string {
 			s += ", "
 		}
 		s += fmt.Sprintf("+%.1f NM", a.ExtraNM)
-		if a.Orbit != "" {
-			s += " (360)"
-		}
 	}
 	if a.Left > 0 {
 		if s != "" {

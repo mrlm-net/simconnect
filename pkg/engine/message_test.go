@@ -60,7 +60,7 @@ func TestReleaseOnceAcrossCopies(t *testing.T) {
 	}
 }
 
-func TestPooledSliceReuse(t *testing.T) {
+func TestPooledSliceSizes(t *testing.T) {
 	b, release := getPooledSlice(100)
 	if len(b) != 100 || cap(b) != 4*1024 {
 		t.Fatalf("len %d cap %d", len(b), cap(b))

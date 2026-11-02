@@ -31,7 +31,7 @@ func TestRoute(t *testing.T) {
 			t.Errorf("area 10 entered at %.0f m (start %v)", e.AlongM, e.Start)
 		}
 	}
-	if need["USTI NAD LABEM ATZ"] != NeedClearance || need["PRAGUE CTA 2"] != NeedNone || need["10 (USTI NAD LABEM)"] != NeedAvoid {
+	if need["USTI NAD LABEM ATZ"] != NeedClearance || !hasNeed(need, "PRAGUE CTA 2", NeedNone) || need["10 (USTI NAD LABEM)"] != NeedAvoid {
 		t.Errorf("Usti: %v", need)
 	}
 	// A country's own meaning replaces the default.
@@ -57,4 +57,10 @@ func TestFrequency(t *testing.T) {
 			t.Errorf("%q: %q, want %q", raw, got, want)
 		}
 	}
+}
+
+// hasNeed: name is on the route, with that need (NeedNone is the map's zero).
+func hasNeed[M ~map[string]Need](m M, name string, want Need) bool {
+	got, ok := m[name]
+	return ok && got == want
 }

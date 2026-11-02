@@ -390,7 +390,7 @@ func (q *sequences) absorb(now time.Time, icao string, seq []traffic.SequenceEnt
 			}
 			continue
 		}
-		if say, n := q.sequenceCall(now, e.Callsign, e.Number, a.SpeedKts, a.Orbit != ""); say {
+		if say, n := q.sequenceCall(now, e.Callsign, e.Number, a.SpeedKts); say {
 			tx := traffic.Sequenced(e.Callsign, n, delay, a)
 			if n > 0 && q.spacingTold(e.Callsign) {
 				tx = traffic.SpacingTold(tx)
@@ -1251,14 +1251,13 @@ type seqSaid struct {
 // sequenceCall is what cs is told now of its number and speed kts (and
 // notes it): nothing when neither is new (say false); the number only the
 // first time and when it changes, 0 otherwise — a repeated "number N" with
-// every speed annoys. orbit: a 360 is always said. A speed of 0 after one
-// told keeps that one.
-func (q *sequences) sequenceCall(now time.Time, cs string, number int, kts float64, orbit bool) (say bool, sayNumber int) {
+// every speed annoys. A speed of 0 after one told keeps that one.
+func (q *sequences) sequenceCall(now time.Time, cs string, number int, kts float64) (say bool, sayNumber int) {
 	q.mu.Lock()
 	defer q.mu.Unlock()
 	last, ok := q.seqSaid[cs]
 	told := ok && last.number == number
-	if told && !orbit && (kts == 0 || kts == last.kts) {
+	if told && (kts == 0 || kts == last.kts) {
 		return false, 0
 	}
 	if kts == 0 {
