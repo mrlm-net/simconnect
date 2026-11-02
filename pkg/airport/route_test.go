@@ -105,7 +105,7 @@ func TestRouteToRunwayC22(t *testing.T) {
 		if len(r.Taxiways) == 0 {
 			t.Errorf("C22 → %s has no taxiway names", c.end)
 		}
-		if !equal(r.RunwayCrossings, c.crossings) {
+		if !slices.Equal(r.RunwayCrossings, c.crossings) {
 			t.Errorf("C22 → %s crosses %v, want %v", c.end, r.RunwayCrossings, c.crossings)
 		}
 		t.Logf("C22 → %s: %.0f m via %v, crossings %v", c.end, r.Length, r.Taxiways, r.RunwayCrossings)
@@ -235,18 +235,6 @@ func TestIntersectionToleranceZeroPicksNearestThreshold(t *testing.T) {
 			}
 		}
 	}
-}
-
-func equal(a, b []string) bool {
-	if len(a) != len(b) {
-		return false
-	}
-	for i := range a {
-		if a[i] != b[i] {
-			return false
-		}
-	}
-	return true
 }
 
 func BenchmarkBuildGraphLKPR(b *testing.B) {

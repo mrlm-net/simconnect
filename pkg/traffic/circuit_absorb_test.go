@@ -57,7 +57,6 @@ func TestCircuitExtendDownwind(t *testing.T) {
 		t.Errorf("base turn not moved out: farthest point %.0f m, base %.0f m", far, localDist(base.Position, thr.Position))
 	}
 	t.Logf("route %.1f → %.1f NM, stretch %.1f NM", before, after, a.ExtraNM)
-	_ = airport.LatLon{}
 }
 
 // TestCircuitOrbit: asked to lose 9 minutes, a C172 in the circuit has its

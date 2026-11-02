@@ -1,6 +1,7 @@
 package airport
 
 import (
+	"slices"
 	"errors"
 	"testing"
 )
@@ -80,7 +81,7 @@ func TestExitForAndRouteFromRunway(t *testing.T) {
 		// exit node (off the runway). Crossing the vacated runway again later
 		// is real: at LKPR every exit from 24 leaves to the side away from C22.
 		exitAt := len(exit.Path) - 1
-		if want := g.runwayCrossings(r.Points[exitAt:]); !equal(r.RunwayCrossings, want) {
+		if want := g.runwayCrossings(r.Points[exitAt:]); !slices.Equal(r.RunwayCrossings, want) {
 			t.Errorf("RWY %s → C22 crossings %v, want %v", c.end, r.RunwayCrossings, want)
 		}
 		t.Logf("RWY %s: exit %s at %.0f m (%.0f°) → C22 %.0f m via %v, crossings %v", c.end, exit.Taxiway, exit.Along, exit.Angle, r.Length, r.Taxiways, r.RunwayCrossings)

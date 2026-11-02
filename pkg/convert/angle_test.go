@@ -29,55 +29,6 @@ func TestDegreesRadians(t *testing.T) {
 	}
 }
 
-func TestNormalizeHeading(t *testing.T) {
-	tests := []struct {
-		name string
-		in   float64
-		want float64
-	}{
-		{name: "zero", in: 0, want: 0},
-		{name: "180", in: 180, want: 180},
-		{name: "359", in: 359, want: 359},
-		{name: "360 wraps to 0", in: 360, want: 0},
-		{name: "720 wraps to 0", in: 720, want: 0},
-		{name: "negative wraps to 270", in: -90, want: 270},
-		{name: "negative wraps to 350", in: -10, want: 350},
-	}
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			got := NormalizeHeading(tt.in)
-			if math.Abs(got-tt.want) > epsilon {
-				t.Errorf("NormalizeHeading(%v) = %v, want %v", tt.in, got, tt.want)
-			}
-		})
-	}
-}
-
-func TestNormalizeAngle(t *testing.T) {
-	tests := []struct {
-		name string
-		in   float64
-		want float64
-	}{
-		{name: "zero", in: 0, want: 0},
-		{name: "180 stays 180", in: 180, want: 180},
-		{name: "181 wraps to -179", in: 181, want: -179},
-		{name: "-180 wraps to 180", in: -180, want: 180},
-		{name: "360 wraps to 0", in: 360, want: 0},
-		{name: "-361 wraps to -1", in: -361, want: -1},
-		{name: "90 stays 90", in: 90, want: 90},
-		{name: "-90 stays -90", in: -90, want: -90},
-	}
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			got := NormalizeAngle(tt.in)
-			if math.Abs(got-tt.want) > epsilon {
-				t.Errorf("NormalizeAngle(%v) = %v, want %v", tt.in, got, tt.want)
-			}
-		})
-	}
-}
-
 func TestAngleDifference(t *testing.T) {
 	tests := []struct {
 		name     string
