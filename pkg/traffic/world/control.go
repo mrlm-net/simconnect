@@ -3995,10 +3995,7 @@ func (cc *controlCenter) tug(r SpawnRequest, reqBase uint32, prof traffic.Motion
 	if !r.Tug || !cc.core.vehicleOn(traffic.VehicleTug) {
 		return nil
 	}
-	title := r.TugTitle
-	if title == "" {
-		title = traffic.TugTitleFor(spanM) // sized to the aircraft
-	}
+	title := traffic.TugTitleOr(r.TugTitle, spanM) // sized to the aircraft
 	t := traffic.NewSimObjectTug(cc.client, cc.inj, title, reqBase+controlIDBlock-1, prof)
 	if g, err := cc.graph(r.ICAO); err == nil {
 		t.Layout = g.Layout // from its depot on the vehicle roads, and back

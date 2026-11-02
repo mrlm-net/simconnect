@@ -7,6 +7,12 @@ This project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 ---
 
+## [0.160.13] - 2026-11-01
+
+### Fixed
+
+- Pushback tugs fit the aircraft (#495, the user's live review). Robot tugs (Mototok, MyCrew Tug) only for aircraft up to 16 m span: FSDT_Pushback_03 for everything bigger, the CRJ included, also when a robot is asked for. New TugIsRobot, TugTitleOr; TugMediumMaxSpanM removed. TugAheadFor: the M1A, TMX_150, Trepel_280 and Trepel_700's hook on the nose wheel, the TPX's cradle round it.
+
 ## [0.160.12] - 2026-11-01
 
 ### Fixed

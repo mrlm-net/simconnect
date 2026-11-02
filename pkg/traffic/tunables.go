@@ -1,6 +1,9 @@
 package traffic
 
-import "time"
+import (
+	"strings"
+	"time"
+)
 
 // Taxi speeds in knots.
 // Expedited (#510): the waits shrink to RushDelayFactor, an arrival
@@ -446,46 +449,64 @@ const (
 // distances.
 const TakeoffRunMargin = 1.15
 
-// Tugs by aircraft size (GSX models): a small electric one for light
-// aircraft (TugSmallMaxSpanM), a towbarless one for business and regional
-// jets (TugMediumMaxSpanM), DefaultTugTitle for airliners — not the
-// airliner tug for a DA62 (the user, live).
+// Tugs by aircraft size (GSX models): a small electric robot for light
+// aircraft (TugSmallMaxSpanM), DefaultTugTitle for everything bigger — not
+// the airliner tug for a DA62, and no robot for a CRJ or an A320 (the user,
+// live, #495).
 const (
-	TugSmallTitle     = "FSDT_Pushback_Mototok_Spacer200"
-	TugSmallMaxSpanM  = 16.0
-	TugMediumTitle    = "FSDT_Pushback_Mototok_8600MA"
-	TugMediumMaxSpanM = 30.0
+	TugSmallTitle    = "FSDT_Pushback_Mototok_Spacer200"
+	TugSmallMaxSpanM = 16.0
+	TugMediumTitle   = "FSDT_Pushback_Mototok_8600MA"
 )
 
 // TugTitleFor is the tug for an aircraft of span spanM (0 not known: the
 // airliner tug); a tug never used (ModelNever, #1024) gives way to the next
 // bigger one.
 func TugTitleFor(spanM float64) string {
-	var tugs []string
-	switch {
-	case spanM <= 0:
-	case spanM <= TugSmallMaxSpanM:
-		tugs = []string{TugSmallTitle, TugMediumTitle}
-	case spanM <= TugMediumMaxSpanM:
-		tugs = []string{TugMediumTitle}
-	}
-	for _, t := range tugs {
-		if !ModelNever(t) {
-			return t
+	if spanM > 0 && spanM <= TugSmallMaxSpanM {
+		for _, t := range []string{TugSmallTitle, TugMediumTitle} {
+			if !ModelNever(t) {
+				return t
+			}
 		}
 	}
 	return DefaultTugTitle
 }
 
+// TugIsRobot tells a robot tug by its title: the simulator gives a ground
+// vehicle's title and nothing about its kind.
+func TugIsRobot(title string) bool {
+	return strings.Contains(title, "Mototok") || title == "MyCrew Tug"
+}
+
+// TugTitleOr is the tug asked for, when it suits an aircraft of span spanM
+// (0 not known): a robot only for a light aircraft, TugTitleFor otherwise and
+// when none is asked for.
+func TugTitleOr(asked string, spanM float64) string {
+	if asked == "" || (TugIsRobot(asked) && (spanM <= 0 || spanM > TugSmallMaxSpanM)) {
+		return TugTitleFor(spanM)
+	}
+	return asked
+}
+
 // TugAheadFor is where tug title sits ahead of the nose gear when it is not
-// TugAheadMeters: the towbarless Mototoks hold the nose wheel itself (to be
-// checked live).
+// TugAheadMeters, measured live against an A320 and an A330 (#495). Negative:
+// behind the nose gear. A towbar tug's bar ends at its hook, a towbarless
+// tug's nose wheel sits in its cradle, under the aircraft's nose.
 func TugAheadFor(title string) (float64, bool) {
 	switch title {
 	case TugSmallTitle:
 		return 1.0, true
 	case TugMediumTitle:
 		return 1.5, true
+	case "FSDT_Pushback_M1A", "FSDT_Pushback_TMX_150", "FSDT_Pushback_Trepel_280", "FSDT_Pushback_Trepel_700":
+		return -1.8, true
+	case "FSDT_TPX_100_E":
+		return -3.6, true
+	case "FSDT_TPX_200":
+		return -3.0, true
+	case "FSDT_TPX_500_MTS":
+		return -6.4, true
 	}
 	return 0, false
 }
