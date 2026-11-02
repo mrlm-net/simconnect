@@ -7,19 +7,19 @@ This project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 ---
 
-## [0.160.14] - 2026-11-01
+## [0.160.14] - 2026-11-02
 
 ### Fixed
 
 - An aircraft the simulator does not create is given up after 3 minutes instead of sitting in "spawning" for good: logged, removed, its stand released (#1396; live: 15 minutes on a stand). An aircraft created after it was given up or removed is taken out of the sim wherever its controller has gone, with a director too, and its IDs wait 10 minutes so a late answer reaches nobody else. New Fleet.Abandon and Fleet.HandleAbandoned.
 
-## [0.160.13] - 2026-11-01
+## [0.160.13] - 2026-11-02
 
 ### Fixed
 
 - Pushback tugs fit the aircraft (#495, the user's live review). Robot tugs (Mototok, MyCrew Tug) only for aircraft up to 16 m span: FSDT_Pushback_03 for everything bigger, the CRJ included, also when a robot is asked for. New TugIsRobot, TugTitleOr; TugMediumMaxSpanM removed. TugAheadFor: the M1A, TMX_150, Trepel_280 and Trepel_700's hook on the nose wheel, the TPX's cradle round it.
 
-## [0.160.12] - 2026-11-01
+## [0.160.12] - 2026-11-02
 
 ### Fixed
 
