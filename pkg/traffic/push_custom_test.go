@@ -1,6 +1,7 @@
 package traffic
 
 import (
+	"slices"
 	"math"
 	"testing"
 )
@@ -27,9 +28,11 @@ func TestStandardPushAirports(t *testing.T) {
 				t.Errorf("%s %s: %d points, said %q, starts %.0f m from the stand", icao, p.Label(), len(r.Points), r.Said, localDist(r.Points[0], StandPoint(p, 0)))
 				continue
 			}
-			// Drawn as the standard one, turned the other way at its end: the
-			// departure flies it and says its facing.
+			// Drawn as the standard one but ending elsewhere: the departure
+			// flies the drawn one.
 			drawn := r
+			drawn.Points = slices.Clone(r.Points)
+			drawn.Points[len(drawn.Points)-1].Lat += 0.00005
 			SetCustomPush(icao, p.Label(), drawn)
 			got, err := PlanPush(TaxiRequest{Graph: g, Parking: i, Model: model, Runway: g.Layout.Runways[0].Primary.Name})
 			ClearCustomPush(icao, p.Label())
@@ -78,6 +81,6 @@ func TestConfiguredPushPose(t *testing.T) {
 		}
 	}
 	if tried == 0 {
-		t.Skip("no stand pushed differently for 24 and 06")
+		t.Fatal("no stand pushed differently for 24 and 06")
 	}
 }

@@ -7,6 +7,13 @@ This project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 ---
 
+## [0.160.15] - 2026-11-02
+
+### Fixed
+
+- A pushback asked to face a direction no push from that stand can end in keeps the plan it had, instead of swapping it for another push with no facing to tell (found by #1392).
+- A message arriving on the stall watcher's tick no longer tells a stall after the resume (seen in CI, `pkg/manager`).
+
 ## [0.160.14] - 2026-11-02
 
 ### Fixed

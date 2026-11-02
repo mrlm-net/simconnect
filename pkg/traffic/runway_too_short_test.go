@@ -13,7 +13,7 @@ func TestRunwayTooShort(t *testing.T) {
 	long, _, _ := g.Layout.RunwayEnd("24")
 	short, _, _ := g.Layout.RunwayEnd("12")
 	if short.Length >= long.Length {
-		t.Skipf("LKPR 12/30 %.0f m not shorter than 06/24 %.0f m", short.Length, long.Length)
+		t.Fatalf("LKPR 12/30 %.0f m not shorter than 06/24 %.0f m", short.Length, long.Length)
 	}
 	ctl, _, _, _ := injectedDeparture(t, TaxiRequest{})
 	req := ctl.req
@@ -22,7 +22,7 @@ func TestRunwayTooShort(t *testing.T) {
 	perC := req.takeoffRun() - need0
 	isa := ((short.Length+long.Length)/2 - need0) / perC // needs more than 12/30, less than 06/24
 	if perC <= 0 || isa <= 0 {
-		t.Skipf("A320 needs %.0f m at ISA, %.1f m/°C", need0, perC)
+		t.Fatalf("A320 needs %.0f m at ISA, %.1f m/°C", need0, perC)
 	}
 	if err := ctl.ChangeRunway("12", "", nil); err != nil {
 		t.Fatalf("ISA: %v", err)

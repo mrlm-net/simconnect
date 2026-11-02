@@ -2012,8 +2012,16 @@ func (c *TaxiController) ClearPushbackFacing(dir string) error {
 	}
 	c.pushFacing, c.havePushFacing = deg, true
 	if c.pushPose != nil || c.pushPlanned != nil {
+		hadPose := c.pushPose != nil
 		c.route = c.origRoute
 		c.planPushback()
+		if hadPose && c.pushPose == nil {
+			// No push ends facing that way: the plan it had stands, not some
+			// other push with no facing to tell.
+			c.havePushFacing = false
+			c.route = c.origRoute
+			c.planPushback()
+		}
 		c.track = newRouteTracker(c.route)
 		c.note("pushback facing "+CompassName(deg), nil)
 	}

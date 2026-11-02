@@ -152,22 +152,33 @@ func (m *Instance) watchStall() {
 			return
 		case <-t.C:
 		}
-		last := m.stall.last.Load()
-		if m.stall.stalled.Load() || last == 0 || m.ConnectionState() != StateAvailable || m.stallPaused() {
-			continue
-		}
-		silent := time.Since(time.Unix(0, last))
-		if silent < after {
-			continue
-		}
-		m.stall.mu.Lock()
-		m.stall.stalled.Store(true)
-		m.stall.since, m.stall.loaded = time.Unix(0, last), ""
-		hs := append([]StallHandler(nil), m.stall.handlers...)
+		m.stallCheck(m.stall.last.Load(), after)
+	}
+}
+
+// stallCheck reports a stall if nothing has come since last, the last
+// message as read at the watcher's tick.
+func (m *Instance) stallCheck(last int64, after time.Duration) {
+	if m.stall.stalled.Load() || last == 0 || m.ConnectionState() != StateAvailable || m.stallPaused() {
+		return
+	}
+	silent := time.Since(time.Unix(0, last))
+	if silent < after {
+		return
+	}
+	m.stall.mu.Lock()
+	// A message since last means a stall that just ended, not a new one
+	// (a resume on the tick told a stall after it; seen in CI).
+	if m.stall.stalled.Load() || m.stall.last.Load() != last {
 		m.stall.mu.Unlock()
-		m.logger.Warn("[manager] simulator silent: stalled", "silent", silent.Round(time.Second))
-		for _, h := range hs {
-			h(StallEvent{Stalled: true, Silent: silent})
-		}
+		return
+	}
+	m.stall.stalled.Store(true)
+	m.stall.since, m.stall.loaded = time.Unix(0, last), ""
+	hs := append([]StallHandler(nil), m.stall.handlers...)
+	m.stall.mu.Unlock()
+	m.logger.Warn("[manager] simulator silent: stalled", "silent", silent.Round(time.Second))
+	for _, h := range hs {
+		h(StallEvent{Stalled: true, Silent: silent})
 	}
 }

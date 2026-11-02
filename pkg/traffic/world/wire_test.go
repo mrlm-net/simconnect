@@ -117,6 +117,14 @@ func TestWireEvents(t *testing.T) {
 	if got[0].Err != "" || got[1].Err != "held" {
 		t.Errorf("errors %q %q", got[0].Err, got[1].Err)
 	}
+	select {
+	case m, ok := <-evs:
+		if ok && m.Method != wireEnd {
+			t.Errorf("after the last event: %+v, want the end", m)
+		}
+	case <-time.After(2 * time.Second):
+		t.Error("the end of its events did not reach the director")
+	}
 }
 
 // recFeed records what the feed tells.

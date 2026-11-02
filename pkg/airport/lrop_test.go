@@ -55,7 +55,7 @@ func TestTaxiwayGapBridged(t *testing.T) {
 	g := lropGraph(t)
 	s, err := g.Layout.ParkingIndex("214")
 	if err != nil {
-		t.Skip("no stand 214 in this capture:", err)
+		t.Fatal("no stand 214 in this capture:", err)
 	}
 	for _, end := range []string{"08R", "08L"} {
 		r, err := g.RouteToRunway(s, end, RouteOptions{})

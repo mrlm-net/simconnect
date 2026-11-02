@@ -263,6 +263,8 @@ func TestPushbackFacing(t *testing.T) {
 			turned++
 		case was:
 			kept++
+		default:
+			t.Errorf("%s: facing %q, asked %q, was %q", st.Label(), ctl.PushFacing(), want, was)
 		}
 		if _, err := ctl.pushPath(); err != nil {
 			t.Errorf("%s facing %s: %v", st.Label(), want, err)

@@ -64,7 +64,6 @@ func TestPredictAndResolveConflicts(t *testing.T) {
 		if r.Kind == ResolveLevel {
 			// Climbing through: check against the resolution's own model.
 			t.Logf("%s: %s %s to %.0f ft — %s", c.name, r.Callsign, r.Kind, r.AltFt, r.Why)
-			continue
 		}
 		if left := PredictConflicts(moved, ConflictOptions{}); len(left) != 0 {
 			t.Errorf("%s: %+v still conflicts: %+v", c.name, r, left)

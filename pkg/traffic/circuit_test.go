@@ -138,6 +138,9 @@ func TestCircuitDeparture(t *testing.T) {
 			}
 		}
 		exit := route[len(route)-1]
+		if r := right(exit.Position); math.Abs(tc.rel) >= 45 && (tc.rel < 0 && r > -100 || tc.rel > 0 && r < 100) {
+			t.Errorf("%s: exit %.0f m right of the centreline", tc.name, r)
+		}
 		if d := localDist(exit.Position, airport.LatLon{Lat: l.Latitude, Lon: l.Longitude}) / 1852; d < VFRExitNM-1.5 || d > VFRExitNM+1.5 {
 			t.Errorf("%s: exit %.1f NM out", tc.name, d)
 		}

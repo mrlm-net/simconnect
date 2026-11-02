@@ -86,12 +86,13 @@ func TestTakeoffCapClears(t *testing.T) {
 	arr := traffic.TrackedAircraft{Observation: traffic.Observation{Tail: "OOILE", Position: start, AltFt: 6000, GroundKts: 220,
 		Heading: calc.BearingDegrees(sLat, sLon, eLat, eLon)}, Phase: traffic.PhaseArriving, Ours: true}
 	way := []traffic.RoutePoint{{Position: start, AltFt: 6000, Kts: 220}, {Position: endP, AltFt: 6000, Kts: 220}}
-	// Climbing as planned (to its SID top or on): through 9000 ft there.
+	// Climbing through the arrival's level where their ways cross.
 	for i := range plan {
-		plan[i].AltFt = math.Max(plan[i].AltFt, 11000)
+		nm := calc.HaversineNM(dep.Threshold.Lat, dep.Threshold.Lon, plan[i].Position.Lat, plan[i].Position.Lon)
+		plan[i].AltFt = fieldFt + (6000-fieldFt)*nm/15
 	}
 	if got := takeoffConflict([]traffic.TrackedAircraft{me, arr}, map[string][]traffic.RoutePoint{me.Tail: plan, arr.Tail: way}); got != "OOILE" {
-		t.Skipf("no conflict climbing unrestricted (%q): geometry", got)
+		t.Fatalf("no conflict climbing unrestricted (%q): geometry", got)
 	}
 	capped := append([]traffic.RoutePoint(nil), plan...)
 	for i := range capped {

@@ -25,7 +25,7 @@ func TestArrivalAvoidOccupied(t *testing.T) {
 	}
 	p := ctl.Plan()
 	if !slices.Contains(p.Route.Taxiways, "J") {
-		t.Skipf("taxi-in %v does not use J", p.Route.Taxiways)
+		t.Fatalf("taxi-in %v does not use J", p.Route.Taxiways)
 	}
 	pushed := airport.Occupied{Points: []airport.LatLon{g.Layout.Parking[c19].Position, g.Nodes[980].Position, g.Nodes[981].Position}, HalfSpan: 17.9}
 	mon := DefaultArrivalRequestBase + arrReqMonitor

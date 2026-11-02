@@ -73,6 +73,9 @@ func TestLightAircraftLandingRoll(t *testing.T) {
 		if exit != c.exit {
 			t.Errorf("%s on %s: exit %s, want %s", c.model, c.end, exit, c.exit)
 		}
+		if td <= 0 {
+			t.Errorf("%s on %s: no touchdown seen", c.model, c.end)
+		}
 		if secs > c.maxSecs {
 			t.Errorf("%s on %s: clear %.0f s after touchdown, want ≤ %.0f", c.model, c.end, secs, c.maxSecs)
 		}

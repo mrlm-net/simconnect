@@ -141,7 +141,7 @@ func TestChangeEntry(t *testing.T) {
 		}
 	}
 	if named == "" {
-		t.Skip("no named intersection on 24")
+		t.Fatal("no named intersection on 24")
 	}
 	ctl, _, run, _ := injectedDeparture(t, TaxiRequest{RollingTakeoffChance: -1})
 	go func() {
@@ -185,7 +185,7 @@ func TestChangeEntryWaitingForTaxi(t *testing.T) {
 		}
 	}
 	if named == "" {
-		t.Skip("no named intersection on 24")
+		t.Fatal("no named intersection on 24")
 	}
 	ctl, _, run, _ := injectedDeparture(t, TaxiRequest{HoldForClearances: true, RollingTakeoffChance: -1})
 	go func() {
@@ -225,7 +225,7 @@ func TestChangeEntryWaitingOnStand(t *testing.T) {
 		}
 	}
 	if named == "" {
-		t.Skip("no named intersection on 24")
+		t.Fatal("no named intersection on 24")
 	}
 	var stand airport.Parking
 	for _, p := range g.Layout.Parking {
@@ -237,7 +237,7 @@ func TestChangeEntryWaitingOnStand(t *testing.T) {
 		}
 	}
 	if stand.Radius == 0 {
-		t.Skip("no face-out stand routable to 24")
+		t.Fatal("no face-out stand routable to 24")
 	}
 	ec := &eventClient{}
 	inj := NewInjector(ec)
@@ -291,7 +291,7 @@ func TestArrivalChangeRunwayNoClimb(t *testing.T) {
 	}
 	to30, err := procs.Arrival("30", "LOMKI")
 	if err != nil {
-		t.Skip("no LOMKI arrival for 30")
+		t.Fatal("no LOMKI arrival for 30")
 	}
 	ec := &eventClient{}
 	ctl := NewArrivalController(NewFleet(ec), ArrivalWithInjector(NewInjector(ec)))
@@ -335,7 +335,7 @@ func TestArrivalChangeRunwayFromItsFirstPoint(t *testing.T) {
 	}
 	to30, err := procs.Arrival("30", "LOMKI")
 	if err != nil {
-		t.Skip("no LOMKI arrival for 30")
+		t.Fatal("no LOMKI arrival for 30")
 	}
 	ec := &eventClient{}
 	ctl := NewArrivalController(NewFleet(ec), ArrivalWithInjector(NewInjector(ec)))

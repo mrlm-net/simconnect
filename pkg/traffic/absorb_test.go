@@ -836,8 +836,11 @@ func TestDogLegApexFirstNotPassedAtOnce(t *testing.T) {
 	pos := route[0].Position
 	hdg := calc.BearingDegrees(pos.Lat, pos.Lon, route[1].Position.Lat, route[1].Position.Lon)
 	ctl.Handle(arrivalPositionMsg(mon, 77, pos, 9000, hdg, 250, false))
-	if _, err := ctl.AbsorbWithin(2*time.Minute, 30); err != nil {
+	if _, err := ctl.AbsorbWithin(3*time.Minute, 10); err != nil {
 		t.Fatal(err)
+	}
+	if ctl.dogLeg == nil {
+		t.Fatal("no dog-leg")
 	}
 	// A second on, still heading down its route before the turn out.
 	lat, lon := calc.DisplaceByHeading(pos.Lat, pos.Lon, hdg, 0.07*1852)
@@ -849,8 +852,8 @@ func TestDogLegApexFirstNotPassedAtOnce(t *testing.T) {
 	ctl.mu.Lock()
 	k := ctl.cornerAhead()
 	ctl.mu.Unlock()
-	if k != 0 && ctl.dogLeg != nil {
-		t.Errorf("the dog-leg's apex counted passed at once (corner %d ahead)", k)
+	if k != 0 || ctl.dogLeg == nil {
+		t.Errorf("the dog-leg's apex counted passed at once (corner %d ahead, dog-leg %v)", k, ctl.dogLeg)
 	}
 }
 

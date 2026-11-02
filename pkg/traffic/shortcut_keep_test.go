@@ -1,6 +1,7 @@
 package traffic
 
 import (
+	"errors"
 	"testing"
 
 	"github.com/mrlm-net/simconnect/pkg/calc"
@@ -51,8 +52,16 @@ func TestShortcutKeepsMergePoint(t *testing.T) {
 	if merge == "" {
 		t.Fatalf("free shortcut to %q (at %d): no named fix before it to keep", free, at)
 	}
-	fix, _, _ := start().Shortcut(30, []string{merge})
+	// Too near to be worth a call, it may be refused, never overrun.
+	fix, _, err := start().Shortcut(30, []string{merge})
+	if fix == "" && !errors.Is(err, ErrNoShortcut) {
+		t.Errorf("kept %s: %v, want a shortcut or ErrNoShortcut", merge, err)
+	}
 	if fix != "" && index(fix) > index(merge) {
 		t.Errorf("kept %s: direct %s past it (free: %s)", merge, fix, free)
+	}
+	// Kept at the free shortcut's own fix, nothing is in its way.
+	if fix, _, err := start().Shortcut(30, []string{free}); fix != free {
+		t.Errorf("kept %s: direct %q (%v), want it", free, fix, err)
 	}
 }

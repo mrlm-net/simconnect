@@ -78,7 +78,7 @@ func TestNearestParallel(t *testing.T) {
 	l := loadLayout(t, "EDDM")
 	u := ActiveRunways(l, Weather{WindDirTrue: 260, WindKts: 10}, RunwayLimits{})
 	if len(u.Arrivals) < 2 {
-		t.Skip("no parallels")
+		t.Fatal("no parallels")
 	}
 	for _, e := range u.Arrivals {
 		r, _ := runwayOfEnd(l, e.Name)

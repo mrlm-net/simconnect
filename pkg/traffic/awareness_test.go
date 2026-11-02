@@ -502,8 +502,8 @@ func TestJunctionStopFacingOncoming(t *testing.T) {
 		t.Errorf("stop %.0f m from the junction: further back than needed", localDist(path.PointAt(stop), junction))
 	}
 	// No junction ahead: the gap stop stands.
-	if s := d.junctionStop(path, 0, 10, noseTip, clear); s != 10 && s > 10 {
-		t.Errorf("stop %.1f beyond the given 10 m", s)
+	if s := d.junctionStop(path, 0, 10, noseTip, clear); s != 10 {
+		t.Errorf("stop %.1f, want the given 10 m", s)
 	}
 }
 

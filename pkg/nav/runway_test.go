@@ -24,7 +24,7 @@ func TestRunwaySelectorHolds(t *testing.T) {
 	shift := StaticWeather(220, 6, 9999, 15, 5, 1013)
 	fresh := ActiveRunways(l, shift, RunwayLimits{}).Arrival.Name
 	if fresh == first {
-		t.Skip("the shift does not change the choice at this airport")
+		t.Fatal("the shift does not change the choice at this airport")
 	}
 	for i := 1; i <= 9; i++ {
 		if u := s.Choose(now.Add(time.Duration(i)*time.Minute), l, shift, RunwayLimits{}); u.Arrival.Name != first {
@@ -59,7 +59,7 @@ func TestATISHoldsTheRunway(t *testing.T) {
 	now := time.Date(2026, 9, 30, 10, 39, 0, 0, time.UTC)
 	light, fresh := StaticWeather(100, 5, 9999, 18, 10, 1025), StaticWeather(100, 10, 9999, 18, 10, 1025)
 	if ActiveRunways(l, light, lim).Arrival.Name == ActiveRunways(l, fresh, lim).Arrival.Name {
-		t.Skip("the two winds choose the same runway with these limits")
+		t.Fatal("the two winds choose the same runway with these limits")
 	}
 	for _, shared := range []bool{false, true} {
 		var opts []ATISOption
@@ -101,7 +101,7 @@ func TestRunwayChoiceMargin(t *testing.T) {
 	now := time.Now()
 	calm, edge := StaticWeather(110, 1, 9999, 18, 10, 1024), StaticWeather(110, 6, 9999, 18, 10, 1024)
 	if ActiveRunways(l, calm, lim).Departure.Name != "24" || ActiveRunways(l, edge, lim).Departure.Name != "24" {
-		t.Skip("24 is not the preferred choice in these winds")
+		t.Fatal("24 is not the preferred choice in these winds")
 	}
 	var fresh RunwaySelector
 	if u := fresh.Choose(now, l, edge, lim); u.Departure.Name != "06" {
@@ -127,7 +127,7 @@ func TestRunwaySelectorReadyAndSeed(t *testing.T) {
 	first := s.Choose(now, l, calm, RunwayLimits{}).Arrival.Name
 	fresh := ActiveRunways(l, shift, RunwayLimits{}).Arrival.Name
 	if fresh == first {
-		t.Skip("the shift does not change the choice at this airport")
+		t.Fatal("the shift does not change the choice at this airport")
 	}
 	s.Choose(now.Add(time.Minute), l, shift, RunwayLimits{})
 	if u, _, ok := s.Pending(); !ok || u.Arrival.Name != fresh {
@@ -178,7 +178,7 @@ func TestRunwaySelectorCalmAndFlicker(t *testing.T) {
 	}
 	s.Choose(now.Add(10*time.Second), l, east, RunwayLimits{})
 	if _, _, ok := s.Pending(); !ok {
-		t.Skip("the east wind does not change the choice at this airport")
+		t.Fatal("the east wind does not change the choice at this airport")
 	}
 	s.Choose(now.Add(20*time.Second), l, west, RunwayLimits{})
 	if _, _, ok := s.Pending(); !ok {
@@ -366,7 +366,7 @@ func TestRunwaySelectorSettlesAfterLoad(t *testing.T) {
 	}
 	want := ActiveRunways(l, real, withMargin(RunwayLimits{}, RunwayChoiceMarginKts)).Arrival.Name
 	if want == "06" {
-		t.Skip("the real wind keeps 06 at this airport")
+		t.Fatal("the real wind keeps 06 at this airport")
 	}
 	if u := s.Choose(now.Add(80*time.Second), l, real, RunwayLimits{}); u.Arrival.Name != want {
 		t.Fatalf("a minute on, the real weather: %s, want %s", u.Arrival.Name, want)

@@ -102,13 +102,10 @@ func TestAllMinimumCount(t *testing.T) {
 // affect the package-level list.
 func TestAllIndependentCopy(t *testing.T) {
 	first := All()
-	n := len(first)
-	// Append a dummy entry to the returned slice
-	first = append(first, SimVarMeta{Name: "INJECTED"})
-
-	second := All()
-	if len(second) != n {
-		t.Errorf("All() length changed after appending to prior result: got %d, want %d", len(second), n)
+	name := first[0].Name
+	first[0].Name = "INJECTED"
+	if got := All()[0].Name; got != name {
+		t.Errorf("All()[0] changed through a prior result: got %q, want %q", got, name)
 	}
 }
 

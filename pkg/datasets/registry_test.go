@@ -1,6 +1,7 @@
 package datasets
 
 import (
+	"sort"
 	"sync"
 	"testing"
 )
@@ -70,7 +71,9 @@ func TestList_Sorted(t *testing.T) {
 	if len(names) != len(orig)+3 {
 		t.Fatalf("List: expected %d names, got %d: %v", len(orig)+3, len(names), names)
 	}
-	// Verify the three registered names appear in sorted order within the result.
+	if !sort.StringsAreSorted(names) {
+		t.Errorf("List: not sorted: %v", names)
+	}
 	contains := func(ss []string, s string) bool {
 		for _, v := range ss {
 			if v == s {

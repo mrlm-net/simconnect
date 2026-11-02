@@ -67,7 +67,7 @@ func TestVFROperators(t *testing.T) {
 			t.Errorf("%s: a departure with circuits", f.Callsign)
 		case kind == GAPrivate && f.TouchAndGos != 0:
 			t.Errorf("%s: a private owner flying %d circuits", f.Callsign, f.TouchAndGos)
-		case kind == GASchool && arr && f.TouchAndGos > 4:
+		case kind == GASchool && arr && (f.TouchAndGos < 2 || f.TouchAndGos > 4):
 			t.Errorf("%s: %d circuits", f.Callsign, f.TouchAndGos)
 		case f.StopAndGo && f.TouchAndGos == 0:
 			t.Errorf("%s: stop-and-go without circuits", f.Callsign)

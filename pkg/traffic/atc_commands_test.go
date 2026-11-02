@@ -337,7 +337,7 @@ func goAroundStretched(t *testing.T, along float64) {
 			bases++
 		}
 	}
-	if bases > 1 {
+	if bases != 1 {
 		t.Errorf("%d base turns: %+v", bases, ctl.CircuitFixes())
 	}
 	// No loops: the flown chain never turns back on itself between points.

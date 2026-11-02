@@ -77,6 +77,9 @@ func pushAgain(t *testing.T, again func(*Harness, world.ControlView)) {
 		return n
 	}
 	before := said()
+	if before != 1 {
+		t.Fatalf("push approval said %d times before the step, want 1", before)
+	}
 	again(h, dep)
 	h.Advance(30 * time.Second)
 	if n := said(); n != before {

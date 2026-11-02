@@ -276,7 +276,7 @@ func TestTaxiControllerInjectedFaceOutStand(t *testing.T) {
 		}
 	}
 	if stand.Radius == 0 {
-		t.Skip("no face-out stand routable to 24")
+		t.Fatal("no face-out stand routable to 24")
 	}
 	ec := &eventClient{}
 	inj := NewInjector(ec)

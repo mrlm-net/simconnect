@@ -83,7 +83,7 @@ func TestTaxiClearanceNotRepeated(t *testing.T) {
 		}
 		return false
 	}) {
-		t.Skipf("%s never taxied", dep.Tail)
+		t.Fatalf("%s never taxied", dep.Tail)
 	}
 	do("hold")
 	h.Advance(30 * time.Second)

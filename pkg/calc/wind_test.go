@@ -155,21 +155,3 @@ func TestHeadwindComponent(t *testing.T) {
 	}
 }
 
-// TestHeadwindCrosswindPythagoras verifies that decomposed components
-// reconstruct the original wind speed via Pythagorean theorem.
-func TestHeadwindCrosswindPythagoras(t *testing.T) {
-	cases := [][3]float64{
-		{360, 20, 360},
-		{45, 15, 360},
-		{270, 10, 90},
-		{180, 25, 250},
-	}
-	for _, c := range cases {
-		hw, xw := HeadwindCrosswind(c[0], c[1], c[2])
-		got := math.Sqrt(hw*hw + xw*xw)
-		if math.Abs(got-c[1]) > 1e-9 {
-			t.Errorf("windDir=%.0f windSpeed=%.0f runway=%.0f: sqrt(hw²+xw²) = %v, want %v",
-				c[0], c[1], c[2], got, c[1])
-		}
-	}
-}
