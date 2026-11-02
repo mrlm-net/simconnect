@@ -116,6 +116,11 @@ func TestCheapReadAccessors(t *testing.T) {
 			t.Errorf("%s: %d vehicles, the snapshot has %d", tail, len(got[tail]), n)
 		}
 	}
+	for tail, vs := range got { // nor any the snapshot has not
+		if len(vs) != want[tail] {
+			t.Errorf("%s: %d vehicles, the snapshot has %d", tail, len(vs), want[tail])
+		}
+	}
 }
 
 // TestHarnessesOneAfterAnother: a World per subtest, each with its own
