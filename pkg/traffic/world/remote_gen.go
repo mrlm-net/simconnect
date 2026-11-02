@@ -315,6 +315,12 @@ func (r *remoteArr) DirectTo(p airport.LatLon) (string, traffic.Vector, error) {
 	return o0, o1, err
 }
 
+func (r *remoteArr) FlyHeading(trueDeg float64) (traffic.Vector, error) {
+	var o0 traffic.Vector
+	err := r.c.call(r.t, "FlyHeading", []any{trueDeg}, &o0)
+	return o0, err
+}
+
 func (r *remoteArr) JoinFinal(p airport.LatLon) (float64, traffic.Vector, error) {
 	var o0 float64
 	var o1 traffic.Vector

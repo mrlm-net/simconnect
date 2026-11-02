@@ -49,7 +49,43 @@ func (c *ArrivalController) DirectTo(p airport.LatLon) (fix string, v Vector, er
 			return n, Vector{}, nil
 		}
 	}
-	// A point: to it, then on from the point after the nearest one.
+	v, err = c.flyToPoint(pos, p, k, final)
+	return "", v, err
+}
+
+// headingLegNM is how far a heading is flown with nothing further said: long
+// enough to be vectored off it first, and then back on its route.
+const headingLegNM = 30.0
+
+// FlyHeading has an arrival on its procedure fly a true heading, off its route
+// (#1414). Told nothing else, it resumes own navigation after headingLegNM,
+// direct to its next named fix; DirectTo, JoinFinal or another heading replace
+// it. ErrNotOnProcedure on the final or in a circuit, ErrHolding in the hold.
+func (c *ArrivalController) FlyHeading(trueDeg float64) (Vector, error) {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	if !c.flyingProc || c.proc == nil || c.req.Circuit != nil || len(c.corners) < 3 {
+		return Vector{}, ErrNotOnProcedure
+	}
+	if c.holding != nil {
+		return Vector{}, ErrHolding
+	}
+	pos := c.last.Position
+	final := len(c.corners) - 2
+	k := c.cornerAhead()
+	if pos == (airport.LatLon{}) || k >= final {
+		return Vector{}, ErrNotOnProcedure
+	}
+	lat, lon := calc.DisplaceByHeading(pos.Lat, pos.Lon, trueDeg, headingLegNM*1852)
+	return c.flyToPoint(pos, airport.LatLon{Lat: lat, Lon: lon}, k, final)
+}
+
+// flyToPoint flies p on a radar vector, then on from the corner after the one
+// nearest p. c.mu held.
+func (c *ArrivalController) flyToPoint(pos, p airport.LatLon, k, final int) (Vector, error) {
+	ll := func(i int) airport.LatLon {
+		return airport.LatLon{Lat: c.corners[i].Latitude, Lon: c.corners[i].Longitude}
+	}
 	near, best := k, -1.0
 	for j := k; j < final; j++ {
 		if d := calc.HaversineNM(p.Lat, p.Lon, ll(j).Lat, ll(j).Lon); best < 0 || d < best {
@@ -61,7 +97,7 @@ func (c *ArrivalController) DirectTo(p airport.LatLon) (fix string, v Vector, er
 	plain := append([]types.SIMCONNECT_DATA_WAYPOINT{procedureWaypoint(p, w.Altitude, w.KtsSpeed)}, c.corners[next:]...)
 	names := append([]string{""}, c.cornerNames[next:]...)
 	if err := c.reroute(pos, plain, names); err != nil {
-		return "", Vector{}, err
+		return Vector{}, err
 	}
 	c.reachFirst = true // the point: flown to, not passed by geometry
 	resume := ""
@@ -71,14 +107,14 @@ func (c *ArrivalController) DirectTo(p airport.LatLon) (fix string, v Vector, er
 			break
 		}
 	}
-	v = Vector{HeadingDeg: calc.BearingDegrees(pos.Lat, pos.Lon, p.Lat, p.Lon)}
+	v := Vector{HeadingDeg: calc.BearingDegrees(pos.Lat, pos.Lon, p.Lat, p.Lon)}
 	v.Turn = TurnTo(c.last.Heading, v.HeadingDeg)
 	if resume != "" {
 		c.vectors = []Vector{{At: p, Fix: resume}} // there: back on its own navigation
 	}
 	c.vectored = true
 	c.note("vectored to a point", nil)
-	return "", v, nil
+	return v, nil
 }
 
 // reroute flies plain (named by names) from pos, with nothing ahead
