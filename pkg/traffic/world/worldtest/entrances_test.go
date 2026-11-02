@@ -1,7 +1,9 @@
 package worldtest
 
 import (
+	"maps"
 	"os"
+	"slices"
 	"strings"
 	"testing"
 	"time"
@@ -69,13 +71,16 @@ func TestDeparturesShareEndEntrances(t *testing.T) {
 		t.Logf("held short at %s: %d", n, len(tails))
 	}
 	t.Logf("departed: %d", len(departed))
-	if len(at) < 2 {
-		t.Errorf("departures held short at %d entrance(s) of 24, want both A and Z", len(at))
-	}
+	hasA, hasZ := false, false
 	for n := range at {
+		hasA = hasA || strings.Contains(n, "A")
+		hasZ = hasZ || strings.Contains(n, "Z")
 		if !strings.ContainsAny(n, "AZ") {
 			t.Errorf("a full-length departure held short at %s", n)
 		}
+	}
+	if !hasA || !hasZ {
+		t.Errorf("departures held short at %v of 24, want both A and Z", slices.Sorted(maps.Keys(at)))
 	}
 	// 3: a take-off leaves the arrival behind 3 NM out once airborne
 	// (traffic.LandingClearanceNM); the 4–5 before went with it on a 5–6
