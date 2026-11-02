@@ -202,9 +202,16 @@ func TestValidateAirportLayouts(t *testing.T) {
 				}
 			}
 			in, back := 0, 0
+			// Every exit to every 4th stand and every stand from an end's first
+			// and last exit: each exit and stand, not each pair, but with
+			// SIMCONNECT_SWEEPS=1 (nightly).
+			all := os.Getenv("SIMCONNECT_SWEEPS") != ""
 			for _, end := range ends {
-				for _, x := range exits[end] {
-					for _, i := range stands {
+				for xi, x := range exits[end] {
+					for si, i := range stands {
+						if !all && si%4 != 0 && xi != 0 && xi != len(exits[end])-1 {
+							continue
+						}
 						st := l.Parking[i]
 						r, err := g.RouteFromRunway(x, i, RouteOptions{HalfSpan: math.Min(st.Radius, 18)})
 						if err != nil {

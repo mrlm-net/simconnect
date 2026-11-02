@@ -28,3 +28,19 @@ jobs:
         env:
           CGO_ENABLED: '1'
         run: go test -race -short ./... -count=1 -timeout 220m
+
+  sweeps:
+    name: Full validation sweeps
+    runs-on: windows-latest
+    timeout-minutes: 120
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+
+      - name: Test
+        env:
+          SIMCONNECT_SWEEPS: '1'
+        run: go test ./pkg/traffic ./pkg/airport -run '^(TestValidatePushPoses|TestValidateAirportLayouts)$' -count=1 -timeout 110m
