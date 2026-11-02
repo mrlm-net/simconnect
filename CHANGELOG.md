@@ -7,6 +7,12 @@ This project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 ---
 
+## [0.163.0] - 2026-11-02
+
+### Added
+
+- A controller can give an arrival a heading: action `heading` on `/api/approach` (magnetic, `{"heading":180}`), said and read back; `ArrivalController.FlyHeading`. Told nothing else it resumes own navigation after 30 NM; `direct`, `joinfinal` or another heading replace it.
+
 ## [0.162.1] - 2026-11-02
 
 ### Fixed

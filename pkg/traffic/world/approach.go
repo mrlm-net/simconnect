@@ -22,7 +22,8 @@ import (
 // up, down: a place earlier or later in the landing order (kept);
 // hold: hold now at the STAR's hold fix, on the stack; release: leave the
 // hold; slow: lose another minute by speed and stretching; direct: direct
-// to the join point on the final; goaround: go around.
+// to the join point on the final; heading: fly a magnetic heading off the route
+// (#1414); goaround: go around.
 
 // approachSlowBy is what one "slow" asks the arrival to lose.
 const approachSlowBy = time.Minute
@@ -75,6 +76,8 @@ type spacing struct {
 	// expedite: a descent or a speed told to hurry, a descent only through
 	// throughFt if set (#1331).
 	expedite  bool
+	// heading: the magnetic heading of action "heading", 1 to 360.
+	heading float64
 	throughFt float64
 }
 
@@ -265,6 +268,18 @@ func (q *sequences) approachDo(icao, callsign, action string, at *airport.LatLon
 		}
 		it.say(traffic.DirectToFinal(callsign, q.numberToSay(q.cc.clock.Now(), callsign, e.Number)))
 		told = "direct to the final"
+	case "heading":
+		if sp.heading < 1 || sp.heading > 360 {
+			return errors.New("heading needs a magnetic heading, 1 to 360")
+		}
+		mv := q.cc.magVar(icao)
+		var v traffic.Vector
+		if err := q.cc.do(func() (err error) { v, err = it.arr.FlyHeading(sp.heading - mv); return err }); err != nil {
+			return err
+		}
+		it.say(traffic.Vectored(callsign, v, mv))
+		told = "heading " + traffic.HeadingSaid(v.HeadingDeg, mv)
+		q.cc.log.printf("%-6s approach: %s", callsign, told)
 	case "descend":
 		// A level on its STAR (#1164): only down, from where it is.
 		if ft <= 0 {
@@ -343,6 +358,7 @@ func registerApproach(mux *http.ServeMux, st *state) {
 			Lat, Lon *float64
 			Kts      float64 // speed: the speed, 0 normal speed
 			Ft       float64 // descend: the level, feet (#1164)
+			Heading  float64 // heading: magnetic, 1 to 360 (#1414)
 			// descend, speed: told to hurry; a descent only through ThroughFt (#1331).
 			Expedite  bool
 			ThroughFt float64
@@ -351,7 +367,7 @@ func registerApproach(mux *http.ServeMux, st *state) {
 			at = &airport.LatLon{Lat: *body.Lat, Lon: *body.Lon}
 		}
 		err := q.approachDo(strings.ToUpper(r.PathValue("icao")), r.PathValue("callsign"), r.PathValue("action"), at, body.Kts, body.Ft,
-			spacing{expedite: body.Expedite || body.ThroughFt > 0, throughFt: body.ThroughFt})
+			spacing{expedite: body.Expedite || body.ThroughFt > 0, throughFt: body.ThroughFt, heading: body.Heading})
 		switch {
 		case errors.Is(err, traffic.ErrNotSequenced):
 			http.Error(w, err.Error(), http.StatusNotFound)

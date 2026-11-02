@@ -73,6 +73,7 @@ type arrivalCtl interface {
 	DescendTo(altFt float64) error
 	DescendExpedited(fromFt, altFt, throughFt, kts float64) error
 	DirectTo(p airport.LatLon) (string, traffic.Vector, error)
+	FlyHeading(trueDeg float64) (traffic.Vector, error)
 	JoinFinal(p airport.LatLon) (float64, traffic.Vector, error)
 	AssignSpeed(kts float64) (float64, error)
 	BaseDue() bool
