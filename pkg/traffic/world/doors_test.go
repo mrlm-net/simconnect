@@ -67,6 +67,7 @@ func TestGateNoseOffset(t *testing.T) {
 // A gate's placeholder parked as the simulator parks there (#572): its
 // nose gear inset and its side off the parking line become our stop's.
 func TestGatePlaceFromPlaceholder(t *testing.T) {
+	defer setDoors(nil, nil)
 	setDoors(map[string]addons.ModelDoor{"FSLTL_A320_HELPER": {HasNoseGear: true, NoseGearFt: 37.319}}, nil)
 	g := &airport.Graph{Layout: &airport.Layout{ICAO: "TEST", Parking: []airport.Parking{{Position: airport.LatLon{Lat: 50, Lon: 14}, Heading: 90, Radius: 20}}}}
 	cc := &controlCenter{}

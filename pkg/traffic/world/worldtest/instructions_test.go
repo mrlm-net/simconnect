@@ -38,7 +38,13 @@ func startLKPR(t *testing.T) *Harness {
 func TestLineUpTakeoffLandingWords(t *testing.T) {
 	h := startLKPR(t)
 	h.World.UseRunway("LKPR", "24")
-	if _, err := h.World.Do(http.MethodPost, "/api/control", map[string]any{"kind": "departure", "icao": "LKPR", "tail": "WORD1", "runway": "24", "stand": -1, "model": "A320"}); err != nil {
+	// A stand with a taxi to speak of: from one by the holding point (a random
+	// pick, 1 run in dozens) the line-up is rightly offered at once.
+	stand, err := h.Layout.ParkingIndex("C22")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := h.World.Do(http.MethodPost, "/api/control", map[string]any{"kind": "departure", "icao": "LKPR", "tail": "WORD1", "runway": "24", "stand": stand, "model": "A320"}); err != nil {
 		t.Fatal(err)
 	}
 	var dep world.ControlView

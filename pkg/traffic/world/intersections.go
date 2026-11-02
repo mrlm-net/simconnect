@@ -3,7 +3,6 @@ package world
 import (
 	"cmp"
 	"math"
-	"math/rand/v2"
 	"slices"
 	"strconv"
 	"strings"
@@ -185,7 +184,7 @@ func (it *controlled) offerEntry() {
 			if err := it.cc.do(func() error { return it.dep.ChangeEntry(e.Taxiway) }); err != nil {
 				continue // too short for it, or no route
 			}
-			declined := rand.Float64() < traffic.DeclineChance(v.Model, it.Tail)
+			declined := traffic.RandomFloat64() < traffic.DeclineChance(v.Model, it.Tail)
 			it.mu.Lock()
 			it.setRoute()
 			it.view.Entry, it.entryRemaining, it.entryDeclined = e.Taxiway, e.Remaining, declined

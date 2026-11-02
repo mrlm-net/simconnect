@@ -7,7 +7,6 @@ import (
 	"hash/fnv"
 	"io"
 	"math"
-	"math/rand/v2"
 	"net/http"
 	"regexp"
 	"slices"
@@ -1152,7 +1151,7 @@ func (cc *controlCenter) spawn(g *airport.Graph, r SpawnRequest) (*controlled, e
 		if err != nil {
 			return nil, err
 		}
-		exit := rand.Float64() * 360
+		exit := traffic.RandomFloat64() * 360
 		if r.ExitBearing != nil {
 			exit = *r.ExitBearing
 		}
@@ -1226,7 +1225,7 @@ func (cc *controlCenter) spawn(g *airport.Graph, r SpawnRequest) (*controlled, e
 		}
 	}
 	it := &controlled{askedAt: spawnAt, approach: approach, fixes: fixes, defBase: defBase, ID: n, Kind: r.Kind, Tail: r.Tail, ICAO: g.Layout.ICAO, graph: g, stands: alloc, stand: r.Stand, other: r.Other, overnight: r.overnight, spoken: map[string]bool{}, removed: make(chan struct{}), cc: cc}
-	it.tugAfter.Store(rand.Float64() < TugAfterJetwayShare)
+	it.tugAfter.Store(traffic.RandomFloat64() < TugAfterJetwayShare)
 	it.tugStand.Store(int32(r.Stand))
 	it.gates.Store(r.Gates)
 	it.wake = traffic.WakeFor(model).ICAO
@@ -1334,7 +1333,7 @@ func (cc *controlCenter) spawn(g *airport.Graph, r SpawnRequest) (*controlled, e
 				dwell = time.Duration(r.DwellSec * float64(time.Second))
 			}
 			it.turn, it.departNow = &d, make(chan struct{}, 1)
-			it.dwell = time.Duration(float64(dwell) * (1 + dwellSpread*(2*rand.Float64()-1)))
+			it.dwell = time.Duration(float64(dwell) * (1 + dwellSpread*(2*traffic.RandomFloat64()-1)))
 		}
 		events = func() (TaxiOrArrival, bool) { ev, ok := <-ach; return TaxiOrArrival{arr: &ev}, ok }
 	default:
@@ -3331,7 +3330,7 @@ func (cc *controlCenter) procedureFor(g *airport.Graph, r SpawnRequest) ([]airpo
 		if r.ProcName != "" {
 			return airport.Procedure{}, fmt.Errorf("no procedure %q for runway %s", r.ProcName, r.Runway)
 		}
-		return list[rand.IntN(len(list))], nil
+		return list[traffic.RandomIntN(len(list))], nil
 	}
 	if r.Kind == "departure" {
 		sid, err := pick(p.SIDsFor(r.Runway))
@@ -3539,7 +3538,7 @@ func (it *controlled) tellGiveWay(other uint32) {
 	// Short of another taxiway: sometimes "hold short of C" instead, then
 	// "continue taxi" once the traffic has passed (the user).
 	hs := ""
-	if still && !told && it.giveWayHoldShort != "" && rand.Float64() < holdShortShare {
+	if still && !told && it.giveWayHoldShort != "" && traffic.RandomFloat64() < holdShortShare {
 		hs, it.heldShortOf = it.giveWayHoldShort, it.giveWayHoldShort
 	}
 	it.mu.Unlock()
@@ -4091,7 +4090,7 @@ const queueSaidShare = 0.5
 // askWeather has the crew of it ask pos for the weather now and then, and
 // the controller answer with the wind and QNH.
 func (it *controlled) askWeather(pos traffic.Position) {
-	if rand.Float64() >= weatherShare || it.gates.Load() {
+	if traffic.RandomFloat64() >= weatherShare || it.gates.Load() {
 		return
 	}
 	p := it.cc.pending
@@ -4362,8 +4361,8 @@ func (it *controlled) handoff(ev TaxiOrArrival) {
 		// about half a mile past the runway end), not at the hand-over to
 		// MSFS AI.
 		if it.handoffFt == 0 { // each crew its own moment
-			it.handoffFt = departureHandoffFt + rand.Float64()*departureHandoffSpreadFt
-			it.towerAtM = towerHandoffMeters + (2*rand.Float64()-1)*towerHandoffSpreadM
+			it.handoffFt = departureHandoffFt + traffic.RandomFloat64()*departureHandoffSpreadFt
+			it.towerAtM = towerHandoffMeters + (2*traffic.RandomFloat64()-1)*towerHandoffSpreadM
 		}
 		// A VFR departure stays with the tower out of the circuit: no radar
 		// departure, no IFR climb (live, OKVFD: "climb to flight level 240").
@@ -4727,7 +4726,7 @@ func (it *controlled) handoff(ev TaxiOrArrival) {
 			}
 			// The queue said now and then, not every time (the user: "still
 			// not always").
-			if rand.Float64() >= queueSaidShare {
+			if traffic.RandomFloat64() >= queueSaidShare {
 				ahead = 0
 			}
 			it.say(traffic.DepartureOrder(it.Tail, rwy, ahead))

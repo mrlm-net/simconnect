@@ -415,7 +415,7 @@ func NewArrivalController(fleet *Fleet, opts ...ArrivalOption) *ArrivalControlle
 	c := &ArrivalController{
 		fleet: fleet, defBase: DefaultArrivalDefinitionBase, reqBase: DefaultArrivalRequestBase,
 		events: make(chan ArrivalEvent, 256), now: Now,
-		rng: rand.New(rand.NewPCG(uint64(Now().UnixNano()), 0x5eed)),
+		rng: NewRandom(0x5eed),
 	}
 	c.groundDrive = groundDrive{ignoreRunway: -1, limitNode: -1, clock: func() time.Time { return c.now() }, record: c.note}
 	c.last.LimitNode = -1

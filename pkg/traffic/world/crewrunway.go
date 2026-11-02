@@ -2,7 +2,6 @@ package world
 
 import (
 	"math"
-	"math/rand/v2"
 
 	"github.com/mrlm-net/simconnect/pkg/airport"
 	"github.com/mrlm-net/simconnect/pkg/calc"
@@ -23,7 +22,7 @@ const (
 // crewRunway is the runway the crew of it asks for instead of its own, ""
 // when it does not ask (most) or there is none to ask for. it.mu is held.
 func (it *controlled) crewRunway() string {
-	if it.dep == nil || it.view.Procedure == "" || it.cc.procedures == nil || rand.Float64() >= crewRunwayShare {
+	if it.dep == nil || it.view.Procedure == "" || it.cc.procedures == nil || traffic.RandomFloat64() >= crewRunwayShare {
 		return ""
 	}
 	p, ok := it.cc.procedures(it.ICAO)

@@ -3,7 +3,6 @@ package world
 import (
 	"encoding/json"
 	"fmt"
-	"math/rand/v2"
 	"net/http"
 	"sort"
 	"strings"
@@ -117,13 +116,13 @@ func (cc *controlCenter) gameTick(now time.Time) {
 		it.mu.Unlock()
 	}
 	if g.Interval > 0 && !now.Before(g.next) && active < gameMaxActive {
-		g.next = now.Add(time.Duration(g.Interval * float64(time.Second) * (0.7 + 0.6*rand.Float64())))
+		g.next = now.Add(time.Duration(g.Interval * float64(time.Second) * (0.7 + 0.6*traffic.RandomFloat64())))
 		kind := "departure"
 		if g.arrival {
 			kind = "arrival"
 		}
 		g.arrival = !g.arrival
-		tail := fmt.Sprintf("%s%d", gameAirlines[rand.IntN(len(gameAirlines))], 100+rand.IntN(900))
+		tail := fmt.Sprintf("%s%d", gameAirlines[traffic.RandomIntN(len(gameAirlines))], 100+traffic.RandomIntN(900))
 		// Runway "active": the runway in use at spawn time.
 		r := SpawnRequest{Kind: kind, ICAO: icao, Stand: -1, Runway: g.Runway, Model: "FSLTL A320 Air France SL", Tail: tail,
 			Gates: true, Tug: kind == "departure", Procedure: true, Deice: "auto"}

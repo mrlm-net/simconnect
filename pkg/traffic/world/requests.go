@@ -39,7 +39,7 @@ type pendingAct struct {
 }
 
 func newPending() *pending {
-	return &pending{rng: rand.New(rand.NewPCG(uint64(traffic.Now().UnixNano()), 0x7e9))}
+	return &pending{rng: traffic.NewRandom(0x7e9)}
 }
 
 // later runs f at (or just after) at.
@@ -394,10 +394,10 @@ var standDelayWhy = []string{"waiting for passengers", "waiting for the load she
 // maybeStandDelay has the crew of it ask ground for a delay on the stand,
 // rarely; ground agrees and the push request comes that much later.
 func (it *controlled) maybeStandDelay() {
-	if it.dep == nil || it.gates.Load() || rand.Float64() >= standDelayShare {
+	if it.dep == nil || it.gates.Load() || traffic.RandomFloat64() >= standDelayShare {
 		return
 	}
-	d := standDelayMin + time.Duration(rand.Int64N(int64(standDelayMax-standDelayMin)))
+	d := standDelayMin + time.Duration(traffic.RandomInt64N(int64(standDelayMax-standDelayMin)))
 	minutes := int(d.Round(time.Minute).Minutes())
 	p := it.cc.pending
 	p.later(it.clearAt(traffic.PosGround).Add(crewActDelay+p.jitter(crewActJitter)), func() {
@@ -409,7 +409,7 @@ func (it *controlled) maybeStandDelay() {
 		stand := it.view.Stand
 		it.mu.Unlock()
 		station, _ := it.station(traffic.PosGround)
-		it.say(traffic.RequestStandDelay(station, it.Tail, stand, minutes, standDelayWhy[rand.IntN(len(standDelayWhy))]))
+		it.say(traffic.RequestStandDelay(station, it.Tail, stand, minutes, standDelayWhy[traffic.RandomIntN(len(standDelayWhy))]))
 		it.cc.log.printf("%-6s crew: delay on the stand, %d minutes", it.Tail, minutes)
 		it.call(traffic.PosGround, prioStand, func() { it.say(traffic.StandDelayApproved(it.Tail, it.dep.FacesOut())) })
 	})

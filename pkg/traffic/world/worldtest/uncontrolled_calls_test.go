@@ -117,6 +117,7 @@ func TestUncontrolledNoCancelInPoorVisibility(t *testing.T) {
 func TestTowerCallsUnchanged(t *testing.T) {
 	data := dataDir(t)
 	vfr := runCalls(t, data, 9999, false, []string{", downwind"})
+	vfr.Close() // one World at a time: the clock is process-wide
 	if !heardCall(vfr, ", downwind") {
 		t.Error("no downwind report in 3 simulated hours")
 	}
@@ -335,6 +336,7 @@ func TestWakeCautionVFR(t *testing.T) {
 func TestWakeCautionStaffedTower(t *testing.T) {
 	for _, mode := range []string{"assist", "silent"} {
 		h := wakeBed(t, dataDir(t), world.StaffedStation{ICAO: "LKPR", Position: "tower", Mode: mode})
+		h.Close() // one World at a time: the clock is process-wide
 		if heardCall(h, "wake turbulence") {
 			t.Errorf("%s: the World gave the caution for the player", mode)
 		}

@@ -1,7 +1,6 @@
 package world
 
 import (
-	"math/rand/v2"
 	"time"
 
 	"github.com/mrlm-net/simconnect/pkg/airport"
@@ -59,7 +58,7 @@ func (t *towers) crewDecides(icao string, list []traffic.RunwayUser, ours map[st
 		switch {
 		case !cleared:
 			why = "no landing clearance"
-		case !checked && rand.Float64() < crewUnstableShare:
+		case !checked && traffic.RandomFloat64() < crewUnstableShare:
 			why = "approach not stable"
 		}
 		if why == "" {
@@ -112,7 +111,7 @@ func (t *towers) crewRejects(ours map[string]*controlled) {
 		judged := t.rtoJudged[cs]
 		t.rtoJudged[cs] = true
 		t.mu.Unlock()
-		if judged || rand.Float64() >= crewRejectShare {
+		if judged || traffic.RandomFloat64() >= crewRejectShare {
 			continue
 		}
 		cs, it := cs, it
@@ -160,7 +159,7 @@ func (w *conflictWatch) crewRequests(now time.Time, aircraft []traffic.TrackedAi
 		asked := w.asked[a.Tail]
 		w.asked[a.Tail] = true
 		w.mu.Unlock()
-		if asked || rand.Float64() >= crewDirectShare {
+		if asked || traffic.RandomFloat64() >= crewDirectShare {
 			continue
 		}
 		ahead := fixesAhead(fixes, it.dep.ClimbRoute(a.Position))
@@ -247,7 +246,7 @@ func crewIntersectionShare(model string) float64 {
 // does not ask (most), departs from an intersection already or the runway
 // has none. it.mu is held.
 func (it *controlled) crewEntry() string {
-	if it.dep == nil || it.view.Entry != "" || rand.Float64() >= crewIntersectionShare(it.view.Model) {
+	if it.dep == nil || it.view.Entry != "" || traffic.RandomFloat64() >= crewIntersectionShare(it.view.Model) {
 		return ""
 	}
 	return firstEntry(it.graph, it.ICAO, it.view.Runway, it.view.Model, it.view.Position)

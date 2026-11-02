@@ -3,7 +3,6 @@ package world
 import (
 	"encoding/json"
 	"fmt"
-	"math/rand/v2"
 	"net/http"
 	"slices"
 	"strings"
@@ -124,7 +123,7 @@ func (s *scheduler) corridorTick(now time.Time) {
 // spawnCorridor creates one aircraft of kind around the user's flight: an
 // airline of the schedule's, one of its types, a model of it.
 func (s *scheduler) spawnCorridor(kind traffic.CorridorKind, c CorridorSettings, user airport.LatLon) error {
-	rng := rand.New(rand.NewPCG(uint64(traffic.Now().UnixNano()), 0x740))
+	rng := traffic.NewRandom(0x740)
 	// An airline with a jet that cruises up there (2000 ft above the user
 	// at most): no turboprop at FL340.
 	type pick struct {

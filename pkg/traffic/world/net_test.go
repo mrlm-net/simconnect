@@ -102,8 +102,9 @@ func TestDialOut(t *testing.T) {
 	srv.add("dep/1", &fakeDep{})
 	go serve(hub, srv)
 	ctx, cancel := context.WithCancel(context.Background())
-	defer cancel()
-	go hub.dialOut(ctx, ln.Addr().String(), LinkOptions{Token: "s3cret"}, func(string, ...any) {})
+	dialled := make(chan struct{})
+	defer func() { cancel(); <-dialled }() // it reads redialEvery: gone before that is reset
+	go func() { defer close(dialled); hub.dialOut(ctx, ln.Addr().String(), LinkOptions{Token: "s3cret"}, func(string, ...any) {}) }()
 
 	accept := func(token string) (*wireClient, chan wireMsg, bool) {
 		c, err := ln.Accept()
