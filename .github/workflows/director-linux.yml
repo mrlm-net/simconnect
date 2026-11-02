@@ -6,6 +6,14 @@ name: Traffic director on Linux
 # a simulator.
 
 on:
+  push:
+    branches: [main]
+    paths:
+      - 'pkg/traffic/**'
+      - 'pkg/airport/**'
+      - 'pkg/nav/**'
+      - 'cmd/traffic-director/**'
+      - '.github/workflows/director-linux.yml'
   pull_request:
     paths:
       - 'pkg/traffic/**'
@@ -64,16 +72,36 @@ jobs:
           cp pkg/airport/testdata/LKPR.json data/LKPR/layout.json
           cp pkg/airport/testdata/LKPR-procedures.json data/LKPR/procedures.json
           export SIMCONNECT_DATA="$PWD/data"
-          go test ./pkg/traffic/world/worldtest/ -v -count=1 -timeout 40m -skip "$SKIP" > full.txt 2>&1 || true
-          grep -aE '^(--- |ok|FAIL|panic)' full.txt | tee results.txt
+          code=0
+          go test ./pkg/traffic/world/worldtest/ -v -count=1 -timeout 40m -skip "$SKIP" > full.txt 2>&1 || code=$?
+          grep -aE '^(--- |ok|FAIL|panic)' full.txt | tee results.txt || true
           grep -aE '_test.go:[0-9]+:' full.txt || true
-          test "$(grep -c '^--- PASS' results.txt)" -ge 30
+          # A timeout or a panic on a World goroutine names no failed test:
+          # never green, and nothing a re-run could excuse.
+          if grep -aqE '^(panic:|fatal error:)' full.txt; then
+            grep -aE -A25 '^(panic:|fatal error:)' full.txt | head -60
+            echo "::error::the run crashed or timed out"
+            exit 1
+          fi
+          failed=$(grep -a '^--- FAIL' results.txt | sed 's/--- FAIL: //; s/ .*//' | paste -sd'|' -) || true
+          if [ "$code" != 0 ] && [ -z "$failed" ]; then
+            echo "::error::go test exited $code with no failed test named"
+            exit 1
+          fi
+          # Every test not in SKIP must have reported: none vanished.
+          go test ./pkg/traffic/world/worldtest/ -list '.*' | grep '^Test' | grep -vE "$SKIP" | sort > eligible.txt
+          grep -aE '^--- (PASS|FAIL|SKIP)' results.txt | sed -E 's/^--- [A-Z]+: //; s/ .*//' | sort > ran.txt || true
+          if ! diff eligible.txt ran.txt; then
+            echo "::error::$(wc -l < ran.txt) tests reported, $(wc -l < eligible.txt) eligible"
+            exit 1
+          fi
           # They run in real time on a two-core runner: a test counts as failed
-          # only if it fails again on its own.
-          failed=$(grep -a '^--- FAIL' results.txt | sed 's/--- FAIL: //; s/ .*//' | paste -sd'|' -)
+          # only if it fails again on its own. Those that passed then are named.
           if [ -n "$failed" ]; then
             echo "again, on their own: $failed"
             go test ./pkg/traffic/world/worldtest/ -v -count=1 -timeout 20m -run "^($failed)$" > again.txt 2>&1 && code=0 || code=$?
-            grep -aE '^(--- |ok|FAIL|panic)|_test.go:[0-9]+:' again.txt
+            grep -aE '^(--- |ok|FAIL|panic)|_test.go:[0-9]+:' again.txt || true
             test "$code" = 0
+            echo "::warning::passed only on a re-run: $failed"
+            echo "Passed only on a re-run: \`$failed\`" >> "$GITHUB_STEP_SUMMARY"
           fi

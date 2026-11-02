@@ -1,0 +1,30 @@
+name: Race detector
+
+# Every package under -race, on Windows where all of them build (engine,
+# failures, pilot and scene-cli do not on Linux). Too slow for each pull
+# request: pkg/traffic alone took over 50 minutes on a Linux runner.
+
+on:
+  schedule:
+    - cron: '30 2 * * *'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  race:
+    name: All packages under -race
+    runs-on: windows-latest
+    timeout-minutes: 240
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+
+      - name: Test
+        env:
+          CGO_ENABLED: '1'
+        run: go test -race -short ./... -count=1 -timeout 220m

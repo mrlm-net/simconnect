@@ -1,0 +1,35 @@
+name: Tests
+
+# Every package of the module, on Windows as users build it. -short leaves the
+# whole-World runs to director-linux.yml, and race.yml runs -race nightly.
+# Nothing here needs a simulator. simconnect-data is private: tests that need
+# it skip here and run locally.
+
+on:
+  push:
+    branches: [main]
+    paths-ignore: ['docs/**', 'website/**', 'design/**', '**.md']
+  pull_request:
+    paths-ignore: ['docs/**', 'website/**', 'design/**', '**.md']
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  windows:
+    name: All packages on Windows
+    runs-on: windows-latest
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+
+      - name: Vet
+        run: go vet -unsafeptr=false ./...
+
+      - name: Test
+        run: go test ./... -short -count=1 -timeout 50m
