@@ -7,6 +7,13 @@ This project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 ---
 
+## [0.167.1] - 2026-11-03
+
+### Fixed
+
+- A push keeps clear of the aircraft that may park beside it, measured on their outlines (fuselage, wing, stabiliser, sized by the stand), not only the stands' circles: 4.5 m (ICAO Annex 14, code C) or what the stand itself gives, every neighbouring stand counted, taken or not; a push and pull is planned where a push alone comes closer (#1443; live LKPR: TVS139 from B9 for 06, 1.8 m from an A321 on A7).
+
+
 ## [0.167.0] - 2026-11-03
 
 ### Added

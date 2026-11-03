@@ -1,8 +1,8 @@
 package traffic
 
 import (
-	"errors"
 	"cmp"
+	"errors"
 	"math"
 	"slices"
 	"sync"
@@ -783,7 +783,8 @@ type pushCand struct {
 	pts        []airport.LatLon
 	at         int
 	push, cost float64
-	near       bool // within pushOffPavementMeters of the pavement
+	near       bool    // within pushOffPavementMeters of the pavement
+	close      float64 // its closePenalty: short of the clearance from the aircraft beside it
 	tow        []airport.LatLon
 }
 
@@ -809,7 +810,7 @@ const (
 // shortest path of turn radius PushbackMinArcMeters to PushbackArcMeters
 // for the nose gear, the same clearances as a push. One per pose, the
 // cheapest.
-func (c *TaxiController) pushAndTow(poses []pushPose, pushes []pushCand, tailOffs []float64, prof MotionProfile, pv *flatPave, base, radiusCost float64) []pushCand {
+func (c *TaxiController) pushAndTow(poses []pushPose, pushes []pushCand, tailOffs []float64, prof MotionProfile, pv *flatPave, base, radiusCost float64, parked [][3]outlineSeg, want float64) []pushCand {
 	from := slices.Clone(pushes)
 	slices.SortFunc(from, func(a, b pushCand) int { return cmp.Compare(a.push, b.push) })
 	from = from[:min(len(from), towPushes)]
@@ -833,8 +834,13 @@ func (c *TaxiController) pushAndTow(poses []pushPose, pushes []pushCand, tailOff
 				if !ok {
 					continue
 				}
+				// Clear of the aircraft beside it on the tow too (closePenalty).
+				close := f.close + closePenalty(pv, parked, towGear(tow, prof), prof, want)
+				if cost += close - f.close; func() bool { b, had := best[j]; return had && cost >= b.push }() {
+					continue
+				}
 				near := f.near && math.Max(off, tailOffs[j]) <= pushOffPavementMeters
-				best[j] = pushCand{pts: f.pts, at: j, push: cost, cost: p.lbTaxi + cost, near: near, tow: tow}
+				best[j] = pushCand{pts: f.pts, at: j, push: cost, cost: p.lbTaxi + cost, near: near, tow: tow, close: close}
 			}
 		}
 	}
@@ -1024,11 +1030,17 @@ func towFits(pts []airport.LatLon, prof MotionProfile, pv *flatPave, tol, base f
 	}
 	// The main gear a wheelbase behind the nose gear, last first: the
 	// intrusion of a push runs the other way.
-	gear := make([]airport.LatLon, 0, n)
-	for i := n - 1; i >= 1; i-- {
+	return off, pv.intrusion(towGear(pts, prof), prof) <= base+pushClearanceSlackMeters
+}
+
+// towGear is the main gear along a tow of the nose gear pts, a wheelbase
+// behind it, last first: as a push's points run.
+func towGear(pts []airport.LatLon, prof MotionProfile) []airport.LatLon {
+	gear := make([]airport.LatLon, 0, len(pts))
+	for i := len(pts) - 1; i >= 1; i-- {
 		gear = append(gear, offsetHeading(pts[i], localBearing(pts[i], pts[i-1]), prof.WheelbaseMeters))
 	}
-	return off, pv.intrusion(gear, prof) <= base+pushClearanceSlackMeters
+	return gear
 }
 
 // emptyStands are the stands within 200 m of the parked aircraft that are
@@ -1176,6 +1188,10 @@ func (c *TaxiController) planPushPoseWith(radiusCost float64) bool {
 	if tail <= 0 {
 		tail = 20.5
 	}
+	// The aircraft that may park beside it, and the clearance kept from
+	// them: pushWingtipClearanceMeters, or what the stand gives (pushclear.go).
+	parked := pushOutlines(g, c.req.Parking, pv)
+	want := math.Min(pushWingtipClearanceMeters, outlineClearance(pv, parked, gear, stand.Heading, prof)-0.5)
 	// The pushes a tug can make, one per pose: the widest radius that fits.
 	var cands []pushCand
 	tailOffs := make([]float64, len(poses))
@@ -1203,7 +1219,11 @@ func (c *TaxiController) planPushPoseWith(radiusCost float64) bool {
 				continue
 			}
 			if off, ok := pushFits(pts, prof, pv, pushOffPavementWideMeters, base); ok {
-				best = &pushCand{pts: pts, at: i, push: push, cost: p.lbTaxi + push, near: math.Max(off, tailOff) <= pushOffPavementMeters}
+				close := closePenalty(pv, parked, pts, prof, want)
+				if push += close; best != nil && push >= best.push {
+					continue
+				}
+				best = &pushCand{pts: pts, at: i, push: push, cost: p.lbTaxi + push, near: math.Max(off, tailOff) <= pushOffPavementMeters, close: close}
 			}
 		}
 		if best != nil {
@@ -1303,10 +1323,12 @@ func (c *TaxiController) planPushPoseWith(radiusCost float64) bool {
 	all := cands // the pushes, and the push-and-tows once planned
 	// A tow after the push only where no push alone leaves the aircraft
 	// facing its way out: none, or the taxi-out turns off the nose or back
-	// on itself. A push onto the taxiway facing the runway is never turned
-	// round by a tow (EHAM U26).
-	if best == nil || !poses[best.at].aligned() || poses[best.at].hairpin() {
-		tows := c.pushAndTow(poses, cands, tailOffs, prof, pv, base, PushTurnRadiusCost) // tows as before: the wide weight is for pushes
+	// on itself, or it comes closer to the aircraft beside it than it should
+	// (closePenalty): a push and pull fits where a push alone does not. A
+	// push onto the taxiway facing the runway is never turned round by a
+	// tow (EHAM U26).
+	if best == nil || !poses[best.at].aligned() || poses[best.at].hairpin() || best.close > 0 {
+		tows := c.pushAndTow(poses, cands, tailOffs, prof, pv, base, PushTurnRadiusCost, parked, want) // tows as before: the wide weight is for pushes
 		if c.havePushFacing {
 			tows = c.facingWay(poses, tows)
 		}

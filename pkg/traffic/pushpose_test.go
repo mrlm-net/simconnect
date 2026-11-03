@@ -146,12 +146,14 @@ func TestFacesOutFromTheNose(t *testing.T) {
 	}
 }
 
-// Push and pull: where no push alone ends cleanly (KJFK D70 for 04L), the
+// Push and pull: where no push alone ends cleanly (LKTB 1M for 09; KJFK
+// D70 for 04L pushes alone since #1443, its push and tow 1 m from the
+// aircraft beside it), the
 // tug pushes the aircraft back and then tows it forward onto the taxiway;
 // the taxi starts from the pose, the nose on it, along its heading.
 func TestPushThenTow(t *testing.T) {
-	g := airportGraph(t, "KJFK")
-	i, err := g.Layout.ParkingIndex("D70")
+	g := airportGraph(t, "LKTB")
+	i, err := g.Layout.ParkingIndex("1M")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -159,7 +161,7 @@ func TestPushThenTow(t *testing.T) {
 	ec := &eventClient{}
 	inj := NewInjector(ec)
 	ctl := NewTaxiController(NewFleet(ec), TaxiWithInjector(inj))
-	if err := ctl.Start(TaxiRequest{Graph: g, Parking: i, Runway: "04L", Model: "FSLTL_B738_RYR", Tail: "T1", RollingTakeoffChance: -1}); err != nil {
+	if err := ctl.Start(TaxiRequest{Graph: g, Parking: i, Runway: "09", Model: "FSLTL_B738_RYR", Tail: "T1", RollingTakeoffChance: -1}); err != nil {
 		t.Fatal(err)
 	}
 	p := ctl.pushPose
@@ -185,7 +187,9 @@ func TestPushThenTow(t *testing.T) {
 	if d := localDist(nose, p.nose); d > 2 {
 		t.Errorf("taxi starts %.1f m from the pose", d)
 	}
-	if d := math.Abs(headingDiff(pose.Heading, p.heading)); d > 5 {
+	// Within 10°: the main gear lags the nose gear over the tow's straight
+	// (towAlignMeters), 9° short at LKTB 1M; the taxi takes it from there.
+	if d := math.Abs(headingDiff(pose.Heading, p.heading)); d > 10 {
 		t.Errorf("taxi starts %.0f° off the pose's heading", d)
 	}
 }
@@ -300,8 +304,9 @@ func TestPushbackFacing(t *testing.T) {
 }
 
 // A stand pushes the same way whatever the runway (PlanStandardPushes):
-// LKPR B9 onto B2 facing north-west for 24 as for 06, not onto B1 for 24
-// alone; and no taxi-out turns back on itself right after the push.
+// LKPR B9 onto B1 facing north-west for 24 as for 06, clear of an aircraft
+// on A7 (#1443: onto B2 its wing came within 1.8 m of an A321 there); and
+// no taxi-out turns back on itself right after the push.
 func TestStandardPush(t *testing.T) {
 	t.Cleanup(standardPushes.Clear) // cached for the stands other tests push from
 	g := airportGraph(t, "LKPR")
@@ -328,8 +333,8 @@ func TestStandardPush(t *testing.T) {
 	}
 	PlanStandardPushes(g, "FSLTL_B738_RYR", []int{i})
 	a, b := plan("24"), plan("06")
-	if !samePose(*a, *b) || a.lane != "B2" {
-		t.Errorf("24 on %s facing %.0f°, 06 on %s facing %.0f°: want both on B2", a.lane, a.heading, b.lane, b.heading)
+	if !samePose(*a, *b) || a.lane != "B1" {
+		t.Errorf("24 on %s facing %.0f°, 06 on %s facing %.0f°: want both on B1", a.lane, a.heading, b.lane, b.heading)
 	}
 }
 
