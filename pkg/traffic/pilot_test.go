@@ -138,7 +138,7 @@ func TestRequestTaxiFrom(t *testing.T) {
 
 // TestRequestTaxiIntersectionFor: the runway said with the intersection.
 func TestRequestTaxiIntersectionFor(t *testing.T) {
-	if got := RequestTaxiIntersectionFor("OKCVT", "06", "E").Text; got != "OKCVT, request taxi, runway 06, intersection E" {
+	if got := RequestTaxiIntersectionFor("OKCVT", "06", "E").Text; got != "OKCVT, request taxi, runway 06 at E" {
 		t.Errorf("said %q", got)
 	}
 	if got := RequestTaxiIntersectionFor("OKCVT", "", "E").Text; got != "OKCVT, request taxi, intersection E" {
