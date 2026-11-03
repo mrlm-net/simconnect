@@ -7,6 +7,12 @@ This project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 ---
 
+## [0.164.0] - 2026-11-03
+
+### Added
+
+- A controller can give a departure handed over a heading: action `heading` on `/api/control/{id}` (`?heading=magnetic`, offered with `climb`), said and read back; `TaxiController.FlyHeading`. A level given during the turn keeps it. Told nothing else it rejoins its route after 30 NM.
+
 ## [0.163.0] - 2026-11-02
 
 ### Added

@@ -178,6 +178,12 @@ func (r *remoteDep) DirectTo(pos airport.LatLon, altFt float64, kts float64, fix
 	return err
 }
 
+func (r *remoteDep) FlyHeading(pos airport.LatLon, altFt float64, kts float64, heading float64, trueDeg float64) (traffic.Vector, error) {
+	var o0 traffic.Vector
+	err := r.c.call(r.t, "FlyHeading", []any{pos, altFt, kts, heading, trueDeg}, &o0)
+	return o0, err
+}
+
 func (r *remoteDep) Expedite(on bool) {
 	r.c.dropped(r.c.call(r.t, "Expedite", []any{on}))
 }

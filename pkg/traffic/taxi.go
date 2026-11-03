@@ -330,6 +330,7 @@ type TaxiController struct {
 	pendingLimit    airport.NodeID // ClearUpTo before the taxi starts
 	climbToFt       float64        // ClimbTo before the hand-over: the climb waypoints no lower
 	climbCapFt      float64        // LimitClimb: the climb waypoints no higher (after departure climb to)
+	vectorTo *airport.LatLon // the end of a heading it is flying (FlyHeading)
 	hasPendingLimit bool
 	flaps           surfaceRamp
 	frameAt         time.Time
