@@ -7,6 +7,12 @@ This project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 ---
 
+## [0.166.1] - 2026-11-03
+
+### Fixed
+
+- Back from a dog-leg onto a go-around's circuit, the turn towards the downwind is a heading with no reason; "for base" is said at the base turn itself (live LKPR: TVS1783 told "turn left heading 170, for base" 7.5 minutes and 22 NM before it turned base).
+
 ## [0.166.0] - 2026-11-03
 
 ### Added

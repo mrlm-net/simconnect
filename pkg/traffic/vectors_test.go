@@ -259,10 +259,21 @@ func TestVectorsNoCircuitPointAsFix(t *testing.T) {
 	}
 	names := []string{"", "", "DOWNWIND", "BASE", "", "FINAL"}
 	vs := vectorsFor(airport.LatLon{Lat: 49.95, Lon: 14}, plain, names, -1, 1)
-	if len(vs) != 2 {
-		t.Fatalf("vectors %+v, want out and back", vs)
+	if len(vs) != 3 {
+		t.Fatalf("vectors %+v, want out, back and the base turn", vs)
 	}
-	if back := vs[1]; back.Fix != "" || back.For != "base" {
-		t.Fatalf("back %+v: want a heading for base, no circuit point as its fix", back)
+	// Back towards the downwind: a heading, not yet "for base" (live, LKPR:
+	// TVS1783 told "for base" 22 NM before its base turn).
+	if back := vs[1]; back.Fix != "" || back.For != "" {
+		t.Errorf("back %+v: want a heading, no reason, no circuit point as its fix", back)
+	}
+	base := vs[2]
+	if base.For != "base" || base.At != (airport.LatLon{Lat: plain[3].Latitude, Lon: plain[3].Longitude}) {
+		t.Errorf("base %+v: want for base at the BASE point", base)
+	}
+	// Straight back onto the base leg: for base then.
+	names = []string{"", "", "FINAL", "", "", ""}
+	if vs := vectorsFor(airport.LatLon{Lat: 49.95, Lon: 14}, plain, names, -1, 1); len(vs) != 2 || vs[1].For != "base" {
+		t.Errorf("onto the base leg: %+v", vs)
 	}
 }
