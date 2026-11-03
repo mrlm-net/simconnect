@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"net/http"
 	"os"
+	"slices"
 	"strings"
 	"sync"
 
@@ -145,10 +146,46 @@ func (it *controlled) station(pos traffic.Position) (string, string) {
 			}
 		}
 	}
+	var name, freq string
 	if s, ok := traffic.PickStation(it.cc.stations(it.ICAO), pos, w); ok {
-		return s.Name, s.Freq
+		name, freq = s.Name, s.Freq
+	} else {
+		name, freq = it.cc.stationOf(it.ICAO, pos)
 	}
-	return it.cc.stationOf(it.ICAO, pos)
+	return name, it.workedOn(pos, name, freq)
+}
+
+// workedOn is the frequency it works the station name at pos on: the one it
+// was first on with it, freq (the frequency in use now) the first time. A
+// unit's frequency in use changes by the three-hour block (#772); the
+// aircraft on the old one stay there, not moved without a word (live, LKPR:
+// at 12:00 UTC OKCMJ was suddenly on 118.31 instead of 119.01, its
+// abbreviated call sign gone).
+func (it *controlled) workedOn(pos traffic.Position, name, freq string) string {
+	if freq == "" {
+		return freq
+	}
+	k := string(pos) + " " + name
+	// The airport's own stations for pos (set by hand, no rotation): as set
+	// now, everyone moving with them.
+	local := false
+	if it.cc.localStations != nil {
+		local = slices.ContainsFunc(it.cc.localStations(it.ICAO), func(s traffic.Station) bool { return s.Position == pos })
+	}
+	it.sayMu.Lock()
+	defer it.sayMu.Unlock()
+	if local {
+		delete(it.freqs, k)
+		return freq
+	}
+	if f, ok := it.freqs[k]; ok {
+		return f
+	}
+	if it.freqs == nil {
+		it.freqs = map[string]string{}
+	}
+	it.freqs[k] = freq
+	return freq
 }
 
 // registerStations serves the stations (#722).

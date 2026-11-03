@@ -7,6 +7,12 @@ This project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 ---
 
+## [0.166.3] - 2026-11-03
+
+### Fixed
+
+- An aircraft stays on the frequency it works a station on when the unit's frequency in use changes with the three-hour block (#772): it was moved without a word, and its abbreviated call sign went back to the full one (live LKPR, 12:00 UTC: OKCMJ told "resume normal speed" on 118.31 after its calls on 119.01).
+
 ## [0.166.2] - 2026-11-03
 
 ### Fixed

@@ -196,6 +196,9 @@ type controlled struct {
 	sayMu     sync.Mutex
 	lastATC   string
 	lastATCAt time.Time
+	// freqs: the frequency it works each station on, by position and
+	// name (station): kept when the unit's frequency in use changes.
+	freqs    map[string]string
 	taxiSaid  string // the last taxi clearance said to it (#1269)
 	visual    bool   // cleared for a visual approach, as the crew asked (#766)
 	// circuit: a VFR arrival's circuit (#568); downwindSaid once it has
