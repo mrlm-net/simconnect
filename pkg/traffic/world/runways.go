@@ -915,6 +915,8 @@ func (t *towers) apply(icao, rwy string, c traffic.RunwayClearances, ours map[st
 			continue
 		}
 		give(cs, "goaround", ours[cs].goAround(why), func(it *controlled) error {
+			// The reason with the call sign: said as "traffic on the runway".
+			t.cc.log.printf("%-6s tower %s: go around — %s", it.Tail, rwy, why)
 			if it.arr == nil {
 				return nil
 			}
