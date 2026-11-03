@@ -2392,6 +2392,51 @@ func (c *TaxiController) DirectTo(pos airport.LatLon, altFt, kts float64, fix ai
 	return c.Reroute(append(route, plan[at+1:]...))
 }
 
+// AssignSpeed has a departure handed to MSFS AI, at pos at altFt, fly kts for the
+// rest of its climb route (#1414); 0 resumes the speeds it was planned at.
+func (c *TaxiController) AssignSpeed(pos airport.LatLon, altFt, kts float64) error {
+	plan := c.ClimbPlan(pos)
+	if len(plan) == 0 {
+		return errors.New("traffic: speed: not handed over to MSFS AI")
+	}
+	c.mu.Lock()
+	if kts > 0 && c.plannedKts == nil {
+		c.plannedKts = slices.Clone(plan) // what 0 goes back to
+	}
+	normal := c.plannedKts
+	c.mu.Unlock()
+	if kts == 0 && normal == nil {
+		return nil // not slowed: nothing to resume
+	}
+	for i := range plan {
+		plan[i].Kts = kts
+		if kts == 0 {
+			plan[i].Kts = nearestKts(normal, plan[i].Position)
+		}
+	}
+	first := plan[0].Kts
+	if err := c.Reroute(append([]RoutePoint{{Position: pos, AltFt: altFt, Kts: first}}, plan...)); err != nil {
+		return err
+	}
+	if kts == 0 {
+		c.mu.Lock()
+		c.plannedKts = nil
+		c.mu.Unlock()
+	}
+	return nil
+}
+
+// nearestKts is the speed of the point of plan nearest p.
+func nearestKts(plan []RoutePoint, p airport.LatLon) float64 {
+	kts, best := 0.0, math.Inf(1)
+	for _, q := range plan {
+		if d := calc.HaversineNM(p.Lat, p.Lon, q.Position.Lat, q.Position.Lon); d < best {
+			kts, best = q.Kts, d
+		}
+	}
+	return kts
+}
+
 // vectorEndNM: this near the end of its vector a departure is back on its route.
 const vectorEndNM = 5.0
 

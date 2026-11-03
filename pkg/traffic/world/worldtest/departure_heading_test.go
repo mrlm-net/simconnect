@@ -65,4 +65,26 @@ func TestStaffedDepartureHeading(t *testing.T) {
 	if off := math.Abs(math.Mod(v.Heading-90+540, 360) - 180); off > 15 {
 		t.Errorf("flying %.0f° two minutes after heading 090", v.Heading)
 	}
+	// A speed, then its planned ones again.
+	if _, err := h.World.Do(http.MethodPost, fmt.Sprintf("/api/control/%d/speed?kts=100", dep.ID), nil); err == nil {
+		t.Error("100 kt taken")
+	}
+	was := v.GroundSpeed
+	if _, err := h.World.Do(http.MethodPost, fmt.Sprintf("/api/control/%d/speed?kts=200", dep.ID), nil); err != nil {
+		t.Fatalf("speed: %v", err)
+	}
+	h.Advance(90 * time.Second)
+	if !h.Said(dep.Tail, "200 knots") {
+		t.Error("the speed not said")
+	}
+	if v, _ := h.Aircraft(dep.Tail); math.Abs(v.GroundSpeed-200) > 10 {
+		t.Errorf("at %.0f kt 90 s after speed 200 (was %.0f)", v.GroundSpeed, was)
+	}
+	if _, err := h.World.Do(http.MethodPost, fmt.Sprintf("/api/control/%d/speed?kts=0", dep.ID), nil); err != nil {
+		t.Fatalf("resume: %v", err)
+	}
+	h.Advance(90 * time.Second)
+	if v, _ := h.Aircraft(dep.Tail); v.GroundSpeed < was-10 {
+		t.Errorf("at %.0f kt after resuming, was %.0f", v.GroundSpeed, was)
+	}
 }

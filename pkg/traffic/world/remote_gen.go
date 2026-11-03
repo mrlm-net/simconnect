@@ -184,6 +184,11 @@ func (r *remoteDep) FlyHeading(pos airport.LatLon, altFt float64, kts float64, h
 	return o0, err
 }
 
+func (r *remoteDep) AssignSpeed(pos airport.LatLon, altFt float64, kts float64) error {
+	err := r.c.call(r.t, "AssignSpeed", []any{pos, altFt, kts})
+	return err
+}
+
 func (r *remoteDep) Expedite(on bool) {
 	r.c.dropped(r.c.call(r.t, "Expedite", []any{on}))
 }
