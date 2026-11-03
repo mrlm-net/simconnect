@@ -62,6 +62,7 @@ func vectorsFor(pos airport.LatLon, plain []types.SIMCONNECT_DATA_WAYPOINT, name
 	// the aerodrome circuit's (12.3.4; the user, live TVS354).
 	out := []Vector{{At: ll(at - 1), HeadingDeg: into(at), For: "spacing"}}
 	turn := Vector{At: ll(at), HeadingDeg: into(at + 1)}
+	var base []Vector // the base turn itself, further on (a circuit)
 	switch {
 	case baseAt >= 0:
 		turn.For = "base"
@@ -71,17 +72,28 @@ func vectorsFor(pos airport.LatLon, plain []types.SIMCONNECT_DATA_WAYPOINT, name
 				continue
 			}
 			// A go-around circuit's own turning points are no fixes: radar
-			// gives the heading for base (live, LKPR: KLM1683 "resume own
-			// navigation direct BASE").
+			// gives a heading (live, LKPR: KLM1683 "resume own navigation
+			// direct BASE"). "For base" only onto the base leg, the one into
+			// the turn onto final; back towards the downwind it is said at
+			// the base turn (live, LKPR: TVS1783 "turn left heading 170, for
+			// base" 7.5 minutes and 22 NM before it turned base).
 			if CircuitPointName(names[j]) {
-				turn.For = "base"
+				if names[j] == "FINAL" {
+					turn.For = "base"
+				}
+				for k := j; turn.For == "" && k+1 < len(plain) && k < len(names); k++ {
+					if names[k] == "BASE" {
+						base = []Vector{{At: ll(k), HeadingDeg: into(k + 1), For: "base"}}
+						break
+					}
+				}
 			} else {
 				turn.Fix = names[j]
 			}
 			break
 		}
 	}
-	return append(out, turn)
+	return append(append(out, turn), base...)
 }
 
 // CircuitPointName reports whether a route point's name is a circuit's own
