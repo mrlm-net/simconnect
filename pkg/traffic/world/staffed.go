@@ -166,9 +166,9 @@ func (cc *controlCenter) checkStaffed(now time.Time) {
 			it.mu.Lock()
 			has := slices.Contains(it.view.Actions, "climb")
 			if want && !has {
-				it.view.Actions = append(it.view.Actions, "climb") // ?level=feet
+				it.view.Actions = append(it.view.Actions, "climb", "heading") // ?level=feet, ?heading=magnetic
 			} else if !want && has {
-				it.view.Actions = slices.DeleteFunc(it.view.Actions, func(a string) bool { return a == "climb" })
+				it.view.Actions = slices.DeleteFunc(it.view.Actions, func(a string) bool { return a == "climb" || a == "heading" })
 			}
 			it.mu.Unlock()
 		}
@@ -363,6 +363,38 @@ func (it *controlled) climbTo(ft, throughFt float64, expedite bool) error {
 	}
 	it.say(said)
 	it.cc.log.printf("%-6s departure: climb to %s (the player)", it.Tail, traffic.LevelSaidAbove(ft, ta))
+	return nil
+}
+
+// headingTo has a departure handed over fly a magnetic heading (#1414).
+func (it *controlled) headingTo(magnetic float64) error {
+	it.mu.Lock()
+	pos, alt, kts, hdg, id, done := it.view.Position, it.heightFt, it.view.GroundSpeed, it.view.Heading, it.objectID, it.dep != nil && it.view.State == traffic.TaxiComplete.String()
+	it.mu.Unlock()
+	if !done {
+		return errors.New("not airborne and handed over yet")
+	}
+	if it.graph != nil {
+		alt += it.graph.Layout.Altitude / 0.3048
+	}
+	for _, a := range it.cc.world.Aircraft() {
+		if a.ObjectID == id && id != 0 {
+			pos, alt, kts, hdg = a.Position, a.AltFt, a.GroundKts, a.Heading
+		}
+	}
+	mv := it.cc.magVar(it.ICAO)
+	var v traffic.Vector
+	if err := it.cc.do(func() (err error) { v, err = it.dep.FlyHeading(pos, alt, kts, hdg, magnetic-mv); return err }); err != nil {
+		return err
+	}
+	said := traffic.Vectored(it.Tail, v, mv)
+	said.Position = traffic.PosDeparture
+	it.say(said)
+	told := "heading " + traffic.HeadingSaid(v.HeadingDeg, mv)
+	it.mu.Lock()
+	it.view.Instruction, it.view.InstructionAt = told, nil
+	it.mu.Unlock()
+	it.cc.log.printf("%-6s departure: %s (the player)", it.Tail, told)
 	return nil
 }
 

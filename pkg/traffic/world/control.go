@@ -1702,7 +1702,7 @@ func (it *controlled) update(ev TaxiOrArrival) {
 			v.Actions = append(v.Actions, "handoff")
 		}
 		if e.State == traffic.TaxiComplete && it.atc == traffic.PosDeparture && it.gates.Load() {
-			v.Actions = append(v.Actions, "climb") // ?level=feet (#1096)
+			v.Actions = append(v.Actions, "climb", "heading") // ?level=feet (#1096), ?heading=magnetic (#1414)
 		}
 		if e.Deicing != v.Deicing {
 			v.Deicing = e.Deicing
@@ -1906,6 +1906,8 @@ func actionParams(actions []string) map[string]string {
 			p = "node"
 		case "climb":
 			p = "level"
+		case "heading":
+			p = "heading"
 		}
 		if p != "" {
 			if out == nil {
@@ -2671,6 +2673,20 @@ func registerControl(mux *http.ServeMux, st *state) {
 				}
 			}
 			if err := it.climbTo(ft, through, through > 0 || r.URL.Query().Get("expedite") == "1"); err != nil {
+				http.Error(w, err.Error(), http.StatusUnprocessableEntity)
+				return
+			}
+			w.WriteHeader(http.StatusNoContent)
+			return
+		}
+		// Heading (?heading=magnetic, #1414): a departure handed over.
+		if r.PathValue("action") == "heading" && it.dep != nil {
+			hdg, err := strconv.ParseFloat(r.URL.Query().Get("heading"), 64)
+			if err != nil || hdg < 1 || hdg > 360 {
+				http.Error(w, "heading: magnetic, 1 to 360", http.StatusBadRequest)
+				return
+			}
+			if err := it.headingTo(hdg); err != nil {
 				http.Error(w, err.Error(), http.StatusUnprocessableEntity)
 				return
 			}

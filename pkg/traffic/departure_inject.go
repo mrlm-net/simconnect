@@ -2342,8 +2342,23 @@ func (c *TaxiController) ClimbPlan(pos airport.LatLon) []RoutePoint {
 	if len(c.climb) == 0 || c.state != TaxiComplete {
 		return nil
 	}
+	next := nextWaypoint(pos, c.climb)
+	// On a heading its next point is the end of the vector, wherever the
+	// nearest waypoint is: a level given mid-turn must not undo the turn.
+	if c.vectorTo != nil {
+		if calc.HaversineNM(pos.Lat, pos.Lon, c.vectorTo.Lat, c.vectorTo.Lon) < vectorEndNM || len(c.climb) < 2 {
+			c.vectorTo = nil
+		} else {
+			best := math.Inf(1)
+			for i, w := range c.climb {
+				if d := calc.HaversineNM(w.Latitude, w.Longitude, c.vectorTo.Lat, c.vectorTo.Lon); d < best {
+					next, best = i, d
+				}
+			}
+		}
+	}
 	var out []RoutePoint
-	for _, w := range c.climb[nextWaypoint(pos, c.climb):] {
+	for _, w := range c.climb[next:] {
 		alt := w.Altitude
 		if w.Flags&uint32(types.SIMCONNECT_WAYPOINT_ALTITUDE_IS_AGL) != 0 && c.req.Graph != nil {
 			// TakeoffClimb: above the ground under the waypoint, taken as
@@ -2370,8 +2385,40 @@ func (c *TaxiController) DirectTo(pos airport.LatLon, altFt, kts float64, fix ai
 	if at < 0 || best > 2 {
 		return errors.New("traffic: direct: the fix is not on the climb route")
 	}
+	c.mu.Lock()
+	c.vectorTo = nil // off the heading: straight to the fix
+	c.mu.Unlock()
 	route := []RoutePoint{{Position: pos, AltFt: altFt, Kts: kts}, {Position: fix, AltFt: plan[at].AltFt, Kts: plan[at].Kts}}
 	return c.Reroute(append(route, plan[at+1:]...))
+}
+
+// vectorEndNM: this near the end of its vector a departure is back on its route.
+const vectorEndNM = 5.0
+
+// FlyHeading has a departure handed to MSFS AI, at pos at altFt and kts, fly a
+// true heading off its climb route (#1414). Told nothing else it rejoins the
+// route after headingLegNM, past the point nearest where it then is.
+func (c *TaxiController) FlyHeading(pos airport.LatLon, altFt, kts, heading, trueDeg float64) (Vector, error) {
+	plan := c.ClimbPlan(pos)
+	if len(plan) == 0 {
+		return Vector{}, errors.New("traffic: heading: not handed over to MSFS AI")
+	}
+	lat, lon := calc.DisplaceByHeading(pos.Lat, pos.Lon, trueDeg, headingLegNM*1852)
+	p := airport.LatLon{Lat: lat, Lon: lon}
+	at, best := 0, math.Inf(1)
+	for i, q := range plan {
+		if d := calc.HaversineNM(p.Lat, p.Lon, q.Position.Lat, q.Position.Lon); d < best {
+			at, best = i, d
+		}
+	}
+	route := []RoutePoint{{Position: pos, AltFt: altFt, Kts: kts}, {Position: p, AltFt: plan[at].AltFt, Kts: plan[at].Kts}}
+	if err := c.Reroute(append(route, plan[at+1:]...)); err != nil {
+		return Vector{}, err
+	}
+	c.mu.Lock()
+	c.vectorTo = &p
+	c.mu.Unlock()
+	return Vector{HeadingDeg: trueDeg, Turn: TurnTo(heading, trueDeg)}, nil
 }
 
 // ClimbTo clears a departure handed to MSFS AI to climb to ft (feet MSL),
