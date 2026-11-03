@@ -7,6 +7,12 @@ This project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 ---
 
+## [0.166.0] - 2026-11-03
+
+### Added
+
+- `GroundPicture.GiveWayWhy`: why an aircraft gives way on the ground, with the distances the rule saw (its way or push corridor, how far on, how close, the reach); the World logs it with ground's "give way" call (live LKPR: AFR1571 told to give way to KLM641 pushing from C22 though their ways did not meet, not reproduced offline).
+
 ## [0.165.1] - 2026-11-03
 
 ### Fixed

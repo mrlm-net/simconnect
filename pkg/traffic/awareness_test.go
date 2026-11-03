@@ -1,6 +1,7 @@
 package traffic
 
 import (
+	"strings"
 	"math"
 	"testing"
 	"time"
@@ -590,6 +591,14 @@ func TestWaitBesidePushUnderWay(t *testing.T) {
 	}
 	if gw := p.giveWay(2, path, 0, GiveWayLookMeters, 12, now); math.IsInf(gw, 1) {
 		t.Error("drives on beside a push under way, not overlapping it")
+	}
+	// Why, with the distances the rule saw, for the log.
+	if why := p.GiveWayWhy(2); !strings.Contains(why, "push corridor") || !strings.Contains(why, "reach 39.0 m") {
+		t.Errorf("why %q", why)
+	}
+	p.Forget(1)
+	if gw := p.giveWay(2, path, 0, GiveWayLookMeters, 12, now); !math.IsInf(gw, 1) || p.GiveWayWhy(2) != "" {
+		t.Errorf("push gone: still gives way, why %q", p.GiveWayWhy(2))
 	}
 }
 
