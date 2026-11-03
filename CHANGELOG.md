@@ -7,6 +7,13 @@ This project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 ---
 
+## [0.166.6] - 2026-11-03
+
+### Fixed
+
+- A landing number with nothing to do is no longer a call of its own: it goes with the next instruction, "number 4, fly heading 190, for spacing" (#1428; live LKPR: "Skytravel 149, number 2").
+- A sequence call joined with a vector says "for spacing" once, at the end (#1428; live LKPR: TVS149 heard it twice in one call).
+
 ## [0.166.5] - 2026-11-03
 
 ### Fixed

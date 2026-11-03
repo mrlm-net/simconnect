@@ -554,6 +554,9 @@ type controlCenter struct {
 	// rejoin sequences an arrival afresh after a go-around (#394);
 	// sequencesAt gives an airport's landing sequences by runway (#396).
 	rejoin func(icao, tail string)
+	// numberFor is the place in the landing sequence to tell an arrival
+	// with an instruction, 0 when told already (#1428).
+	numberFor func(icao, tail string) int
 	// crewDivert sends an arrival's crew to an alternate, whose code it returns
 	// ("" none known); crewDiverting: on its way there (#1411).
 	crewDivert    func(icao, tail string) string
@@ -4533,7 +4536,15 @@ func (it *controlled) handoff(ev TaxiOrArrival) {
 		// and "turn left heading 060 to intercept" in the same second).
 		if v, ok := it.arr.VectorDue(); ok {
 			it.vectorsSaid.Add(1)
-			it.say(it.vectored(v, it.cc.magVar(it.ICAO)))
+			tx := it.vectored(v, it.cc.magVar(it.ICAO))
+			// Its place in the sequence with it when not told yet: "number
+			// 4, fly heading 190, for spacing" (#1428).
+			if it.cc.numberFor != nil {
+				if n := it.cc.numberFor(it.ICAO, it.Tail); n > 0 {
+					tx = traffic.Joined(traffic.Sequenced(it.Tail, n, 0, traffic.Absorption{}), tx)
+				}
+			}
+			it.say(tx)
 		}
 	}
 	if ev.arr != nil && ev.arr.State == traffic.ArrivalApproaching && it.atc == traffic.PosApproach && pos == traffic.PosApproach &&
