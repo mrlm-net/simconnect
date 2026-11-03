@@ -101,9 +101,8 @@ func SetModelSources(sources map[string]ModelSource) {
 
 // ModelProvider is the provider of a simulator title.
 func ModelProvider(title string) string {
-	t := strings.ToLower(title)
 	providers.mu.Lock()
-	src, known := providers.sources[t]
+	src, known := sourceOf(title)
 	loaded := providers.sources != nil
 	providers.mu.Unlock()
 	items := modelProvidersNow.Load()
@@ -178,7 +177,25 @@ func TitleOn(title string) bool {
 func titleFlyable(title string) bool {
 	providers.mu.Lock()
 	defer providers.mu.Unlock()
-	return providers.sources[strings.ToLower(title)].Flyable
+	src, _ := sourceOf(title)
+	return src.Flyable
+}
+
+// sourceOf is title's source, else its preset's: an MSFS 2024 livery spawns
+// as "<preset title> :: <livery name>", the preset's package the model's
+// (live, LKPR: "FenixA320 CFM SL :: MyCrew Heritage OK-MYV", a flyable
+// Fenix taken as a packed stock model, flown as traffic: jumping, its GPU
+// on, above the ground). providers.mu held.
+func sourceOf(title string) (ModelSource, bool) {
+	t := strings.ToLower(title)
+	if s, ok := providers.sources[t]; ok {
+		return s, true
+	}
+	if p, _, ok := strings.Cut(t, " :: "); ok {
+		s, ok := providers.sources[strings.TrimSpace(p)]
+		return s, ok
+	}
+	return ModelSource{}, false
 }
 
 // ProviderFlyable reports whether a provider's titles are flyable add-ons

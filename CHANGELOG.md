@@ -7,6 +7,14 @@ This project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 ---
 
+## [0.166.8] - 2026-11-03
+
+### Fixed
+
+- MSFS 2024 modular aircraft (the Fenix A32X) are known by their presets: a livery spawned as "<preset> :: <livery>" is its preset's flyable model, no longer taken for a packed stock one and flown as traffic (jumping, its GPU on, above the ground); the AI model (FSLTL) is taken instead (#1439; live LKPR: MyCrew OK-MYV).
+- Their doors are read from the exterior attachment (Fenix A320 L1 29.0 ft, A319 23.7 ft, A321 43.0 ft ahead of the datum), so a jetway meets the door instead of the A320 helper's, 2.6 m ahead at the nose (#1439).
+
+
 ## [0.166.7] - 2026-11-03
 
 ### Fixed
