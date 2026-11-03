@@ -326,6 +326,7 @@ func TestRouteTurnCosts(t *testing.T) {
 // ahead of it towards H. Arrivals enter nose-in from G; departures leave
 // forward towards H without a pushback.
 func TestDriveThroughStand(t *testing.T) {
+	checked := 0
 	g := lkprGraph(t)
 	n52, err := g.Layout.ParkingIndex("N52")
 	if err != nil {
@@ -338,6 +339,7 @@ func TestDriveThroughStand(t *testing.T) {
 		if err != nil {
 			continue
 		}
+		checked++
 		lead := r.Nodes[len(r.Nodes)-2]
 		if g.LeadInAhead(stand, lead) {
 			t.Errorf("24 exit %s → N52 enters through the lead-in ahead (%d), want nose-in from G", x.Taxiway, lead)
@@ -351,6 +353,9 @@ func TestDriveThroughStand(t *testing.T) {
 		if !g.LeadInAhead(stand, r.Nodes[1]) {
 			t.Errorf("N52 → %s leaves through the lead-in behind (pushback), want forward", end)
 		}
+	}
+	if checked == 0 {
+		t.Error("no exit of 24 routes to N52: nothing checked")
 	}
 }
 

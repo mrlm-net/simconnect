@@ -16,6 +16,7 @@ import (
 // and its heading is one the arrival can fly to the final (Doc 4444
 // 8.9.3.6: 45° or less).
 func TestVectorsInterceptLeg(t *testing.T) {
+	checked := 0
 	g := lkprGraph(t)
 	for _, star := range []string{"VLM", "GOLOP"} {
 		route, err := lkprProcedures(t).Arrival("24", star)
@@ -41,6 +42,7 @@ func TestVectorsInterceptLeg(t *testing.T) {
 			t.Logf("%s: %+v %v: no downwind extended", star, a, err)
 			continue
 		}
+		checked++
 		if len(ctl.vectors) != 2 || ctl.vectors[1].For != "base" {
 			t.Fatalf("%s: vectors %+v", star, ctl.vectors)
 		}
@@ -63,6 +65,9 @@ func TestVectorsInterceptLeg(t *testing.T) {
 		if !ctl.InterceptOnHeading(said) {
 			t.Errorf("%s: heading %.0f does not reach the final from the intercept turn", star, said)
 		}
+	}
+	if checked == 0 {
+		t.Error("no STAR got a downwind: nothing checked")
 	}
 }
 

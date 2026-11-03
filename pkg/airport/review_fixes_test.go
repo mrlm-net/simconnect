@@ -52,6 +52,7 @@ func TestRunwayExitsDeterministic(t *testing.T) {
 // TestRunwayEntryTies: among entries with the same runway ahead, the route
 // goes to the nearest, every time (#43: LKPR "30 at D").
 func TestRunwayEntryTies(t *testing.T) {
+	checked := 0
 	g := lkprGraph(t)
 	entries, err := g.RunwayEntries("30")
 	if err != nil {
@@ -78,6 +79,7 @@ func TestRunwayEntryTies(t *testing.T) {
 		if first == nil {
 			continue
 		}
+		checked++
 		// No entry D with as much runway ahead is nearer than the one taken.
 		end := first.Nodes[len(first.Nodes)-1]
 		var remaining float64
@@ -95,6 +97,9 @@ func TestRunwayEntryTies(t *testing.T) {
 				t.Errorf("%s: 30 at D to node %d, node %d is nearer with the same runway", p.Label(), end, tgt)
 			}
 		}
+	}
+	if checked == 0 {
+		t.Error("no stand routes to 30 at D: nothing checked")
 	}
 }
 

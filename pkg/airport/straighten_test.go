@@ -11,6 +11,7 @@ import (
 // "L, EX9, M, EX6, L"), and no route from any stand leaves a taxiway to
 // come back to it later.
 func TestStraightenLOWW(t *testing.T) {
+	checked := 0
 	b, err := os.ReadFile("testdata/LOWW.json")
 	if err != nil {
 		t.Fatal(err)
@@ -44,6 +45,7 @@ func TestStraightenLOWW(t *testing.T) {
 			if err != nil {
 				continue
 			}
+			checked++
 			via := r.SpokenTaxiways(-1)
 			for k, n := range via {
 				if j := slices.Index(via[k+1:], n); j > 0 {
@@ -52,5 +54,8 @@ func TestStraightenLOWW(t *testing.T) {
 				}
 			}
 		}
+	}
+	if checked == 0 {
+		t.Error("no stand routes to a runway: nothing checked")
 	}
 }

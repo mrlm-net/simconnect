@@ -74,6 +74,9 @@ func TestTugKeepsOutFromUnderTheAircraft(t *testing.T) {
 				}
 			}
 			t.Logf("%s %s: %d stands, %d under it on the way in, %d on the way home", icao, typ, tried, in, out)
+			if tried == 0 {
+				t.Errorf("%s %s: no tug attached: nothing checked", icao, typ)
+			}
 		}
 	}
 }
