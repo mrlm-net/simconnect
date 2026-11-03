@@ -824,6 +824,7 @@ func TestOneLinedUpFromTwoHoldingPoints(t *testing.T) {
 // never "line up and wait" and at once "hold position" (offline LKPR:
 // WZZ1040 behind CSA117, OKRIX on a 3.5 NM final, the interval nearly run).
 func TestLineUpBehindDepartingKeepsItsRoom(t *testing.T) {
+	checked := 0
 	roll := dep("CSA1", "A320", RunwayRolling)
 	other := dep("EZY2", "A320", RunwayHoldingShort)
 	other.Route = "DOBE4A"
@@ -837,12 +838,16 @@ func TestLineUpBehindDepartingKeepsItsRoom(t *testing.T) {
 			if c.LineUpBehindDeparting["EZY2"] == "" {
 				continue
 			}
+			checked++
 			passed := 20 * time.Second
 			then := time.Duration(nm/a.GroundKts*float64(time.Hour)) - passed
 			if !r.LineUpRoom(then, other) {
 				t.Fatalf("%s into the roll, arrival on a %.1f NM final: lined up behind the departing, %s on no room", into, nm, passed)
 			}
 		}
+	}
+	if checked == 0 {
+		t.Error("never lined up behind the departing: nothing checked")
 	}
 }
 

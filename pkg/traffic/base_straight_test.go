@@ -14,6 +14,7 @@ import (
 // in early onto the final, the ones behind them close). The clearance
 // with the heading comes within interceptOnBaseNM of the turn.
 func TestBaseFlownStraight(t *testing.T) {
+	checked := 0
 	g := lkprGraph(t)
 	for _, star := range []string{"VLM", "GOLOP"} {
 		route, err := lkprProcedures(t).Arrival("24", star)
@@ -38,6 +39,7 @@ func TestBaseFlownStraight(t *testing.T) {
 			t.Logf("%s: no downwind extended", star)
 			continue
 		}
+		checked++
 		leave, base := ctl.vectors[0], ctl.vectors[1]
 		flyTo(t, ctl, leave.At)
 		flyTo(t, ctl, base.At)
@@ -60,5 +62,8 @@ func TestBaseFlownStraight(t *testing.T) {
 		if due < 0 || length-due > interceptOnBaseNM+0.25 {
 			t.Errorf("%s: the intercept due %.2f NM along a %.1f NM base, want within %.1f NM of its end", star, due, length, interceptOnBaseNM)
 		}
+	}
+	if checked == 0 {
+		t.Error("no STAR got a downwind: nothing checked")
 	}
 }

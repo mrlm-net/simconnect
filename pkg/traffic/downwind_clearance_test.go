@@ -13,6 +13,7 @@ import (
 // (live, OKZSU "fly heading 060, for spacing", then 31 s later "cleared
 // visual approach runway 24", its turn in never said).
 func TestNoClearanceOnDownwind(t *testing.T) {
+	checked := 0
 	g := lkprGraph(t)
 	for _, star := range []string{"VLM", "GOLOP"} {
 		for _, d := range []time.Duration{2 * time.Minute, 4 * time.Minute, 6 * time.Minute, 9 * time.Minute} {
@@ -38,6 +39,7 @@ func TestNoClearanceOnDownwind(t *testing.T) {
 			if err != nil || !a.Downwind || len(ctl.vectors) != 2 {
 				continue
 			}
+			checked++
 			leave, base := ctl.vectors[0], ctl.vectors[1]
 			flyTo(t, ctl, leave.At)
 			ctl.mu.Lock()
@@ -55,5 +57,8 @@ func TestNoClearanceOnDownwind(t *testing.T) {
 				}
 			}
 		}
+	}
+	if checked == 0 {
+		t.Error("no delay gave a downwind: nothing checked")
 	}
 }

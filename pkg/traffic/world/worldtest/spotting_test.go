@@ -94,19 +94,19 @@ func TestSpottingHoldsThroughTheEvent(t *testing.T) {
 	if err := h.World.StartSpotting(world.SpottingRequest{ICAO: "LKPR", Events: []string{"takeoff"}}); err != nil {
 		t.Fatal(err)
 	}
-	took := 0
+	took := map[string]bool{} // aircraft, not looks at the same one
 	h.Until(60*time.Minute, func() bool {
 		v := spottingNow(t, h)
 		if v.Event != "" && v.Event != "takeoff" {
 			t.Fatalf("filter on take-offs, watching %s %s", v.Subject, v.Event)
 		}
 		if v.Event == "takeoff" {
-			took++
+			took[v.Subject] = true
 		}
-		return took > 3
+		return len(took) > 1
 	})
-	if took == 0 {
-		t.Error("no take-off seen with the filter")
+	if len(took) < 2 {
+		t.Errorf("take-offs of %v with the filter, want two aircraft", took)
 	}
 	if err := h.World.StartSpotting(world.SpottingRequest{ICAO: "XXXX"}); err == nil {
 		t.Error("an unknown airport was taken")

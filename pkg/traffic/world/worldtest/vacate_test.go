@@ -129,25 +129,41 @@ func TestVacateOnTheRoll(t *testing.T) {
 		_, err := h.World.Do("POST", fmt.Sprintf("/api/control/%d/vacate?%s", arr.ID, q), nil)
 		return err
 	}
-	var near, behind *airport.RunwayExit
-	for i := range exits {
-		x := &exits[i]
-		if x.Along < along-100 {
-			behind = x
-		} else if near == nil && x.Along > along+60 {
-			near = x
-		}
-	}
 	t.Logf("%s at %.0f kt, %.0f m along %s; %d exits", arr.Tail, arr.GroundSpeed, along, arr.Runway, len(exits))
-	if behind != nil {
-		if err := post(fmt.Sprintf("node=%d", behind.Node)); err == nil || !strings.Contains(err.Error(), "past") {
-			t.Errorf("exit behind it: %v", err)
+	// Rolling on: an exit passed and one too near at its speed are refused. Its
+	// planned exit is taken (nothing to refuse), a tight one refused for that.
+	past, fast := false, false
+	refused := func(x airport.RunwayExit, want string, kts float64) bool {
+		err := post(fmt.Sprintf("node=%d", x.Node))
+		if err != nil && strings.Contains(err.Error(), want) {
+			return true
 		}
+		if err != nil && !strings.Contains(err.Error(), "tight") {
+			t.Errorf("exit %s at %.0f kt: %v, want %q", x.Taxiway, kts, err, want)
+		}
+		return false
 	}
-	if near != nil && near.Along-along < 200 {
-		if err := post(fmt.Sprintf("node=%d", near.Node)); err == nil || !strings.Contains(err.Error(), "too fast") {
-			t.Errorf("exit %.0f m ahead at %.0f kt: %v", near.Along-along, arr.GroundSpeed, err)
+	h.Until(time.Minute, func() bool {
+		v, ok := h.Aircraft(arr.Tail)
+		if !ok || v.State != "rollout" {
+			return true
 		}
+		at := calc.HaversineMeters(end.Threshold.Lat, end.Threshold.Lon, v.Position.Lat, v.Position.Lon)
+		for _, x := range exits[:len(exits)-1] {
+			if !past && x.Along < at-100 {
+				past = refused(x, "past", v.GroundSpeed)
+			}
+			if !fast && x.Along > at+60 && x.Along < at+200 && v.GroundSpeed > 80 {
+				fast = refused(x, "too fast", v.GroundSpeed)
+			}
+		}
+		return past && fast
+	})
+	if !past {
+		t.Error("no exit behind it refused")
+	}
+	if !fast {
+		t.Error("no exit too near at its speed refused")
 	}
 	far := exits[len(exits)-1]
 	was, _ := h.Aircraft(arr.Tail)

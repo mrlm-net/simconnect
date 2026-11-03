@@ -17,6 +17,7 @@ import (
 // was never flown (the unfreeze ignored), and a SID turning back (24
 // ARTU 6M: climb to 1700 ft, direct PR407) lost all its fixes.
 func TestSimlessDeparturesFlyTheirSIDs(t *testing.T) {
+	checked := 0
 	g := lkprGraph(t)
 	procs := lkprProcedures(t)
 	c22, _ := g.Layout.ParkingIndex("C22")
@@ -41,6 +42,7 @@ func TestSimlessDeparturesFlyTheirSIDs(t *testing.T) {
 				t.Logf("%s %s: resolve: %v", rwy, d.Name, err)
 				continue
 			}
+			checked++
 			name := rwy + " " + d.Name
 			ec := &eventClient{}
 			ai := NewSimlessAI(ec)
@@ -134,6 +136,9 @@ func TestSimlessDeparturesFlyTheirSIDs(t *testing.T) {
 				t.Errorf("%s: turned %.0f° in total: orbiting", name, turned)
 			}
 		}
+	}
+	if checked == 0 {
+		t.Error("no SID resolved: nothing flown")
 	}
 }
 

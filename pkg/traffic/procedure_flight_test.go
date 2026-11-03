@@ -28,6 +28,7 @@ func lkprProcedures(t *testing.T) airport.Procedures {
 // join point 8 NM out on the 06 centreline: descending all the way, the
 // approach's 4000 ft minimums kept, ending aligned on the final.
 func TestPlanArrivalProcedure(t *testing.T) {
+	checked := 0
 	g := lkprGraph(t)
 	route, err := lkprProcedures(t).Arrival("06", "GOLOP")
 	if err != nil {
@@ -59,6 +60,7 @@ func TestPlanArrivalProcedure(t *testing.T) {
 		if n.Ident != "PR741" && n.Ident != "PR742" {
 			continue
 		}
+		checked++
 		for _, w := range ap.Waypoints {
 			if calc.HaversineMeters(w.Latitude, w.Longitude, n.Position.Lat, n.Position.Lon) < 1 && w.Altitude < 3999 {
 				t.Errorf("%s at %.0f ft, below its 4000 ft minimum", n.Ident, w.Altitude)
@@ -69,6 +71,9 @@ func TestPlanArrivalProcedure(t *testing.T) {
 		t.Errorf("spawn %.0f ft, %d waypoints", ap.Spawn.Altitude, len(ap.Waypoints))
 	}
 	t.Logf("spawn %.0f ft, %d waypoints, join %.0f ft", ap.Spawn.Altitude, len(ap.Waypoints), last.Altitude)
+	if checked == 0 {
+		t.Error("PR741 and PR742 not on the route: minimums not checked")
+	}
 }
 
 // TestDepartureWaypoints: the SID after the injected climb, climbing and
