@@ -87,11 +87,12 @@ func (cc *controlCenter) entryQueue(icao, rwy string, except *controlled, is fun
 // the full length first; within a place the entry nearest p first. Each
 // leaves the class's runway (IntersectionRule) and, where the airport lists
 // its entries, is one of them.
-func entryChoices(g *airport.Graph, icao, rwy, model string, p airport.LatLon) [][]airport.RunwayEntry {
-	minLeft, full := traffic.IntersectionRule(model)
+func entryChoices(g *airport.Graph, icao, rwy, model string, p airport.LatLon, s traffic.RunwaySurface) [][]airport.RunwayEntry {
+	_, full := traffic.IntersectionRule(model)
 	if full {
 		return nil
 	}
+	minLeft := traffic.IntersectionMinRemaining(model, g.Layout.Altitude/0.3048, s)
 	entries, err := g.RunwayEntries(rwy)
 	if err != nil {
 		return nil
@@ -124,6 +125,18 @@ func entryChoices(g *airport.Graph, icao, rwy, model string, p airport.LatLon) [
 	return groups
 }
 
+// surface is the runway surface by the weather at the user aircraft
+// (SimConnect reports no other); dry when unknown.
+func (cc *controlCenter) surface() traffic.RunwaySurface {
+	if cc.weather == nil {
+		return traffic.RunwayDry
+	}
+	if wx := cc.weather(); wx != nil {
+		return traffic.ConditionsFrom(*wx, 0).Surface
+	}
+	return traffic.RunwayDry
+}
+
 func distTo(g *airport.Graph, e airport.RunwayEntry, p airport.LatLon) float64 {
 	q := g.Nodes[e.Node].Position
 	return calc.HaversineMeters(p.Lat, p.Lon, q.Lat, q.Lon)
@@ -132,8 +145,8 @@ func distTo(g *airport.Graph, e airport.RunwayEntry, p airport.LatLon) float64 {
 // firstEntry is the intersection of runway end rwy a departure of model at
 // p would be given: the first place after the full length (entryChoices),
 // the entry there nearest p; "" none.
-func firstEntry(g *airport.Graph, icao, rwy, model string, p airport.LatLon) string {
-	if groups := entryChoices(g, icao, rwy, model, p); len(groups) > 0 {
+func firstEntry(g *airport.Graph, icao, rwy, model string, p airport.LatLon, s traffic.RunwaySurface) string {
+	if groups := entryChoices(g, icao, rwy, model, p, s); len(groups) > 0 {
 		return groups[0][0].Taxiway
 	}
 	return ""
@@ -173,7 +186,7 @@ func (it *controlled) offerEntry() {
 	if !offersIntersection(v.Model, queue) {
 		return
 	}
-	for _, grp := range entryChoices(it.graph, it.ICAO, v.Runway, v.Model, v.Position) {
+	for _, grp := range entryChoices(it.graph, it.ICAO, v.Runway, v.Model, v.Position, it.cc.surface()) {
 		busy := it.cc.entryQueue(it.ICAO, v.Runway, it, func(entry string) bool {
 			return slices.ContainsFunc(grp, func(e airport.RunwayEntry) bool { return strings.EqualFold(e.Taxiway, entry) })
 		})
