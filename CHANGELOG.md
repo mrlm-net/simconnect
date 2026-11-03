@@ -7,6 +7,12 @@ This project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 ---
 
+## [0.166.5] - 2026-11-03
+
+### Fixed
+
+- A crew asking to taxi for an intersection says "request taxi, runway 06 at E" (spoken "at echo"), as tower words the line-up and take-off, not "runway 06, intersection E".
+
 ## [0.166.4] - 2026-11-03
 
 ### Changed
