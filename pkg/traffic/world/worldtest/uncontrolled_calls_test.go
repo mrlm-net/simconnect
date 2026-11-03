@@ -340,7 +340,11 @@ func TestWakeCautionStaffedTower(t *testing.T) {
 		if heardCall(h, "wake turbulence") {
 			t.Errorf("%s: the World gave the caution for the player", mode)
 		}
-		if !heardCall(h, "for landing") {
+		called := false
+		for _, tx := range h.Heard() {
+			called = called || tx.Callsign == wakeVFR && strings.Contains(tx.Text, "for landing")
+		}
+		if !called {
 			t.Errorf("%s: the light aircraft never called", mode)
 		}
 	}

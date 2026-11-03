@@ -104,11 +104,18 @@ func TestCheapReadAccessors(t *testing.T) {
 	if h.World.PlayerPlace() != h.World.Snapshot().Player {
 		t.Error("player place differs")
 	}
+	// With a vehicle out, or the comparison below compares nothing.
 	want := map[string]int{}
-	for _, v := range h.World.Snapshot().Aircraft {
-		if len(v.Vehicles) > 0 {
-			want[v.Tail] = len(v.Vehicles)
+	if !h.Until(30*time.Minute, func() bool {
+		clear(want)
+		for _, v := range h.World.Snapshot().Aircraft {
+			if len(v.Vehicles) > 0 {
+				want[v.Tail] = len(v.Vehicles)
+			}
 		}
+		return len(want) > 0
+	}) {
+		t.Fatal("no aircraft with a vehicle")
 	}
 	got := h.World.Vehicles()
 	for tail, n := range want {

@@ -258,6 +258,9 @@ func TestTaxiControllerInjectedDepartureSweep(t *testing.T) {
 		}
 	}
 	t.Logf("%d of %d departures complete", ok, total)
+	if ok == 0 {
+		t.Error("no departure complete: nothing checked")
+	}
 }
 
 // TestTaxiControllerInjectedFaceOutStand: from a self-manoeuvring stand the

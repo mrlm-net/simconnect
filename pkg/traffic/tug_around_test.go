@@ -78,4 +78,7 @@ func TestTugsKeepOffAircraftLROP(t *testing.T) {
 		}
 	}
 	t.Logf("%d stands, %d ways in crossed the aircraft before going round", checked, crossed)
+	if checked == 0 {
+		t.Error("no stand checked")
+	}
 }
