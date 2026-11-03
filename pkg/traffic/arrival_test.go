@@ -809,6 +809,9 @@ func TestArrivalControllerInjectedSweep(t *testing.T) {
 		}
 	}
 	t.Logf("%d of %d arrivals parked", ok, total)
+	if ok == 0 {
+		t.Error("no arrival parked: nothing checked")
+	}
 }
 
 // An arrival goes to another stand before it lands (#479): the taxi-in is
