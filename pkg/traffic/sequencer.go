@@ -350,6 +350,14 @@ func (s *ApproachSequencer) Rejoin(callsign string) {
 	delete(s.manual, callsign)
 	delete(s.behind, callsign)
 	delete(s.goneAt, callsign)
+	// Gone around: the ones told to follow it no longer do (live, LKPR:
+	// OKRDE, told to follow OKXNU, was kept behind it round its go-around,
+	// 21 minutes of delay, and the order swung with it).
+	for cs, lead := range s.behind {
+		if lead == callsign {
+			delete(s.behind, cs)
+		}
+	}
 }
 
 // Behind keeps callsign landing after lead, a spacing behind it, close in

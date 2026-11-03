@@ -408,10 +408,26 @@ func (q *sequences) absorb(now time.Time, icao string, seq []traffic.SequenceEnt
 			// In radio order on approach's frequency: after its arrival
 			// clearance (KLM868 heard the speed and the vector before it).
 			it.call(traffic.PosApproach, prioSpacing, func() {
-				if vectored && it.vectorsSaid.Load() == said {
-					tx = traffic.Joined(tx, it.vectored(v, magVar))
+				// Its place changed while the call waited for the frequency:
+				// the number is no longer said, the speed still is (live,
+				// LKPR: DFVKB told "number 1" 42 s after it was number 3 again).
+				if n > 0 && !q.stillNumber(it.ICAO, e.Callsign, n) {
+					q.unsayNumber(e.Callsign, n)
+					tx = traffic.Transmission{}
+					if a.SpeedKts > 0 {
+						tx = traffic.Sequenced(e.Callsign, 0, delay, a)
+					}
 				}
-				it.say(tx)
+				if vectored && it.vectorsSaid.Load() == said {
+					if tx.Text == "" {
+						tx = it.vectored(v, magVar)
+					} else {
+						tx = traffic.Joined(tx, it.vectored(v, magVar))
+					}
+				}
+				if tx.Text != "" {
+					it.say(tx)
+				}
 			})
 		}
 		// Too much for speed and vectors now: asked again as it flies on, no
@@ -1249,6 +1265,32 @@ type seqSaid struct {
 	at     time.Time
 	// spacing: told "for spacing" on this approach (spacingTold).
 	spacing bool
+	// pending: a new number not said yet, held since pendingAt
+	// (numberSettle).
+	pending   int
+	pendingAt time.Time
+}
+
+// numberSettle: a new place in the sequence is said once it has held this
+// long. After a go-around the order swung 2, 3, 1, 3 within a minute and
+// every swing was said (live, LKPR: DFVKB around OKXNU's go-around).
+const numberSettle = 45 * time.Second
+
+// stillNumber reports whether cs is number in icao's sequence now.
+func (q *sequences) stillNumber(icao, cs string, number int) bool {
+	_, e, ok := q.entryOf(icao, cs)
+	return ok && e.Number == number
+}
+
+// unsayNumber forgets that number was said to cs (it was not, in the end):
+// its place now is said next.
+func (q *sequences) unsayNumber(cs string, number int) {
+	q.mu.Lock()
+	defer q.mu.Unlock()
+	if last, ok := q.seqSaid[cs]; ok && last.number == number {
+		last.number, last.pending = 0, 0
+		q.seqSaid[cs] = last
+	}
 }
 
 // sequenceCall is what cs is told now of its number and speed kts (and
@@ -1259,6 +1301,25 @@ func (q *sequences) sequenceCall(now time.Time, cs string, number int, kts float
 	q.mu.Lock()
 	defer q.mu.Unlock()
 	last, ok := q.seqSaid[cs]
+	if ok && last.number == number && last.pending != 0 {
+		last.pending = 0 // back where it was told: nothing new
+		q.seqSaid[cs] = last
+	}
+	// A new place is said once it has held numberSettle; a new speed meanwhile
+	// goes out without it.
+	if ok && last.number != 0 && last.number != number {
+		if last.pending != number {
+			last.pending, last.pendingAt = number, now
+		}
+		if now.Sub(last.pendingAt) < numberSettle {
+			say := kts != 0 && kts != last.kts
+			if say {
+				last.kts = kts
+			}
+			q.seqSaid[cs] = last
+			return say, 0
+		}
+	}
 	told := ok && last.number == number
 	if told && (kts == 0 || kts == last.kts) {
 		return false, 0

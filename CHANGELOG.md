@@ -7,6 +7,14 @@ This project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 ---
 
+## [0.166.2] - 2026-11-03
+
+### Fixed
+
+- Sequence calls: a new place in the landing sequence is said once it has held 45 s, so swings around a go-around are not read out; a new speed meanwhile goes out without a number. A "number N" call that waited for the frequency is checked again when spoken: if the place changed, only the speed or vector is said and the real place follows (live LKPR: DFVKB told numbers 2, 3, 1, 3 within a minute, "number 1" 42 s late).
+- A go-around frees the arrivals told to follow it: they were held behind it round its whole circuit (live LKPR: OKRDE, told to follow OKXNU, given 21 minutes of delay behind its go-around, the order swinging with it).
+- The tower logs who a go-around was for: "go around — OKRAX on the runway" (said on the radio as "traffic on the runway").
+
 ## [0.166.1] - 2026-11-03
 
 ### Fixed
