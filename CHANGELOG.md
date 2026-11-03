@@ -7,6 +7,13 @@ This project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 ---
 
+## [0.166.7] - 2026-11-03
+
+### Fixed
+
+- An intersection take-off leaves the type's take-off distance, longer by the airport's elevation (7% per 1000 ft) and a weather margin (a tenth dry, a fifth wet or contaminated), not only its class's minimum: an E190 at Prague no longer from D with 2163 m left (#1437; live LKPR: KLM151). New `traffic.IntersectionMinRemaining`.
+
+
 ## [0.166.6] - 2026-11-03
 
 ### Fixed

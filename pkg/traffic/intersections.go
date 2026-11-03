@@ -2,6 +2,7 @@ package traffic
 
 import (
 	"hash/fnv"
+	"math"
 	"slices"
 	"strings"
 
@@ -110,6 +111,25 @@ func IntersectionClass(model string) string {
 		return ClassRegional
 	}
 	return ClassJet
+}
+
+// IntersectionMinRemaining is the runway an intersection must leave ahead
+// of model at an airport elevationFt high on a runway surface s: its class's
+// minimum, and no less than the type's published take-off distance at
+// maximum weight, longer by the elevation (7% per 1000 ft) and a margin by
+// the weather: a tenth dry, a fifth wet or contaminated (the user, live
+// LKPR: KLM151, an E190, given D with 2163 m left, its 2050 m at sea level
+// some 2200 m at Prague's 1250 ft).
+func IntersectionMinRemaining(model string, elevationFt float64, s RunwaySurface) float64 {
+	minLeft, _ := IntersectionRule(model)
+	if tod := ProfileFor(model).TakeoffDistanceM; tod > 0 {
+		margin := 1.1
+		if s != RunwayDry {
+			margin = 1.2
+		}
+		minLeft = math.Max(minLeft, tod*(1+0.07*math.Max(0, elevationFt)/1000)*margin)
+	}
+	return minLeft
 }
 
 // IntersectionRule is the rule of model's class: the runway an

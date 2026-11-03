@@ -84,12 +84,13 @@ func TestEntryChoicesEDDM(t *testing.T) {
 	}{
 		{"A320", "26L", []string{"B12"}},
 		{"A320", "26R", []string{"A12"}},
-		{"CRJ9", "26R", []string{"A12", "A10"}},
+		{"CRJ9", "26R", []string{"A12"}}, // A10 2215 m short of its 1950 m at 1482 ft and a tenth
+		{"AT76", "26R", []string{"A12", "A10"}},
 		{"AT76", "26L", []string{"B12", "B10"}},
 		{"B77W", "26R", nil},
 	} {
 		var got []string
-		for _, grp := range entryChoices(g, "EDDM", c.rwy, c.model, g.Nodes[0].Position) {
+		for _, grp := range entryChoices(g, "EDDM", c.rwy, c.model, g.Nodes[0].Position, 0) {
 			got = append(got, grp[0].Taxiway)
 		}
 		if len(got) != len(c.want) {
@@ -103,7 +104,7 @@ func TestEntryChoicesEDDM(t *testing.T) {
 			}
 		}
 	}
-	if e := firstEntry(g, "EDDM", "26R", "A320", g.Nodes[0].Position); e != "A12" {
+	if e := firstEntry(g, "EDDM", "26R", "A320", g.Nodes[0].Position, 0); e != "A12" {
 		t.Errorf("crew's first entry %q, want A12", e)
 	}
 }
@@ -111,16 +112,16 @@ func TestEntryChoicesEDDM(t *testing.T) {
 // An airport's own entries (traffic.intersectionAirports) restrict the
 // choice: listed for a class, only those.
 func TestEntryChoicesAirportTable(t *testing.T) {
-	if err := dict.Use("traffic.intersectionAirports", []byte(`[{"icao":"EDDM","runways":{"26R":{"regional":["A10"]}}}]`)); err != nil {
+	if err := dict.Use("traffic.intersectionAirports", []byte(`[{"icao":"EDDM","runways":{"26R":{"turboprop":["A10"]}}}]`)); err != nil {
 		t.Fatal(err)
 	}
 	defer dict.Reset("traffic.intersectionAirports")
 	g := eddmGraph(t)
-	groups := entryChoices(g, "EDDM", "26R", "CRJ9", g.Nodes[0].Position)
+	groups := entryChoices(g, "EDDM", "26R", "AT76", g.Nodes[0].Position, 0)
 	if len(groups) != 1 || groups[0][0].Taxiway != "A10" {
-		t.Errorf("CRJ9 26R with A10 listed: %v", groups)
+		t.Errorf("AT76 26R with A10 listed: %v", groups)
 	}
-	if groups := entryChoices(g, "EDDM", "26R", "A320", g.Nodes[0].Position); len(groups) != 1 || groups[0][0].Taxiway != "A12" {
+	if groups := entryChoices(g, "EDDM", "26R", "A320", g.Nodes[0].Position, 0); len(groups) != 1 || groups[0][0].Taxiway != "A12" {
 		t.Errorf("A320 26R, its class not listed: %v", groups)
 	}
 }

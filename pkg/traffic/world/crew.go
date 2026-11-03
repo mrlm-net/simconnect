@@ -272,7 +272,7 @@ func (it *controlled) crewEntry() string {
 	if it.dep == nil || it.view.Entry != "" || traffic.RandomFloat64() >= crewIntersectionShare(it.view.Model) {
 		return ""
 	}
-	return firstEntry(it.graph, it.ICAO, it.view.Runway, it.view.Model, it.view.Position)
+	return firstEntry(it.graph, it.ICAO, it.view.Runway, it.view.Model, it.view.Position, it.cc.surface())
 }
 
 // grantEntry answers the crew's intersection request before the taxi
