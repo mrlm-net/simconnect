@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"math"
 	"net/http"
+	"slices"
 	"strings"
 	"time"
 
@@ -24,6 +25,10 @@ import (
 // hold; slow: lose another minute by speed and stretching; direct: direct
 // to the join point on the final; heading: fly a magnetic heading off the route
 // (#1414); goaround: go around.
+
+// unsequencedActions are the approach actions an arrival not (yet) in the
+// sequence can be given: direct only to a point, joining the final needs a runway.
+var unsequencedActions = []string{"speed", "heading", "descend", "direct"}
 
 // approachSlowBy is what one "slow" asks the arrival to lose.
 const approachSlowBy = time.Minute
@@ -91,7 +96,11 @@ func (q *sequences) approachSpace(icao, callsign string, delay time.Duration, wi
 func (q *sequences) approachDo(icao, callsign, action string, at *airport.LatLon, kts, ft float64, sp spacing) error {
 	s, e, ok := q.entryOf(icao, callsign)
 	if !ok {
-		return traffic.ErrNotSequenced
+		// Radar instructions need no place in the landing order (#1414).
+		it := q.cc.byTail(callsign)
+		if it == nil || it.arr == nil || !slices.Contains(unsequencedActions, action) || action == "direct" && at == nil {
+			return traffic.ErrNotSequenced
+		}
 	}
 	switch action {
 	case "up", "down":

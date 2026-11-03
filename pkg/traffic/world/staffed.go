@@ -166,9 +166,9 @@ func (cc *controlCenter) checkStaffed(now time.Time) {
 			it.mu.Lock()
 			has := slices.Contains(it.view.Actions, "climb")
 			if want && !has {
-				it.view.Actions = append(it.view.Actions, "climb", "heading") // ?level=feet, ?heading=magnetic
+				it.view.Actions = append(it.view.Actions, "climb", "heading", "speed") // ?level=feet, ?heading=magnetic, ?kts=
 			} else if !want && has {
-				it.view.Actions = slices.DeleteFunc(it.view.Actions, func(a string) bool { return a == "climb" || a == "heading" })
+				it.view.Actions = slices.DeleteFunc(it.view.Actions, func(a string) bool { return a == "climb" || a == "heading" || a == "speed" })
 			}
 			it.mu.Unlock()
 		}
@@ -391,6 +391,40 @@ func (it *controlled) headingTo(magnetic float64) error {
 	said.Position = traffic.PosDeparture
 	it.say(said)
 	told := "heading " + traffic.HeadingSaid(v.HeadingDeg, mv)
+	it.mu.Lock()
+	it.view.Instruction, it.view.InstructionAt = told, nil
+	it.mu.Unlock()
+	it.cc.log.printf("%-6s departure: %s (the player)", it.Tail, told)
+	return nil
+}
+
+// speedTo has a departure handed over fly kts; 0 resumes its planned speeds
+// (#1414).
+func (it *controlled) speedTo(kts float64) error {
+	it.mu.Lock()
+	pos, alt, now, id, done := it.view.Position, it.heightFt, it.view.GroundSpeed, it.objectID, it.dep != nil && it.view.State == traffic.TaxiComplete.String()
+	it.mu.Unlock()
+	if !done {
+		return errors.New("not airborne and handed over yet")
+	}
+	if it.graph != nil {
+		alt += it.graph.Layout.Altitude / 0.3048
+	}
+	for _, a := range it.cc.world.Aircraft() {
+		if a.ObjectID == id && id != 0 {
+			pos, alt, now = a.Position, a.AltFt, a.GroundKts
+		}
+	}
+	if err := it.cc.do(func() error { return it.dep.AssignSpeed(pos, alt, kts) }); err != nil {
+		return err
+	}
+	said := traffic.SpeedAssigned(it.Tail, kts, now)
+	said.Position = traffic.PosDeparture
+	it.say(said)
+	told := "normal speed"
+	if kts > 0 {
+		told = fmt.Sprintf("speed %.0f kt", kts)
+	}
 	it.mu.Lock()
 	it.view.Instruction, it.view.InstructionAt = told, nil
 	it.mu.Unlock()

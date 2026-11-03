@@ -7,6 +7,12 @@ This project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 ---
 
+## [0.165.0] - 2026-11-03
+
+### Added
+
+- Radar control, the rest of #1414: a departure handed over takes a speed (`/api/control/{id}/speed?kts=`, 160 to 340, 0 back to its planned speeds; `TaxiController.AssignSpeed`), keeping a heading it is on; an arrival with no place in the landing sequence takes speed, heading, descend and direct to a point. What is about the landing order, or direct to the final, still needs the sequence.
+
 ## [0.164.0] - 2026-11-03
 
 ### Added

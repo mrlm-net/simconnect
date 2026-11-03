@@ -325,12 +325,13 @@ type TaxiController struct {
 	alignDist       float64
 	takeoff         *TakeoffMover
 	gearUp          bool
-	gearUpAt        float64        // this crew's gear-up height above the runway (ft), drawn at the first airborne frame
-	gearDownSent    time.Time      // last "gear down" re-sent after lift-off (GearHoldEvery)
-	pendingLimit    airport.NodeID // ClearUpTo before the taxi starts
-	climbToFt       float64        // ClimbTo before the hand-over: the climb waypoints no lower
-	climbCapFt      float64        // LimitClimb: the climb waypoints no higher (after departure climb to)
-	vectorTo *airport.LatLon // the end of a heading it is flying (FlyHeading)
+	gearUpAt        float64         // this crew's gear-up height above the runway (ft), drawn at the first airborne frame
+	gearDownSent    time.Time       // last "gear down" re-sent after lift-off (GearHoldEvery)
+	pendingLimit    airport.NodeID  // ClearUpTo before the taxi starts
+	climbToFt       float64         // ClimbTo before the hand-over: the climb waypoints no lower
+	climbCapFt      float64         // LimitClimb: the climb waypoints no higher (after departure climb to)
+	vectorTo        *airport.LatLon // the end of a heading it is flying (FlyHeading)
+	plannedKts      []RoutePoint    // its climb before a speed was assigned (AssignSpeed)
 	hasPendingLimit bool
 	flaps           surfaceRamp
 	frameAt         time.Time

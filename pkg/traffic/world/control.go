@@ -1702,7 +1702,7 @@ func (it *controlled) update(ev TaxiOrArrival) {
 			v.Actions = append(v.Actions, "handoff")
 		}
 		if e.State == traffic.TaxiComplete && it.atc == traffic.PosDeparture && it.gates.Load() {
-			v.Actions = append(v.Actions, "climb", "heading") // ?level=feet (#1096), ?heading=magnetic (#1414)
+			v.Actions = append(v.Actions, "climb", "heading", "speed") // ?level=feet (#1096), ?heading=magnetic, ?kts= (#1414)
 		}
 		if e.Deicing != v.Deicing {
 			v.Deicing = e.Deicing
@@ -1895,6 +1895,12 @@ func (it *controlled) clearedEarly(action string) bool {
 	return false
 }
 
+// The speeds a controller can give a departure handed over (#1414).
+const (
+	departureSpeedMinKts = 160.0
+	departureSpeedMaxKts = 340.0
+)
+
 // actionParams are the query parameters of the offered actions that need one
 // (ControlView.ActionParams).
 func actionParams(actions []string) map[string]string {
@@ -1908,6 +1914,8 @@ func actionParams(actions []string) map[string]string {
 			p = "level"
 		case "heading":
 			p = "heading"
+		case "speed":
+			p = "kts"
 		}
 		if p != "" {
 			if out == nil {
@@ -2687,6 +2695,20 @@ func registerControl(mux *http.ServeMux, st *state) {
 				return
 			}
 			if err := it.headingTo(hdg); err != nil {
+				http.Error(w, err.Error(), http.StatusUnprocessableEntity)
+				return
+			}
+			w.WriteHeader(http.StatusNoContent)
+			return
+		}
+		// Speed (?kts=220, 0 its planned speeds; #1414): a departure handed over.
+		if r.PathValue("action") == "speed" && it.dep != nil {
+			kts, err := strconv.ParseFloat(r.URL.Query().Get("kts"), 64)
+			if err != nil || kts != 0 && (kts < departureSpeedMinKts || kts > departureSpeedMaxKts) {
+				http.Error(w, fmt.Sprintf("kts: %.0f to %.0f, 0 its planned speeds", departureSpeedMinKts, departureSpeedMaxKts), http.StatusBadRequest)
+				return
+			}
+			if err := it.speedTo(kts); err != nil {
 				http.Error(w, err.Error(), http.StatusUnprocessableEntity)
 				return
 			}
