@@ -7,6 +7,12 @@ This project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 ---
 
+## [0.166.4] - 2026-11-03
+
+### Changed
+
+- A new place in the landing sequence is logged with the distance to go and whether the arrival is fixed (live LKPR: OKXNU, gone around, became number 1 with no delay; the log did not show why).
+
 ## [0.166.3] - 2026-11-03
 
 ### Fixed

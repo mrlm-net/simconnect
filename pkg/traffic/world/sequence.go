@@ -176,6 +176,14 @@ func (q *sequences) sequencer(icao, runway string) *traffic.ApproachSequencer {
 			q.cc.log.printf("%-6s sequence %s %s: out of the sequence", e.Callsign, icao, c.Runway)
 		case c.Previous == 0:
 			q.cc.log.printf("%-6s sequence %s %s: number %d%s, %.0f NM to go, delay %s", e.Callsign, icao, c.Runway, e.Number, behind(e), e.DistanceToGoNM, e.Delay.Round(time.Second))
+		case c.Previous != e.Number:
+			// A new place: from where, and whether it was fixed (live, LKPR:
+			// OKXNU, gone around, number 1 with no delay, why not logged).
+			fixed := ""
+			if e.Fixed {
+				fixed = ", fixed"
+			}
+			q.cc.log.printf("%-6s sequence %s %s: number %d (was %d)%s, %.1f NM to go%s, delay %s", e.Callsign, icao, c.Runway, e.Number, c.Previous, behind(e), e.DistanceToGoNM, fixed, e.Delay.Round(time.Second))
 		default:
 			q.cc.log.printf("%-6s sequence %s %s: number %d (was %d)%s, delay %s", e.Callsign, icao, c.Runway, e.Number, c.Previous, behind(e), e.Delay.Round(time.Second))
 		}
