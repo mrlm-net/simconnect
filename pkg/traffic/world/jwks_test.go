@@ -222,10 +222,10 @@ func TestSecureLink(t *testing.T) {
 	defer cancel()
 	go hub.dialOut(ctx, ln.Addr().String(), client, func(string, ...any) {})
 
-	// A link that never closes fails here, not at the run's timeout.
-	if d, ok := ln.(interface{ SetDeadline(time.Time) error }); ok {
-		d.SetDeadline(time.Now().Add(30 * time.Second))
-	}
+	// A link that never closes fails here, not at the run's timeout. The TLS
+	// listener has no SetDeadline, so a timer closes it: Accept then fails.
+	deadline := time.AfterFunc(30*time.Second, func() { ln.Close() })
+	defer deadline.Stop()
 	accept := func() *wireClient {
 		t.Helper()
 		for {

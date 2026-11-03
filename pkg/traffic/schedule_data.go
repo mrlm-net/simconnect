@@ -54,9 +54,9 @@ func defaultAirlines() []Airline {
 		{ICAO: "BAW", Name: "British Airways", Telephony: "SPEEDBIRD", Fleet: map[string]float64{"A320": 2, "A20N": 1, "A321": 1, "B77W": 0.3, "B789": 0.3}, Bases: []string{"EGLL", "EGKK"}, Regions: []string{"*"}, Weight: 1.5},
 		// LOT: the ICAO designator is POLLOT, but "LOT" is what is said in practice.
 		{ICAO: "LOT", Name: "LOT", Telephony: "POLLOT", Fleet: map[string]float64{"B38M": 2, "E190": 2, "DH8D": 1}, Bases: []string{"EPWA"}, Regions: eu, Weight: 1},
-		{ICAO: "RYR", Name: "Ryanair", Telephony: "RYANAIR", Fleet: map[string]float64{"B738": 3, "B38M": 1}, Bases: []string{"EIDW", "EGSS", "LIRA", "LEPA", "LPPT"}, Regions: eu, Weight: 3},
-		{ICAO: "EZY", Name: "easyJet", Telephony: "EASY", Fleet: map[string]float64{"A320": 2, "A20N": 2, "A321": 1}, Bases: []string{"EGKK", "EGGW", "LSGG", "LFPG"}, Regions: eu, Weight: 2},
-		{ICAO: "WZZ", Name: "Wizz Air", Telephony: "WIZZAIR", Fleet: map[string]float64{"A321": 3, "A20N": 1}, Bases: []string{"LHBP", "EPKT", "LROP"}, Regions: eu, Weight: 2},
+		{ICAO: "RYR", Name: "Ryanair", Telephony: "RYANAIR", Fleet: map[string]float64{"B738": 3, "B38M": 1}, Bases: []string{"EIDW", "EGSS", "LIRA", "LEPA", "LPPT"}, Regions: eu, Weight: 3, LowCost: true},
+		{ICAO: "EZY", Name: "easyJet", Telephony: "EASY", Fleet: map[string]float64{"A320": 2, "A20N": 2, "A321": 1}, Bases: []string{"EGKK", "EGGW", "LSGG", "LFPG"}, Regions: eu, Weight: 2, LowCost: true},
+		{ICAO: "WZZ", Name: "Wizz Air", Telephony: "WIZZAIR", Fleet: map[string]float64{"A321": 3, "A20N": 1}, Bases: []string{"LHBP", "EPKT", "LROP"}, Regions: eu, Weight: 2, LowCost: true},
 		{ICAO: "THY", Name: "Turkish", Telephony: "TURKISH", Fleet: map[string]float64{"A321": 2, "B38M": 1, "B77W": 0.3}, Bases: []string{"LTFM"}, Regions: []string{"*"}, Weight: 1.5},
 		{ICAO: "UAE", Name: "Emirates", Telephony: "EMIRATES", Fleet: map[string]float64{"B77W": 1}, Bases: []string{"OMDB"}, Regions: []string{"*"}, Weight: 0.5},
 		{ICAO: "QTR", Name: "Qatar", Telephony: "QATARI", Fleet: map[string]float64{"B789": 1, "B77W": 1}, Bases: []string{"OTHH"}, Regions: []string{"*"}, Weight: 0.5},

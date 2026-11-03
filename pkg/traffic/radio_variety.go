@@ -300,6 +300,11 @@ func (r *Radio) readBack(airport string, t Transmission, busy bool) {
 		again := t
 		again.At = r.ClearAt(t.Airport, t.Frequency).Add(silence)
 		again.Params = cloneParams(t.Params, ParamRepeat, "1")
+		// Said as a repeat, not a second transfer (the user, live LKPR:
+		// TVS926 told to contact radar twice): "I say again" (Doc 9432).
+		if rest, ok := strings.CutPrefix(t.Text, t.Callsign+", "); ok {
+			again.Text = t.Callsign + ", I say again, " + rest
+		}
 		r.Transmit(airport, again)
 	case sayAgain:
 		sa := pilotTx(t.Position, t.Callsign, IntentPilotSayAgain, nil, "Say again, "+t.Callsign)

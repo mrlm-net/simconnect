@@ -252,7 +252,16 @@ func TestPushbackFacing(t *testing.T) {
 		}
 		h, _ := CompassHeading(was)
 		want := CompassName(h + 180)
-		if err := ctl.ClearPushbackFacing(want); err != nil {
+		err := ctl.ClearPushbackFacing(want)
+		if errors.Is(err, ErrNoPushFacing) {
+			// None ends so: refused, the planned push kept, not cleared.
+			if ctl.PushFacing() != was || ctl.pushCleared {
+				t.Errorf("%s: refused facing %s, now facing %q (was %q), cleared %v", st.Label(), want, ctl.PushFacing(), was, ctl.pushCleared)
+			}
+			kept++
+			continue
+		}
+		if err != nil {
 			t.Fatalf("%s: %v", st.Label(), err)
 		}
 		if !ctl.pushCleared {

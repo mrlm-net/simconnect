@@ -143,11 +143,14 @@ func TestPushbackDoesNotFaceTheStand(t *testing.T) {
 		if err := ctl.Start(TaxiRequest{Graph: g, Parking: i, Runway: "06", Model: "FSLTL_E190_LOT_GRZESKI", Tail: "T1"}); err != nil {
 			continue
 		}
-		checked++
+		// Counted only once a push is planned and long enough to turn:
+		// stands whose push fails do not dilute the share facing back, and
+		// too few left to judge fails above.
 		p, err := ctl.pushPath()
 		if err != nil || p.Length() < 30 {
 			continue
 		}
+		checked++
 		end := p.PointAt(p.Length())
 		nose := localBearing(end, p.PointAt(p.Length()-5))
 		back := localBearing(end, StandPoint(g.Layout.Parking[i], 0))

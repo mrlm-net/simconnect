@@ -329,15 +329,18 @@ func (it *controlled) clearance(clr traffic.Transmission) {
 	it.call(traffic.PosDelivery, prioDelivery, func() {
 		it.say(clr) // read back by the crew
 		p.later(it.clearAt(traffic.PosDelivery).Add(atcAnswerDelay+p.jitter(atcAnswerJitter)), func() {
-			it.say(traffic.ReadbackCorrect(traffic.PosDelivery, it.Tail))
 			station, freq := it.station(traffic.PosGround)
 			it.mu.Lock()
 			worked := len(it.view.ClearedEarly) > 0
 			it.mu.Unlock()
-			// Already worked by a player's ground ahead of the clearance
-			// (#1308): no transfer to the position it is with.
-			if !worked {
-				it.say(traffic.Handoff(it.Tail, traffic.PosDelivery, traffic.PosGround, station, freq))
+			// The readback acknowledged and the transfer in one call, "readback
+			// correct, contact Ruzyne Ground 121.9" (#1425; CAP 413 2.68); already
+			// worked by a player's ground ahead of the clearance (#1308), the
+			// acknowledgement alone: no transfer to the position it is with.
+			if worked {
+				it.say(traffic.ReadbackCorrect(traffic.PosDelivery, it.Tail))
+			} else {
+				it.say(traffic.ReadbackCorrectAndHandoff(traffic.Handoff(it.Tail, traffic.PosDelivery, traffic.PosGround, station, freq)))
 			}
 			p.later(it.clearAt(traffic.PosDelivery).Add(crewActDelay+p.jitter(crewActJitter)), func() {
 				it.mu.Lock()

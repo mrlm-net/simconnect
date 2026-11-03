@@ -91,6 +91,11 @@ func (it *controlled) landAhead() string {
 		case v.Runway != rwy:
 		case o.dep != nil && v.State == traffic.TaxiDeparting.String() && v.OnGround:
 			return "departing"
+		// Lining up or lined up with its take-off clearance: going before
+		// it, said with the landing clearance (#1429, vector at EGKK: LOT610
+		// lining up on 26L as BAW558 was cleared to land, nothing said).
+		case o.dep != nil && (v.State == traffic.TaxiLiningUp.String() || v.State == traffic.TaxiLinedUp.String()) && o.dep.Cleared("takeoff"):
+			return "departing"
 		case o.arr != nil && v.State == traffic.ArrivalRollout.String():
 			ahead = "landing"
 		}

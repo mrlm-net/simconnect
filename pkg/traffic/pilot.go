@@ -843,3 +843,14 @@ func StandDelayApproved(cs string, startUp bool) Transmission {
 	}
 	return Transmission{Position: PosGround, Callsign: cs, Intent: IntentStandDelayApproved, Text: cs + ", roger, call when ready for " + what}
 }
+
+// ReadbackCorrectAndHandoff is handoff h with the readback acknowledged
+// first, one call: "CSA1, readback correct, contact Ruzyne Ground 121.9"
+// (#1425: the controller does not key twice for one thought; CAP 413
+// 2.68). Read back as the handoff.
+func ReadbackCorrectAndHandoff(h Transmission) Transmission {
+	if rest, ok := strings.CutPrefix(h.Text, h.Callsign+", "); ok {
+		h.Text = h.Callsign + ", readback correct, " + rest
+	}
+	return h
+}

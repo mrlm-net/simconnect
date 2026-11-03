@@ -158,6 +158,7 @@ const (
 	ParamGiveWay    = "giveway"   // the traffic given way to, as described: "A320 passing left to right"
 	ParamTaxiways   = "taxiways"  // as said: "B2, H, A"
 	ParamHoldShort  = "holdShort" // runways to hold short of on the way: "12", "12, 31"
+	ParamCross      = "cross"     // runways cleared to cross on the way, before any hold short: "12"
 	ParamStand      = "stand"
 	ParamLimit      = "limit" // a taxiway to hold short of; "" a marked point
 	ParamSID        = "sid"
@@ -2065,17 +2066,41 @@ func WithHoldShort(t Transmission, runways ...string) Transmission {
 	return Say(t)
 }
 
-// holdShortSaid is the hold short part of a taxi clearance (WithHoldShort):
-// ", hold short of runway 12", ", hold short of runways 12 and 31".
+// WithCross is taxi clearance t with the runways the route crosses cleared
+// to cross in it, those not in use: "CSA1, taxi to and hold short of runway
+// 06 via D, F, cross runway 12" (Doc 4444 12.3.4.7 e, "cross runway"; JO
+// 7110.65 3-7-2), read back with them, the crossing not asked for at its
+// holding point (the user, live LKPR: FLBUB stopped at 12, not in use). None:
+// t as it is.
+func WithCross(t Transmission, runways ...string) Transmission {
+	if len(runways) == 0 {
+		return t
+	}
+	t.Params = cloneParams(t.Params, ParamCross, strings.Join(runways, ", "))
+	t.Text = ""
+	return Say(t)
+}
+
+// holdShortSaid is the crossing and hold short part of a taxi clearance
+// (WithCross, WithHoldShort): ", cross runway 12", ", hold short of runway
+// 12", ", hold short of runways 12 and 31".
 func holdShortSaid(p map[string]string) string {
+	s := ""
+	if r := p[ParamCross]; r != "" {
+		if i := strings.LastIndex(r, ", "); i >= 0 {
+			s = ", cross runways " + r[:i] + " and " + r[i+2:]
+		} else {
+			s = ", cross runway " + r
+		}
+	}
 	r := p[ParamHoldShort]
 	if r == "" {
-		return ""
+		return s
 	}
 	if i := strings.LastIndex(r, ", "); i >= 0 {
-		return ", hold short of runways " + r[:i] + " and " + r[i+2:]
+		return s + ", hold short of runways " + r[:i] + " and " + r[i+2:]
 	}
-	return ", hold short of runway " + r
+	return s + ", hold short of runway " + r
 }
 
 // SpeakingTime is how long t takes to say: SpeakingTime of its text at its

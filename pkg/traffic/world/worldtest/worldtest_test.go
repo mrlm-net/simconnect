@@ -122,43 +122,83 @@ func TestPlayerRescue(t *testing.T) {
 		t.Fatal("no runway 24")
 	}
 	field := h.Layout.Altitude / 0.3048
-	nm := 25.0
-	fly := func() { // the user on the final at 160 kt, 3°
-		lat, lon := calc.DisplaceByHeading(end.Threshold.Lat, end.Threshold.Lon, end.Heading+180, nm*1852)
+	// along: metres past the threshold, negative on the final. The user
+	// flies in at 160 kt, 3°, touches down and rolls out at 30 kt to a stop
+	// stopAt past the threshold, well short of the trucks' standby points
+	// (a third and half the runway down): a truck near it there has
+	// followed it.
+	const stopAt = 600.0
+	along, kts := -25.0*1852, 160.0
+	fly := func() {
+		lat, lon := calc.DisplaceByHeading(end.Threshold.Lat, end.Threshold.Lon, end.Heading, along)
 		h.SetUser(func(u *Object) {
-			u.Lat, u.Lon, u.Heading, u.GroundKts, u.VSFpm = lat, lon, end.Heading, 160, -800
-			u.AltFt, u.OnGround = field+50+nm*318, false
-			if nm <= 0 {
-				u.AltFt, u.OnGround, u.VSFpm, u.GroundKts = field, true, 0, 60
+			u.Lat, u.Lon, u.Heading, u.GroundKts, u.VSFpm = lat, lon, end.Heading, kts, -800
+			u.AltFt, u.OnGround = field+50-along/1852*318, false
+			if along >= 0 {
+				u.AltFt, u.OnGround, u.VSFpm = field, true, 0
 			}
 		})
 	}
-	trucks := func() int {
-		n := 0
+	user := func() (float64, float64) {
+		return calc.DisplaceByHeading(end.Threshold.Lat, end.Threshold.Lon, end.Heading, along)
+	}
+	trucks := func() []Object {
+		var out []Object
 		for _, ob := range h.Sim.Objects() {
 			if strings.Contains(ob.Title, "Fire") || strings.Contains(ob.Title, "Medic") {
-				n++
+				out = append(out, ob)
 			}
 		}
-		return n
+		return out
 	}
-	declared := false
-	for step := 0; step < 12*60 && trucks() == 0; step++ {
+	outAt := -1.0 // the user's distance from the airport as the trucks came out
+	nearest := math.Inf(1)
+	for step := 0; step < 20*60; step++ {
 		fly()
 		h.Advance(time.Second)
-		nm = math.Max(0, nm-160.0/3600)
-		if step == 10 && !declared {
+		if step == 10 {
 			h.World.PriorityFor("", traffic.EmergencyEngineFailure)
-			declared = true
+		}
+		lat, lon := user()
+		ts := trucks()
+		if outAt < 0 && len(ts) > 0 {
+			outAt = calc.HaversineNM(lat, lon, h.Layout.Latitude, h.Layout.Longitude)
+		}
+		if along >= stopAt {
+			for _, o := range ts {
+				nearest = math.Min(nearest, calc.HaversineMeters(lat, lon, o.Lat, o.Lon))
+			}
+		}
+		switch {
+		case along < 0:
+			along = math.Min(0, along+kts*0.514444)
+		case along < stopAt:
+			kts = 30
+			along = math.Min(stopAt, along+kts*0.514444)
+		default:
+			kts = 0
+		}
+		if along >= stopAt && nearest <= traffic.RescueGapMeters+30 {
+			break
 		}
 	}
 	if b, err := h.World.Do("GET", "/api/traffic", nil); err == nil {
 		t.Logf("traffic: %.600s", b)
 	}
-	if trucks() == 0 {
-		t.Fatalf("no rescue vehicle out by %.1f NM", nm)
+	if outAt < 0 {
+		t.Fatalf("no rescue vehicle out by %.0f m past the threshold", along)
 	}
-	t.Logf("rescue out at %.1f NM", nm)
+	t.Logf("rescue out at %.1f NM from the airport, nearest %.0f m once stopped", outAt, nearest)
+	// Sent as it comes within 20 NM: not before, and not much after (160 kt
+	// is 0.05 NM a second; 1 NM is 20 s late).
+	if outAt > 20.05 || outAt < 19 {
+		t.Errorf("rescue out at %.1f NM from the airport, want as it came within 20 NM", outAt)
+	}
+	// After the touchdown they follow it down the runway to where it stops,
+	// RescueGapMeters behind it.
+	if nearest > traffic.RescueGapMeters+30 {
+		t.Errorf("stopped %.0f m past the threshold: nearest truck %.0f m away, want one following about %.0f m behind", stopAt, nearest, traffic.RescueGapMeters)
+	}
 }
 
 // TestPlayerRescueSmooth: the rescue trucks out for the user aircraft drive

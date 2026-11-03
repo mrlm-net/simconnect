@@ -414,6 +414,16 @@ func TestGoAroundToDownwind(t *testing.T) {
 		if got := far >= 4.5; got != c.downwind {
 			t.Errorf("%s: farthest %.1f NM off the centreline; on the STAR's downwind %v, want %v", c.fix, far, got, c.downwind)
 		}
+		// Radar turns it round (live, LOT1058 heard nothing after "climb"):
+		// headings at its circuit corners, then direct to the STAR's fix.
+		if c.downwind {
+			ctl.mu.Lock()
+			vs := append([]Vector(nil), ctl.vectors...)
+			ctl.mu.Unlock()
+			if len(vs) < 2 || vs[0].Fix != "" || vs[len(vs)-1].Fix == "" {
+				t.Errorf("%s: vectors after the go-around %+v, want headings then direct to a fix", c.fix, vs)
+			}
+		}
 	}
 }
 

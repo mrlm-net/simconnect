@@ -207,6 +207,14 @@ func freighter(t string) bool {
 	return false
 }
 
+// RemoteStands reports whether an aircraft of model flown by airline code
+// takes a stand without a jetway first (StandRequirements.NoJetway): a type
+// that never uses one (NoJetway), or a low-cost airline's (Airline.LowCost
+// in the airline table, traffic.airlines), whatever the airport.
+func RemoteStands(model, code string) bool {
+	return NoJetway(model) || code != "" && slices.ContainsFunc(airlinesNow.Load(), func(a Airline) bool { return a.LowCost && strings.EqualFold(a.ICAO, code) })
+}
+
 // cargoAirline reports whether code is a cargo airline's (Airline.Cargo
 // in the airline table).
 func cargoAirline(code string) bool {

@@ -101,3 +101,23 @@ func TestConversions(t *testing.T) {
 		}
 	}
 }
+
+// TestSpeedConstantsLiteral: the rows above take their wants from the
+// package's own constants, so a wrong constant passes there. These are the
+// published values, to the precision they are quoted at.
+func TestSpeedConstantsLiteral(t *testing.T) {
+	for _, c := range []struct {
+		name      string
+		fn        func(float64) float64
+		in, want  float64
+		tolerance float64
+	}{
+		{"MachToKnots", MachToKnots, 1, 661.47, 0.01},                          // Mach 1, sea level ISA
+		{"MachToKilometersPerHour", MachToKilometersPerHour, 1, 1225.06, 0.01}, // Mach 1, sea level ISA
+		{"KnotsToFeetPerSecond", KnotsToFeetPerSecond, 1, 1.68781, 1e-5},       // 1 kt
+	} {
+		if got := c.fn(c.in); math.Abs(got-c.want) > c.tolerance {
+			t.Errorf("%s(%v) = %v, want %v ± %v", c.name, c.in, got, c.want, c.tolerance)
+		}
+	}
+}

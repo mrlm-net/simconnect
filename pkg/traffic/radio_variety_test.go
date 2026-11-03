@@ -178,6 +178,10 @@ func TestMissedCall(t *testing.T) {
 	if len(s) != 3 || s[0].Pilot || s[1].Pilot || !s[2].Pilot || s[1].Params[ParamRepeat] != "1" {
 		t.Fatalf("said %+v", s)
 	}
+	// Said as a repeat (live, TVS926 seemed told twice).
+	if !strings.HasPrefix(s[1].Text, "CSA1, I say again, contact Ruzyne Tower") {
+		t.Errorf("called again %q, want it said as a repeat", s[1].Text)
+	}
 	if gap := s[1].At.Sub(s[0].At.Add(SpeakingTime(s[0].Text))); gap < 6*time.Second {
 		t.Errorf("called again %v after the first call", gap)
 	}

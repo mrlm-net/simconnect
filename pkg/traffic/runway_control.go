@@ -455,6 +455,22 @@ func (r *RunwayController) Decide(now time.Time, users []RunwayUser) RunwayClear
 		}
 		return ""
 	}
+	// intervalAfter is how long u waits behind ahead, a departure on the
+	// runway: what is left of it once ahead rolls, all of it before (live,
+	// LKPR: TVS1109 told to line up behind OKNRF, a Citation cleared at E
+	// but not rolling yet, counted no wait at all; it sat lined up for 2
+	// minutes 13 and LOT1058 went around).
+	intervalAfter := func(ahead string, u RunwayUser) time.Duration {
+		if r.lastDep != nil && r.lastDep.Callsign == ahead {
+			return r.intervalLeft(now, u)
+		}
+		for _, v := range users {
+			if v.Callsign == ahead {
+				return DepartureIntervalSpeeds(v.Wake, u.Wake, v.Route != "" && v.Route == u.Route, v.ClimbKts, u.ClimbKts)
+			}
+		}
+		return r.intervalLeft(now, u)
+	}
 	// The interval after the last departure.
 	interval := func(u RunwayUser) string {
 		if r.lastDep == nil || r.lastDep.Callsign == u.Callsign {
@@ -684,7 +700,7 @@ func (r *RunwayController) Decide(now time.Time, users []RunwayUser) RunwayClear
 			if occ, ok := along[occupied]; ok && occupied != rollingDep && ourDep[occupied] && r.granted[occupied] && number == 1 && len(out.LineUpBehindDeparting) == 0 &&
 				len(ourLinedUp) == 1 && ourLinedUp[0].Callsign == occupied && !ourLinedUp[0].LiningUp &&
 				occ > u.AlongM+IntersectionPassed(u.Callsign) && departureBlocked(u) == "" &&
-				arrivalClear(r.intervalLeft(now, u)+r.opts.LineUpTime+RunwayOccupancyIn(u.Wake, false, r.opts.Surface)+takeoffSaidIn+r.opts.Margin, r.opts.MinArrivalNM) == "" {
+				arrivalClear(intervalAfter(occupied, u)+r.opts.LineUpTime+RunwayOccupancyIn(u.Wake, false, r.opts.Surface)+takeoffSaidIn+r.opts.Margin, r.opts.MinArrivalNM) == "" {
 				out.LineUpBehindDeparting[u.Callsign] = occupied
 				out.LineUpAhead[u.Callsign] = true // down the runway past its way in
 				out.Waiting[u.Callsign] = occupied + " departing ahead"
@@ -701,7 +717,7 @@ func (r *RunwayController) Decide(now time.Time, users []RunwayUser) RunwayClear
 				// Its line-up starts once the one rolling has passed its way in
 				// (live, OKSZG at B waited 31 s for CSA813, lined up 75 s, and
 				// CSA236 was sent around).
-				arrivalClear(max(r.intervalLeft(now, u), RollPastIn(u.AlongM+IntersectionPassed(u.Callsign)-along[rollingDep], rollingKts)+r.opts.LineUpTime)+RunwayOccupancyIn(u.Wake, false, r.opts.Surface)+takeoffSaidIn+r.opts.Margin, r.opts.MinArrivalNM) == "" {
+				arrivalClear(max(intervalAfter(rollingDep, u), RollPastIn(u.AlongM+IntersectionPassed(u.Callsign)-along[rollingDep], rollingKts)+r.opts.LineUpTime)+RunwayOccupancyIn(u.Wake, false, r.opts.Surface)+takeoffSaidIn+r.opts.Margin, r.opts.MinArrivalNM) == "" {
 				out.LineUpBehindDeparting[u.Callsign] = rollingDep
 				// In down the runway from an intersection ahead of this one's
 				// way in, or past it already (at the threshold too): it never
