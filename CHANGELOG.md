@@ -7,6 +7,12 @@ This project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 ---
 
+## [0.165.1] - 2026-11-03
+
+### Fixed
+
+- A spawn waiting on its place ("spawn point in use") is logged once, again only for a new reason or after 5 minutes, and no longer also as a failed attempt at every retry (offline LOWW: twice a second for minutes).
+
 ## [0.165.0] - 2026-11-03
 
 ### Added

@@ -44,6 +44,11 @@ type scheduler struct {
 
 	created time.Time // wall time, for weatherWait
 
+	// waitSaid: the wait last logged per call sign (EventBlocked), its own
+	// lock: events come from the manager, which may run under mu.
+	waitMu   sync.Mutex
+	waitSaid map[string]waitNote
+
 	mu      sync.Mutex
 	density float64
 	// overPerHour: the overflights in the peak hour at density 1 (0:
@@ -383,7 +388,9 @@ func (s *scheduler) Spawn(f traffic.ManagedFlight) {
 // finds nothing of it yet: what comes up then goes again (#1318).
 func (s *scheduler) runSpawn(f traffic.ManagedFlight, spawn func() error) {
 	if err := spawn(); err != nil {
-		s.cc.log.printf("%-6s schedule: %s %s → %s (attempt %d) failed: %v", f.Callsign, f.Kind, f.Origin, f.Destination, f.Attempts, err)
+		if !errors.Is(err, traffic.ErrSpawnBlocked) { // a wait, logged once as such (EventBlocked)
+			s.cc.log.printf("%-6s schedule: %s %s → %s (attempt %d) failed: %v", f.Callsign, f.Kind, f.Origin, f.Destination, f.Attempts, err)
+		}
 		s.mgr.Failed(f.Callsign, err, s.cc.clock.Now())
 		return
 	}
@@ -619,10 +626,36 @@ func (s *scheduler) Hold(f traffic.ManagedFlight, on bool) {
 	}
 }
 
+// waitNote is a wait logged: its reason and when.
+type waitNote struct {
+	reason string
+	at     time.Time
+}
+
+// waitSayEvery: the same wait is logged again after this long.
+const waitSayEvery = 5 * time.Minute
+
 // event logs the manager's lifecycle (traffic.ManagerOptions.OnEvent):
 // what the app reacts to.
 func (s *scheduler) event(e traffic.ManagerEvent) {
 	f := e.Flight
+	// The same wait at every retry is said once (offline LOWW: DLH644 logged
+	// "spawn point in use" twice a second for minutes).
+	if e.Kind == traffic.EventBlocked {
+		s.waitMu.Lock()
+		last, ok := s.waitSaid[f.Callsign]
+		said := ok && last.reason == e.Reason && e.Time.Sub(last.at) < waitSayEvery
+		if !said {
+			if s.waitSaid == nil {
+				s.waitSaid = map[string]waitNote{}
+			}
+			s.waitSaid[f.Callsign] = waitNote{e.Reason, e.Time}
+		}
+		s.waitMu.Unlock()
+		if said {
+			return
+		}
+	}
 	switch e.Kind {
 	case traffic.EventHeld:
 		s.cc.log.printf("%-6s schedule: held on the stand — %s", f.Callsign, e.Reason)
