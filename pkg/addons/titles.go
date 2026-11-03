@@ -21,7 +21,9 @@ type TitleSource struct {
 
 // TitleSources maps every SimObject title of the packages given (lower
 // case) to its package: their SimObjects/*/*/aircraft.cfg or sim.cfg
-// [FLTSIM.N] titles. Packed packages (the stock ones) have none on disk.
+// [FLTSIM.N] titles, and the presets of MSFS 2024 modular aircraft
+// (SimObjects/*/*/presets/*/*/config/aircraft.cfg: the Fenix A32X). Packed
+// packages (the stock ones) have none on disk.
 func TitleSources(pkgs []Package) map[string]TitleSource {
 	out := map[string]TitleSource{}
 	for _, p := range pkgs {
@@ -41,8 +43,11 @@ func TitleSources(pkgs []Package) map[string]TitleSource {
 				if !o.IsDir() {
 					continue
 				}
-				for _, cfg := range []string{"aircraft.cfg", "sim.cfg"} {
-					for _, f := range fltsims(filepath.Join(p.Path, "SimObjects", k.Name(), o.Name(), cfg)) {
+				dir := filepath.Join(p.Path, "SimObjects", k.Name(), o.Name())
+				cfgs := []string{filepath.Join(dir, "aircraft.cfg"), filepath.Join(dir, "sim.cfg")}
+				presets, _ := filepath.Glob(filepath.Join(dir, "presets", "*", "*", "config", "aircraft.cfg"))
+				for _, cfg := range append(cfgs, presets...) {
+					for _, f := range fltsims(cfg) {
 						out[strings.ToLower(f.title)] = TitleSource{Package: p.Folder, Creator: p.Creator, Flyable: f.selectable}
 					}
 				}

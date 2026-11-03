@@ -54,7 +54,7 @@ func gateNoseOffset(model, helper string, inset float64) float64 {
 	modelDoors.mu.Lock()
 	defer modelDoors.mu.Unlock()
 	nose := func(title string) (float64, bool) {
-		if n, ok := modelDoors.noseByTitle[strings.ToLower(title)]; ok {
+		if n, ok := titled(modelDoors.noseByTitle, title); ok {
 			return n, true
 		}
 		if t := traffic.ProfileFor(title).Type; t != "" {
@@ -65,8 +65,8 @@ func gateNoseOffset(model, helper string, inset float64) float64 {
 	}
 	if helper != "" {
 		hn, ok1 := nose(helper)
-		hd, ok2 := modelDoors.jetway[strings.ToLower(helper)]
-		od, ok3 := modelDoors.jetway[strings.ToLower(model)]
+		hd, ok2 := titled(modelDoors.jetway, helper)
+		od, ok3 := titled(modelDoors.jetway, model)
 		if ok1 && ok2 && ok3 {
 			return inset + hn - (hd.Long-od.Long)*0.3048
 		}
@@ -92,7 +92,7 @@ func gateSide(model, helper string, side float64) float64 {
 func noseGearM(title string) (float64, bool) {
 	modelDoors.mu.Lock()
 	defer modelDoors.mu.Unlock()
-	if n, ok := modelDoors.noseByTitle[strings.ToLower(title)]; ok {
+	if n, ok := titled(modelDoors.noseByTitle, title); ok {
 		return n, true
 	}
 	if t := traffic.ProfileFor(title).Type; t != "" {
@@ -112,8 +112,8 @@ func noseGearM(title string) (float64, bool) {
 func jetwayDoorOffset(model, helper string) (ahead, right float64, ok bool) {
 	modelDoors.mu.Lock()
 	defer modelDoors.mu.Unlock()
-	o, ok1 := modelDoors.jetway[strings.ToLower(model)]
-	h, ok2 := modelDoors.jetway[strings.ToLower(helper)]
+	o, ok1 := titled(modelDoors.jetway, model)
+	h, ok2 := titled(modelDoors.jetway, helper)
 	if !ok1 || !ok2 {
 		return 0, 0, false
 	}
@@ -169,7 +169,7 @@ func setDoors(byTitle, byType map[string]addons.ModelDoor) {
 func doorAhead(model string) (float64, bool) {
 	modelDoors.mu.Lock()
 	defer modelDoors.mu.Unlock()
-	if a, ok := modelDoors.byTitle[strings.ToLower(model)]; ok {
+	if a, ok := titled(modelDoors.byTitle, model); ok {
 		return a, true
 	}
 	t := traffic.ProfileFor(model).Type
@@ -193,4 +193,20 @@ func typeSpanM(t string) float64 {
 		return p.WingspanM
 	}
 	return 0
+}
+
+// titled is m's entry for title (lower case keys), else its preset's: an
+// MSFS 2024 livery spawns as "<preset title> :: <livery name>" (live, LKPR:
+// "FenixA320 CFM SL :: MyCrew Heritage OK-MYV").
+func titled[V any](m map[string]V, title string) (V, bool) {
+	t := strings.ToLower(title)
+	if v, ok := m[t]; ok {
+		return v, true
+	}
+	if p, _, ok := strings.Cut(t, " :: "); ok {
+		v, ok := m[strings.TrimSpace(p)]
+		return v, ok
+	}
+	var zero V
+	return zero, false
 }

@@ -75,10 +75,17 @@ func ParseInteractivePoint(v string) (InteractivePoint, bool) {
 
 // ReadModelDoor reads the door of the model in folder dir (aircraft.cfg and
 // flight_model.cfg there); ok is false without a door or a type.
-func ReadModelDoor(dir string) (ModelDoor, bool) {
+func ReadModelDoor(dir string) (ModelDoor, bool) { return readModelDoor(dir, "") }
+
+// readModelDoor is ReadModelDoor with typ the type when aircraft.cfg names
+// none (a modular aircraft's attachment: its type in an [Inherit] base).
+func readModelDoor(dir, typ string) (ModelDoor, bool) {
 	d := ModelDoor{Folder: filepath.Base(dir)}
 	gen := cfgSection(filepath.Join(dir, "aircraft.cfg"), "GENERAL")
 	d.Type = strings.Trim(gen["icao_type_designator"], `"`)
+	if d.Type == "" {
+		d.Type = typ
+	}
 	fm := filepath.Join(dir, "flight_model.cfg")
 	points := cfgSection(fm, "INTERACTIVE POINTS")
 	first, ok := ParseInteractivePoint(points["interactive_point.0"])
@@ -154,7 +161,8 @@ func DoorsByType(airplanes ...string) map[string]ModelDoor {
 // aircraft.cfg): a livery folder has the door of its base model
 // ([VARIATION] base_container). Our traffic spawns titles, so each one it
 // can spawn from these folders has its own model's door, whatever its
-// flight's type (a B38M flown as an installed B738).
+// flight's type (a B38M flown as an installed B738). Modular aircraft (MSFS
+// 2024 presets) too (modularDoors).
 func DoorsByTitle(airplanes ...string) map[string]ModelDoor {
 	out := map[string]ModelDoor{}
 	base := map[string]*ModelDoor{} // folder path → its door (nil: none)
@@ -195,6 +203,7 @@ func DoorsByTitle(airplanes ...string) map[string]ModelDoor {
 			}
 		}
 	}
+	modularDoors(airplanes, out)
 	return out
 }
 
