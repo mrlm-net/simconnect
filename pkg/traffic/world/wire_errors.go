@@ -18,7 +18,7 @@ var wireSentinels = []error{
 	traffic.ErrCreationFailed, traffic.ErrEmptyWaypoints, traffic.ErrEntryTooShort,
 	traffic.ErrEstablished, traffic.ErrExitFixed, traffic.ErrExitTooClose,
 	traffic.ErrExitTooTight, traffic.ErrGroundUnknown, traffic.ErrHolding,
-	traffic.ErrInjectorFull, traffic.ErrNoIDs, traffic.ErrNoPushPose,
+	traffic.ErrInjectorFull, traffic.ErrNoIDs, traffic.ErrNoPushFacing, traffic.ErrNoPushPose,
 	traffic.ErrNoRunway, traffic.ErrNoShortcut, traffic.ErrNoStand,
 	traffic.ErrNoTouchdown, traffic.ErrNotApplicable, traffic.ErrNotConnected,
 	traffic.ErrNotHolding, traffic.ErrNotHoldingShort, traffic.ErrNotInjected,

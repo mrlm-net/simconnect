@@ -33,10 +33,14 @@ func TestRunwayChangeGapFixed(t *testing.T) {
 	}
 	// A look counting none for a moment (a state between two): the same
 	// deadline, not a new one later (live, OKBWJ's delay up 40 s a look).
-	if got := q.runwayChangeGap(gone.Add(2*time.Second), k, 1); !got.Equal(first) {
-		if by, _ := q.changeDeadline(k); !by.Equal(t0.Add(3 * changeDepEvery)) {
-			t.Errorf("after a look counting none: deadline %s, want it kept", by.Format("15:04:05"))
-		}
+	// The deadline has passed, so the gap runs from now: a new deadline
+	// set by the look would put it changeDepEvery later.
+	got := q.runwayChangeGap(gone.Add(2*time.Second), k, 1)
+	if by, ok := q.changeDeadline(k); !ok || !by.Equal(t0.Add(3*changeDepEvery)) {
+		t.Errorf("after a look counting none: deadline %s %v, want it kept at %s", by.Format("15:04:05"), ok, t0.Add(3*changeDepEvery).Format("15:04:05"))
+	}
+	if want := gone.Add(2*time.Second + changeGapMargin); !got.Equal(want) {
+		t.Errorf("after a look counting none: not before %s, want %s", got.Format("15:04:05"), want.Format("15:04:05"))
 	}
 	end := gone.Add(2*time.Second + changeGapMargin + time.Second)
 	if got := q.runwayChangeGap(end, k, 0); !got.IsZero() {

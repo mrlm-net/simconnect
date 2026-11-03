@@ -1,8 +1,8 @@
 package worldtest
 
 import (
-	"maps"
 	"fmt"
+	"maps"
 	"net/http"
 	"os"
 	"slices"
@@ -122,6 +122,11 @@ func TestLineUpTakeoffLandingWords(t *testing.T) {
 	}
 	if err := h.World.Clear(dep.ID, "takeoff?nodelay=1"); err != nil {
 		t.Fatal(err)
+	}
+	// Cleared for take-off, not rolling yet: named with the landing
+	// clearance already (#1429).
+	if v, _ := h.Aircraft("WORD1"); v.State != "departing" && !strings.Contains(phrase(arr.ID, "land/phrase"), "traffic departing ahead") {
+		t.Errorf("%s with its take-off clearance, landing clearance %q", v.State, phrase(arr.ID, "land/phrase"))
 	}
 	h.Advance(time.Second)
 	if !h.Said("WORD1", "no delay") {

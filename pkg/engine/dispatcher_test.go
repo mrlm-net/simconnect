@@ -220,9 +220,13 @@ func TestDispatchWaitsOnTheEvent(t *testing.T) {
 		}
 		time.Sleep(300 * time.Millisecond) // idle again between
 	}
-	// The middle one: a backed-off sleep delays them all, one stalled machine one.
+	// The second worst: one message stalled by a busy machine is excused,
+	// two are not. A backed-off sleep instead of the event delays each by a
+	// draw from 0 to maxSleep, at most 10 ms one time in five: six of seven
+	// that quick pass such a regression about once in 2500 runs, where the
+	// middle one passed it one run in 30.
 	slices.Sort(took)
-	if mid := took[len(took)/2]; mid > 10*time.Millisecond {
-		t.Errorf("messages taken a middle %s after they were sent (%v)", mid, took)
+	if second := took[len(took)-2]; second > 10*time.Millisecond {
+		t.Errorf("messages taken up to %s after they were sent, two or more over 10 ms (%v)", second, took)
 	}
 }

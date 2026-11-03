@@ -1,9 +1,9 @@
 package traffic
 
 import (
-	"os"
 	"fmt"
 	"math"
+	"os"
 	"slices"
 	"testing"
 	"time"

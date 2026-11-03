@@ -7,6 +7,29 @@ This project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 ---
 
+## [0.167.0] - 2026-11-03
+
+### Added
+
+- Low-cost airlines (Ryanair, easyJet, Wizz Air: `Airline.LowCost` in `traffic.airlines`) take stands without a jetway first, all day and at every airport; the others keep the gates. Overnight stays remote for everyone. New `traffic.RemoteStands`.
+- A taxi clearance crosses the runways not in use on the way, "taxi to and hold short of runway 06 via D, F, cross runway 12", and holds short of those in use, "hold short of runway 30"; the crew does not stop to ask at a runway cleared with its taxi (live LKPR: FLBUB at 12). New `traffic.WithCross`.
+- Radar vectors after a go-around: the headings at the circuit's turns, the first with "vectoring for ILS approach runway 06", then direct to the STAR's fix, instead of nothing after "climb" (live LKPR: LOT1058; LKPR AIP: "radar vectoring will be provided").
+- A landing clearance names a departure lining up or lined up with its take-off clearance, "traffic departing ahead" (#1429).
+
+### Fixed
+
+- A departure lined up and waiting is held in place as one holding short is; left alone the simulator moved it, its nose coming up (live LKPR: EZY1075).
+- No line-up behind a departure that is not rolling yet when its interval would bring the next arrival too close (live LKPR: TVS1109 lined up 2 minutes 13 behind OKNRF, LOT1058 sent around).
+- Delivery says "readback correct, contact Ruzyne Ground 121.9" as one call (#1425). New `traffic.ReadbackCorrectAndHandoff`.
+- A transfer the crew missed is called again as a repeat, "I say again, contact …", not seemingly a second transfer (live LKPR: TVS926).
+- `ClearPushbackFacing` refuses a facing no push from the stand ends in (`traffic.ErrNoPushFacing`), the planned push kept and not cleared, instead of clearing a push with no facing and saying yes.
+
+### Tests and CI
+
+- CI vets and tests the modules of their own (`cmd/airport-map`, `cmd/simvar-cli`) through a workspace, checks gofmt on the Go files a change touches, and runs `worldtest` under the race detector nightly; the director job counts a test that skips itself as missing.
+- Tests that could pass without checking anything now assert it: TestSecureLink fails instead of hanging, TestRunwayChangeGapFixed always checks the deadline, the tug road test counts tugs stuck, TestPlayerRescue rolls the user to a stop and checks where the trucks come out, TestDispatchWaitsOnTheEvent takes the second-worst of seven, the speed constants are checked as literals; TestSlowLeaderFastFollower runs in the director job again.
+
+
 ## [0.166.8] - 2026-11-03
 
 ### Fixed

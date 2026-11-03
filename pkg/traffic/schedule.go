@@ -65,6 +65,10 @@ type Airline struct {
 	Name string `json:"name,omitempty"`
 	// Cargo: a freighter airline, on cargo stands first (#833).
 	Cargo bool `json:"cargo,omitempty"`
+	// LowCost: a low-cost airline, on stands without a jetway (remote)
+	// first, all day, not only overnight (the user: "RYR on LKPR always
+	// outside the terminal"); the network airlines keep the gates.
+	LowCost bool `json:"lowCost,omitempty"`
 	// Telephony is the radio call sign ("SPEEDBIRD").
 	Telephony string `json:"telephony,omitempty"`
 	// Fleet is the types it flies with their weights.

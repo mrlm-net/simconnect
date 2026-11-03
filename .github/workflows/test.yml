@@ -23,13 +23,52 @@ jobs:
     timeout-minutes: 60
     steps:
       - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0 # the gofmt step compares with the base
 
       - uses: actions/setup-go@v5
         with:
           go-version-file: go.mod
+
+      - name: gofmt (the Go files this change touches)
+        # Checked as committed (git show, LF), not as checked out: the
+        # runner's autocrlf gives CRLF, which gofmt reports on every file.
+        # Only the files changed, as older files are not all formatted yet.
+        shell: bash
+        run: |
+          if [ "${{ github.event_name }}" = pull_request ]; then
+            base=$(git merge-base "origin/${{ github.base_ref }}" HEAD)
+          else
+            base="${{ github.event.before }}"
+          fi
+          if [ -z "$base" ] || ! git cat-file -e "$base^{commit}" 2>/dev/null; then
+            echo "no base to compare with: nothing checked"
+            exit 0
+          fi
+          bad=
+          for f in $(git diff --name-only --diff-filter=ACMR "$base" HEAD -- '*.go'); do
+            if [ -n "$(git show "HEAD:$f" | gofmt -l)" ]; then
+              bad="$bad $f"
+            fi
+          done
+          if [ -n "$bad" ]; then
+            echo "::error::not gofmt-clean:$bad"
+            exit 1
+          fi
 
       - name: Vet
         run: go vet -unsafeptr=false ./...
 
       - name: Test
         run: go test ./... -short -count=1 -timeout 50m
+
+      - name: Modules of their own (simvar-cli, airport-map)
+        # Each has its own go.mod, so ./... above never reaches them.
+        # airport-map requires a published simconnect, so it is built against
+        # this checkout through a workspace, as locally (go.work is not
+        # committed).
+        shell: bash
+        run: |
+          go work init . ./cmd/airport-map ./cmd/simvar-cli
+          go vet -unsafeptr=false ./cmd/simvar-cli/... ./cmd/airport-map/...
+          go test ./cmd/simvar-cli/... ./cmd/airport-map/... -count=1 -timeout 10m

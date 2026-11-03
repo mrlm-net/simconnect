@@ -66,7 +66,7 @@ jobs:
         # Windows with this. A test of another airport skips. A pass means
         # flights were flown: fails on any failure, or if too few ran.
         env:
-          SKIP: '^TestMorningPeakHasArrivals$|^TestSlowLeaderFastFollower$|^TestArrivalNoClearanceGoesAround$|^TestArrivalNoClearanceDiverts$|^TestDepartureRunwayHasSID$|^TestFaceOutStandPullsIn$|^TestLineUpTakeoffLandingWords$|^TestMainEntranceFirst$|^TestPlayerRescue$|^TestPlayerRescueSmooth$|^TestReadyForTaxiContact$|^TestSayingUntil$|^TestSceneLinesToTheTimetable$|^TestSceneMute$|^TestScheduleTuningLead$|^TestSpotsAnyAirport$|^TestStaffedAssist$|^TestStaffedDepartureLevelsOff$|^TestStaffedSafetyNet$|^TestTaxiClearanceNotRepeated$|^TestTowerCallsUnchanged$|^TestUptoByName$|^TestVacateSaidOnce$|^TestWakeCautionVFR$|^TestSayCustomCrewOnOwnFrequency$|^TestScenarioPushAlreadyCleared$|^TestRefusedPushNotSaidAgain$|^TestGameFlightsAreScheduled$'
+          SKIP: '^TestMorningPeakHasArrivals$|^TestArrivalNoClearanceGoesAround$|^TestArrivalNoClearanceDiverts$|^TestDepartureRunwayHasSID$|^TestFaceOutStandPullsIn$|^TestLineUpTakeoffLandingWords$|^TestMainEntranceFirst$|^TestPlayerRescue$|^TestPlayerRescueSmooth$|^TestReadyForTaxiContact$|^TestSayingUntil$|^TestSceneLinesToTheTimetable$|^TestSceneMute$|^TestScheduleTuningLead$|^TestSpotsAnyAirport$|^TestStaffedAssist$|^TestStaffedDepartureLevelsOff$|^TestStaffedSafetyNet$|^TestTaxiClearanceNotRepeated$|^TestTowerCallsUnchanged$|^TestUptoByName$|^TestVacateSaidOnce$|^TestWakeCautionVFR$|^TestSayCustomCrewOnOwnFrequency$|^TestScenarioPushAlreadyCleared$|^TestRefusedPushNotSaidAgain$|^TestGameFlightsAreScheduled$|^TestSlowLeaderFastFollower$|^TestTaxiCrossesRunwayNotInUse$'
         run: |
           mkdir -p data/LKPR
           cp pkg/airport/testdata/LKPR.json data/LKPR/layout.json
@@ -88,11 +88,17 @@ jobs:
             echo "::error::go test exited $code with no failed test named"
             exit 1
           fi
-          # Every test not in SKIP must have reported: none vanished.
+          # Every test not in SKIP must have run: none vanished, and none
+          # skipped itself. With the LKPR data here and no -short nothing
+          # eligible has a reason to skip, so a skip counts as missing: a test
+          # that starts skipping would otherwise pass unnoticed.
           go test ./pkg/traffic/world/worldtest/ -list '.*' | grep '^Test' | grep -vE "$SKIP" | sort > eligible.txt
-          grep -aE '^--- (PASS|FAIL|SKIP)' results.txt | sed -E 's/^--- [A-Z]+: //; s/ .*//' | sort > ran.txt || true
+          grep -aE '^--- (PASS|FAIL)' results.txt | sed -E 's/^--- [A-Z]+: //; s/ .*//' | sort > ran.txt || true
+          if grep -aq '^--- SKIP' results.txt; then
+            echo "::error::skipped themselves (add to SKIP by name if meant): $(grep -a '^--- SKIP' results.txt | sed 's/--- SKIP: //; s/ .*//' | paste -sd' ' -)"
+          fi
           if ! diff eligible.txt ran.txt; then
-            echo "::error::$(wc -l < ran.txt) tests reported, $(wc -l < eligible.txt) eligible"
+            echo "::error::$(wc -l < ran.txt) tests ran, $(wc -l < eligible.txt) eligible"
             exit 1
           fi
           # They run in real time on a two-core runner: a test counts as failed

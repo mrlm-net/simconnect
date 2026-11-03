@@ -199,8 +199,8 @@ type controlled struct {
 	// freqs: the frequency it works each station on, by position and
 	// name (station): kept when the unit's frequency in use changes.
 	freqs    map[string]string
-	taxiSaid  string // the last taxi clearance said to it (#1269)
-	visual    bool   // cleared for a visual approach, as the crew asked (#766)
+	taxiSaid string // the last taxi clearance said to it (#1269)
+	visual   bool   // cleared for a visual approach, as the crew asked (#766)
 	// circuit: a VFR arrival's circuit (#568); downwindSaid once it has
 	// reported downwind.
 	circuit      *traffic.Circuit
@@ -855,7 +855,7 @@ func (cc *controlCenter) recheckArrivalStands() {
 		}
 		it.stands.Release(old)
 		l := it.graph.Layout
-		newStand, err := it.stands.Assign(traffic.StandRequirements{Owner: tail, Airline: airlineOf(tail), HalfSpan: half, Runway: rwy, NoJetway: traffic.NoJetway(model), Overnight: it.overnight, Bridged: cc.jetwayStands(it.graph.Layout.ICAO), Prefer: cc.jetwayGates(it.graph.Layout.ICAO), Other: it.other})
+		newStand, err := it.stands.Assign(traffic.StandRequirements{Owner: tail, Airline: airlineOf(tail), HalfSpan: half, Runway: rwy, NoJetway: traffic.RemoteStands(model, airlineOf(tail)), Overnight: it.overnight, Bridged: cc.jetwayStands(it.graph.Layout.ICAO), Prefer: cc.jetwayGates(it.graph.Layout.ICAO), Other: it.other})
 		if err == nil {
 			err = it.arr.ChangeStand(newStand)
 			if err != nil {
@@ -1105,7 +1105,7 @@ func (cc *controlCenter) spawn(g *airport.Graph, r SpawnRequest) (*controlled, e
 	// The stand: assigned (-1) or the one asked for, if nobody holds it.
 	alloc := cc.allocator(g)
 	if r.Stand < 0 {
-		req := traffic.StandRequirements{Owner: r.Tail, Airline: airlineOf(r.Tail), HalfSpan: prof.SpanMeters / 2, OffBlock: r.pushAt, NoJetway: traffic.NoJetway(r.Model), Overnight: r.overnight, Bridged: cc.jetwayStands(g.Layout.ICAO), Prefer: cc.jetwayGates(g.Layout.ICAO), Other: r.Other}
+		req := traffic.StandRequirements{Owner: r.Tail, Airline: airlineOf(r.Tail), HalfSpan: prof.SpanMeters / 2, OffBlock: r.pushAt, NoJetway: traffic.RemoteStands(r.Model, airlineOf(r.Tail)), Overnight: r.overnight, Bridged: cc.jetwayStands(g.Layout.ICAO), Prefer: cc.jetwayGates(g.Layout.ICAO), Other: r.Other}
 		if r.Kind == "arrival" {
 			req.Runway, req.OffBlock = r.Runway, r.offBlock
 		}
@@ -2103,6 +2103,12 @@ func (it *controlled) act(action string, node airport.NodeID) error {
 	case d != nil && action == "startup":
 		d.ClearStartUp()
 	case d != nil && action == "taxi":
+		// The runways not in use it crosses first: cleared with the taxi
+		// (WithCross), no stop at their holding points; before it, so the
+		// taxi starts with them cleared.
+		for range it.taxiCrossingsNow() {
+			d.ClearToCross()
+		}
 		d.ClearToTaxi()
 	case d != nil && action == "upto":
 		return d.ClearUpTo(node)
@@ -2156,7 +2162,8 @@ func (it *controlled) act(action string, node airport.NodeID) error {
 			return err
 		}
 		it.mu.Lock()
-		it.landCleared = false // the next approach is cleared again
+		it.landCleared = false        // the next approach is cleared again
+		it.vectoringSaid.Store(false) // its first vector after: "vectoring for ILS approach runway 06, …"
 		it.mu.Unlock()
 		if it.cc.rejoin != nil {
 			it.cc.rejoin(it.ICAO, it.Tail)
@@ -2164,6 +2171,9 @@ func (it *controlled) act(action string, node airport.NodeID) error {
 	case it.arr != nil && action == "vacate":
 		return it.vacateAt(node)
 	case it.arr != nil && action == "taxi":
+		for range it.taxiCrossingsNow() { // cleared with the taxi (WithCross), before it
+			it.arr.ClearToCross()
+		}
 		it.arr.ClearToTaxi()
 	case it.arr != nil && action == "upto":
 		return it.arr.ClearUpTo(node)
@@ -4011,6 +4021,23 @@ func (it *controlled) logChanges(prev ControlView, ev TaxiOrArrival) {
 			if t := it.phraseView(said, r, action, -1); t.Intent != "" {
 				it.say(t)
 			}
+			// Taxiing on its own (an arrival off the runway): the runways not in
+			// use it crosses first, cleared in its taxi clearance (WithCross),
+			// cleared now, not asked for at their holding points.
+			if cross, _ := it.taxiCrossings(r, v.Runway); action == "taxi" && len(cross) > 0 {
+				it.cc.pending.later(it.cc.clock.Now(), func() {
+					_ = it.cc.do(func() error {
+						for range cross {
+							if it.dep != nil {
+								it.dep.ClearToCross()
+							} else if it.arr != nil {
+								it.arr.ClearToCross()
+							}
+						}
+						return nil
+					})
+				})
+			}
 		}
 	}
 	if v.Lights != prev.Lights && prev.Lights != "" {
@@ -4286,14 +4313,15 @@ func (it *controlled) phraseView(v ControlView, r *airport.Route, action string,
 		if r != nil {
 			n = len(r.Edges)
 		}
+		cross, hold := it.taxiCrossings(r, rwy)
 		if it.dep != nil {
 			entry := ""
 			if r != nil {
 				entry = r.Entry
 			}
-			return traffic.ClearedTaxiToRunway(call, rwy, entry, spoken(n))
+			return traffic.WithCross(traffic.WithHoldShort(traffic.ClearedTaxiToRunway(call, rwy, entry, spoken(n)), hold...), cross...)
 		}
-		return traffic.ClearedTaxiToStand(call, v.Stand, spoken(n))
+		return traffic.WithCross(traffic.WithHoldShort(traffic.ClearedTaxiToStand(call, v.Stand, spoken(n)), hold...), cross...)
 	case "vacate":
 		if it.arr != nil {
 			if x, err := it.exitAt(node); err == nil {

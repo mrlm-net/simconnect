@@ -24,6 +24,9 @@ var (
 	ErrTooLate = errors.New("traffic: too late for that")
 	// ErrNotApplicable: the command does not fit the aircraft's phase.
 	ErrNotApplicable = errors.New("traffic: not possible in this phase")
+	// ErrNoPushFacing: no push from the stand ends facing the way asked
+	// (ClearPushbackFacing); the planned push stands, not cleared.
+	ErrNoPushFacing = errors.New("traffic: no pushback ends facing that way")
 	// ErrAlreadyCleared: this exact clearance is the one in force. A
 	// controller does not say a thing twice, and a host that offers it
 	// anyway gets a refusal rather than a second identical transmission
@@ -437,7 +440,9 @@ func (c *ArrivalController) goAroundToDownwind(join, joinFt, circuitFt float64) 
 	end := c.plan.End
 	t, hdg := end.Threshold, end.Heading
 	ahead := offsetHeading(t, hdg, 10*1852)
-	cross := func(p airport.LatLon) float64 { return calc.CrossTrackMeters(t.Lat, t.Lon, ahead.Lat, ahead.Lon, p.Lat, p.Lon) }
+	cross := func(p airport.LatLon) float64 {
+		return calc.CrossTrackMeters(t.Lat, t.Lon, ahead.Lat, ahead.Lon, p.Lat, p.Lon)
+	}
 	route := c.req.Procedure
 	climbNM := c.goAroundClimbNM()
 	k := -1
@@ -485,6 +490,7 @@ func (c *ArrivalController) goAroundToDownwind(join, joinFt, circuitFt float64) 
 	names = append(names, starNames...)
 	c.setCorners(wps, names)
 	c.cornerNext = 0
+	c.vectors = goAroundVectors(wps, names)
 	rounded := roundedChain(c.last.Position, wps, MaxBankDeg(*c.aircraft()))
 	c.note("go around: back to the downwind at "+route[k].Ident, nil)
 	c.note("release", c.inj.Release(c.objectID))
@@ -499,4 +505,28 @@ func (c *ArrivalController) goAroundToDownwind(join, joinFt, circuitFt float64) 
 	c.goArounds++
 	c.setState(ArrivalApproaching, nil)
 	return true, nil
+}
+
+// goAroundVectors are radar's turns round a go-around's circuit (wps, names
+// as goAroundToDownwind sets them): at each of its own turning points the
+// heading of the leg after it, at the last one direct to the STAR's next
+// named fix (a heading where it has none). Not left to its own navigation
+// with nothing said: the missed approach climbs straight ahead, "radar
+// vectoring will be provided" (LKPR AIP ILS 06/24; the user, live LOT1058
+// heard nothing after "climb").
+func goAroundVectors(wps []types.SIMCONNECT_DATA_WAYPOINT, names []string) []Vector {
+	ll := func(i int) airport.LatLon { return airport.LatLon{Lat: wps[i].Latitude, Lon: wps[i].Longitude} }
+	var out []Vector
+	for i := 0; i+1 < len(wps) && i < len(names) && CircuitPointName(names[i]); i++ {
+		at, next := ll(i), ll(i+1)
+		if i+1 < len(names) && !CircuitPointName(names[i+1]) {
+			for j := i + 1; j < len(names) && j < len(wps)-2; j++ {
+				if names[j] != "" && !CircuitPointName(names[j]) {
+					return append(out, Vector{At: at, Fix: names[j]})
+				}
+			}
+		}
+		out = append(out, Vector{At: at, HeadingDeg: calc.BearingDegrees(at.Lat, at.Lon, next.Lat, next.Lon)})
+	}
+	return out
 }

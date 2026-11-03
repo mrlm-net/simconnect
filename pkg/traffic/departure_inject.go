@@ -400,6 +400,14 @@ func (c *TaxiController) onDepartureFrame(m taxiMonitor) {
 			c.startTakeoff()
 			return
 		}
+		// Held in place while it waits, as holding short: left alone, the
+		// simulator moved it itself (live, LKPR 06: EZY1075's nose came up
+		// lined up behind MCR1396).
+		if c.mover != nil {
+			if _, err := c.advance(); err != nil && !errors.Is(err, ErrGroundUnknown) {
+				c.emit(err, true)
+			}
+		}
 		c.emit(nil, false)
 		return
 	case TaxiDeparting:
@@ -2010,17 +2018,22 @@ func (c *TaxiController) ClearPushbackFacing(dir string) error {
 	if c.state > TaxiAwaitingPushback {
 		return ErrTooLate
 	}
+	prevFacing, prevHave := c.pushFacing, c.havePushFacing
 	c.pushFacing, c.havePushFacing = deg, true
 	if c.pushPose != nil || c.pushPlanned != nil {
 		hadPose := c.pushPose != nil
 		c.route = c.origRoute
 		c.planPushback()
 		if hadPose && c.pushPose == nil {
-			// No push ends facing that way: the plan it had stands, not some
-			// other push with no facing to tell.
-			c.havePushFacing = false
+			// No push ends facing that way: the plan it had stands, the push
+			// not cleared, and the caller told so, not yes with no facing
+			// (review of 216c3d3).
+			c.pushFacing, c.havePushFacing = prevFacing, prevHave
 			c.route = c.origRoute
 			c.planPushback()
+			c.track = newRouteTracker(c.route)
+			c.note("pushback facing "+CompassName(deg)+": no push ends so, the planned one stands", nil)
+			return fmt.Errorf("facing %s: %w", CompassName(deg), ErrNoPushFacing)
 		}
 		c.track = newRouteTracker(c.route)
 		c.note("pushback facing "+CompassName(deg), nil)

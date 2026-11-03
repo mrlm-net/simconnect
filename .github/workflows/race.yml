@@ -29,6 +29,41 @@ jobs:
           CGO_ENABLED: '1'
         run: go test -race -short ./... -count=1 -timeout 220m
 
+  world-race:
+    name: Whole-World runs under -race
+    # The job above runs -short, which skips every whole-World test
+    # (TestHarnessesOneAfterAnother and the rest of worldtest): their
+    # goroutines meet only here. On Linux with the repository's LKPR data as
+    # director-linux.yml does, skipping the same tests (its SKIP, read from
+    # there so the two lists cannot part).
+    runs-on: ubuntu-latest
+    timeout-minutes: 150
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+
+      - name: Test
+        env:
+          CGO_ENABLED: '1'
+        run: |
+          SKIP=$(sed -nE "s/^ *SKIP: '(.*)'\r?$/\1/p" .github/workflows/director-linux.yml)
+          test -n "$SKIP"
+          mkdir -p data/LKPR
+          cp pkg/airport/testdata/LKPR.json data/LKPR/layout.json
+          cp pkg/airport/testdata/LKPR-procedures.json data/LKPR/procedures.json
+          export SIMCONNECT_DATA="$PWD/data"
+          code=0
+          go test -race ./pkg/traffic/world/worldtest/ -v -count=1 -timeout 130m -skip "$SKIP" > full.txt 2>&1 || code=$?
+          grep -aE '^(--- |ok|FAIL|panic)|_test.go:[0-9]+:' full.txt || true
+          if grep -aq 'WARNING: DATA RACE' full.txt; then
+            grep -a -A40 'WARNING: DATA RACE' full.txt | head -200
+            echo "::error::data race"
+          fi
+          test "$code" = 0
+
   sweeps:
     name: Full validation sweeps
     runs-on: windows-latest

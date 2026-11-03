@@ -20,7 +20,7 @@ func TestTugKeepsOutFromUnderTheAircraft(t *testing.T) {
 		l := airportGraph(t, icao).Layout
 		for _, typ := range []string{"A320", "B738", "E190"} {
 			prof := MotionProfileFor(typ)
-			tried, in, out := 0, 0, 0
+			tried, in, out, stuck := 0, 0, 0, 0
 			for _, p := range l.Parking {
 				if p.Size() == airport.StandNone || p.Radius*2 < prof.SpanMeters {
 					continue
@@ -55,6 +55,14 @@ func TestTugKeepsOutFromUnderTheAircraft(t *testing.T) {
 						t.Errorf("%s %s %s: under the aircraft on the way in", icao, typ, p.Label())
 					}
 				}
+				// A tug that never reaches the nose was never under it either:
+				// without this, one stuck on its way in passed.
+				if !tug.Connected() {
+					if stuck++; stuck <= 5 {
+						t.Errorf("%s %s %s: not connected after 15 minutes", icao, typ, p.Label())
+					}
+					continue
+				}
 				left, back := false, false
 				for s := 0; s < 60*900 && !tug.Done(); s++ {
 					if err := tug.Update(pose, false, 1.0/60); err != nil {
@@ -73,7 +81,7 @@ func TestTugKeepsOutFromUnderTheAircraft(t *testing.T) {
 					}
 				}
 			}
-			t.Logf("%s %s: %d stands, %d under it on the way in, %d on the way home", icao, typ, tried, in, out)
+			t.Logf("%s %s: %d stands, %d under it on the way in, %d on the way home, %d never connected", icao, typ, tried, in, out, stuck)
 			if tried == 0 {
 				t.Errorf("%s %s: no tug attached: nothing checked", icao, typ)
 			}
