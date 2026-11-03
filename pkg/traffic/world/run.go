@@ -520,6 +520,7 @@ func (st *state) startWorld(cc *controlCenter) (stopWorld func()) {
 		tw.dropBehind(tail) // nobody waits to line up behind an arrival that went around
 	}
 	cc.followed = seqs.behind
+	cc.numberFor = seqs.numberFor
 	// A call sign spawned again (a scene replayed): no clearance remembered.
 	cc.forgetTower = tw.forgetTail
 	cc.forgetFlight = func(tail string) { seqs.forget(tail); cw.forget(tail) }

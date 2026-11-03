@@ -427,11 +427,23 @@ func (q *sequences) absorb(now time.Time, icao string, seq []traffic.SequenceEnt
 					}
 				}
 				if vectored && it.vectorsSaid.Load() == said {
+					vx := it.vectored(v, magVar)
 					if tx.Text == "" {
-						tx = it.vectored(v, magVar)
+						tx = vx
 					} else {
-						tx = traffic.Joined(tx, it.vectored(v, magVar))
+						// The reason once, at the end: the vector's "for
+						// spacing", not the speed's too (#1428).
+						if strings.Contains(vx.Text, "for spacing") {
+							tx = traffic.SpacingTold(tx)
+						}
+						tx = traffic.Joined(tx, vx)
 					}
+				} else if numberOnly(tx) {
+					// A number with nothing to do is not a call: it goes
+					// with the next instruction (#1428: "Speedbird 1971,
+					// number 4", its heading 8 s later on its own).
+					q.unsayNumber(e.Callsign, n)
+					tx = traffic.Transmission{}
 				}
 				if tx.Text != "" {
 					it.say(tx)
@@ -1283,6 +1295,24 @@ type seqSaid struct {
 // long. After a go-around the order swung 2, 3, 1, 3 within a minute and
 // every swing was said (live, LKPR: DFVKB around OKXNU's go-around).
 const numberSettle = 45 * time.Second
+
+// numberOnly reports whether t is a sequence call saying a number and
+// nothing else.
+func numberOnly(t traffic.Transmission) bool {
+	p := t.Params
+	return t.Intent == traffic.IntentSequence && p[traffic.ParamNumber] != "" && p[traffic.ParamSpeed] == "" &&
+		p[traffic.ParamDelay] == "" && p[traffic.ParamFinalSpeed] == "" && p[traffic.ParamAlsoSaid] == ""
+}
+
+// numberFor is the number cs at icao is to be told with an instruction now:
+// its place when not told it yet, else 0.
+func (q *sequences) numberFor(icao, cs string) int {
+	_, e, ok := q.entryOf(icao, cs)
+	if !ok || e.Number == 0 {
+		return 0
+	}
+	return q.numberToSay(q.cc.clock.Now(), cs, e.Number)
+}
 
 // stillNumber reports whether cs is number in icao's sequence now.
 func (q *sequences) stillNumber(icao, cs string, number int) bool {
