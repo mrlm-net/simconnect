@@ -3621,6 +3621,11 @@ func (it *controlled) tellGiveWay(other uint32) {
 		desc += " coming the other way"
 	}
 	it.say(traffic.GiveWay(it.Tail, desc))
+	if gp != nil {
+		if why := gp.GiveWayWhy(it.object()); why != "" {
+			it.cc.log.printf("%-6s ground: gives way to the %s — %s", it.Tail, desc, why)
+		}
+	}
 }
 
 // standNoseOffset is the stand offset for model on stand: at a gate the

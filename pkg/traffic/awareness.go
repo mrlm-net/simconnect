@@ -1,6 +1,7 @@
 package traffic
 
 import (
+	"fmt"
 	"math"
 	"sync"
 	"time"
@@ -21,6 +22,8 @@ type GroundPicture struct {
 	vehicles map[uint32]vehicleEntry // service vehicles (ReportVehicle)
 	// follows: by aircraft, the one ground told it to follow (Follow).
 	follows map[uint32]uint32
+	// why: by aircraft, why giveWayTo last stopped it (GiveWayWhy).
+	why map[uint32]string
 }
 
 type groundEntry struct {
@@ -221,8 +224,9 @@ func (p *GroundPicture) giveWayTo(id uint32, path *GroundPath, from, look, half 
 		}
 		return false
 	}
-	best, to := math.Inf(1), uint32(0)
+	best, to, why := math.Inf(1), uint32(0), ""
 	if len(others) == 0 {
+		p.noteWhy(id, "")
 		return best, 0
 	}
 	end := math.Min(path.Length(), from+look)
@@ -260,6 +264,7 @@ func (p *GroundPicture) giveWayTo(id uint32, path *GroundPath, from, look, half 
 			if at := first(mine, o.e.ahead, reach); at >= 0 {
 				if from+at < best {
 					best, to = from+at, o.id
+					why = fmt.Sprintf("following it: their ways meet %.0f m on", at)
 				}
 				continue
 			}
@@ -277,6 +282,7 @@ func (p *GroundPicture) giveWayTo(id uint32, path *GroundPath, from, look, half 
 			if bodyTo := first(mine, body, half+GiveWayMarginMeters+TailplaneShare*o.e.half); bodyTo >= 0 {
 				if from+bodyTo < best {
 					best, to = from+bodyTo, o.id
+					why = fmt.Sprintf("its body %.0f m on, %.1f m from this path (reach %.1f m)", bodyTo, closest(mine, body), half+GiveWayMarginMeters+TailplaneShare*o.e.half)
 				}
 				continue
 			}
@@ -301,10 +307,55 @@ func (p *GroundPicture) giveWayTo(id uint32, path *GroundPath, from, look, half 
 		if o.e.pushing || theirsTo < mineTo || (theirsTo == mineTo && o.id < id) {
 			if from+mineTo < best {
 				best, to = from+mineTo, o.id
+				what := "way"
+				if o.e.pushing {
+					what = "push corridor"
+				}
+				why = fmt.Sprintf("its %s %.0f m on, %.1f m from this path (reach %.1f m), %d m of it left", what, mineTo, closest(mine, o.e.ahead), reach, int(float64(len(o.e.ahead))*trafficBodyStep))
 			}
 		}
 	}
+	if to == 0 {
+		why = ""
+	}
+	p.noteWhy(id, why)
 	return best, to
+}
+
+// closest is the least distance between a point of a and one of b.
+func closest(a, b []airport.LatLon) float64 {
+	d := math.Inf(1)
+	for _, q := range a {
+		for _, r := range b {
+			d = math.Min(d, localDist(q, r))
+		}
+	}
+	return d
+}
+
+// noteWhy keeps why giveWayTo stopped id ("" for not stopped).
+func (p *GroundPicture) noteWhy(id uint32, why string) {
+	p.mu.Lock()
+	defer p.mu.Unlock()
+	if why == "" {
+		delete(p.why, id)
+		return
+	}
+	if p.why == nil {
+		p.why = map[uint32]string{}
+	}
+	p.why[id] = why
+}
+
+// GiveWayWhy says why aircraft id last gave way to another on the ground
+// (the distances the rule saw), "" when it is not giving way.
+func (p *GroundPicture) GiveWayWhy(id uint32) string {
+	if p == nil {
+		return ""
+	}
+	p.mu.Lock()
+	defer p.mu.Unlock()
+	return p.why[id]
 }
 
 // corridorBlocked reports another aircraft in the way of a pushback along
@@ -400,6 +451,7 @@ func (p *GroundPicture) Forget(id uint32) {
 	defer p.mu.Unlock()
 	delete(p.aircraft, id)
 	delete(p.follows, id)
+	delete(p.why, id)
 	for f, l := range p.follows {
 		if l == id {
 			delete(p.follows, f) // its leader gone
