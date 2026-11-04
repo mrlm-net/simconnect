@@ -7,6 +7,13 @@ This project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 ---
 
+## [0.167.2] - 2026-11-04
+
+### Fixed
+
+- A passenger bus parks off the vehicle roads: a spot closer than 8 m to a road's centreline moves beside the bus before it, 5 m outboard, instead of 20 m ahead of it (#1445; live LKPR: WZZ783 on N53, its second bus on the road in front of the stand; N52 to N56, S19 the same). New `traffic.BusSpotOn`, `airport.Layout.VehicleRoadDistance`.
+
+
 ## [0.167.1] - 2026-11-03
 
 ### Fixed
