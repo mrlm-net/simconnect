@@ -94,6 +94,12 @@ type ApproachPose struct {
 	// without it the height is ours alone (the gear held down,
 	// HoldGearDown).
 	Unpinned bool
+	// Landing: an arrival's flare and touchdown. Nose up on its main gear
+	// the simulator rests it on extended struts, above its static CG height
+	// (Injector.mainsCG); placed lower its main wheels sank into the runway
+	// and it popped up as the on-ground flag came (live LKPR: TVS745 B738
+	// +0.77 ft, KAL187 B789 +0.89 ft, the wheels in the runway 1.4 s before).
+	Landing bool
 	// MainGearBehindM: how far the main gear is behind the reference point
 	// (MotionProfile.RefAheadMeters). Pitched nose up, an aircraft turns on
 	// its main gear, not its reference point: placed by the reference point

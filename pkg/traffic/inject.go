@@ -53,6 +53,10 @@ type Injector struct {
 	// (an arrival, created in the air), so it is placed at its rest pitch
 	// too, not on extended struts (MovingPitchDeg).
 	rests map[string][2]float64
+	// mains: by aircraft title, the CG height (feet) the simulator rests it
+	// at on its main gear nose up, the turn on the gear taken off
+	// (mainsCG).
+	mains map[string]float64
 	// gearStep: by aircraft title, how far down the writes HoldGearDown has
 	// come for a model that refuses them.
 	gearStep map[string]int
@@ -110,7 +114,16 @@ type injected struct {
 	// few after each change of gearStep); gearStep: as Injector.gearStep.
 	gearSends int
 	gearStep  int
+	// touchdown: placed landing on its main gear, nose up, the on-ground
+	// flag set (PlaceAir), the main gear mainArm meters behind its
+	// reference point: what the simulator shows then is its mains height.
+	touchdown bool
+	mainArm   float64
 }
+
+// mainsMinPitchDeg: nose up at least this much an aircraft on the ground
+// rests on its main gear alone (Injector.mainsCG learnt from it).
+const mainsMinPitchDeg = 2.0
 
 // Injector definition, request and event offsets.
 const (
@@ -248,6 +261,7 @@ func NewInjector(client engine.Client, opts ...InjectorOption) *Injector {
 		byRequest: map[uint32]uint32{},
 		sent:      map[uint32]string{},
 		rests:     map[string][2]float64{},
+		mains:     map[string]float64{},
 		gearStep:  map[string]int{},
 	}
 	for _, o := range opts {
@@ -634,6 +648,12 @@ func (i *Injector) Handle(msg engine.Message) (bool, error) {
 					i.rests[o.title] = [2]float64{rest, pitch}
 				}
 			}
+			// Touched down on its main gear, nose up, with our flag: the
+			// simulator's own height there, the turn on the gear taken off,
+			// for the next landing of its kind (mainsCG).
+			if o.touchdown && o.title != "" && g.OnGround != 0 && -g.PlanePitch >= mainsMinPitchDeg {
+				i.mains[o.title] = rest - o.mainArm*math.Sin(-g.PlanePitch*math.Pi/180)/0.3048
+			}
 		}
 		return true, nil
 	case types.SIMCONNECT_RECV_ID_EXCEPTION:
@@ -714,7 +734,18 @@ func (i *Injector) PlaceAir(objectID uint32, pose ApproachPose) error {
 	// there until the nose lifts and then takes ours: the same height,
 	// nothing to pop at rotation (sent the rest it popped 0.35 to 0.68 ft).
 	// In the air the height blends up from it (smoothCG).
-	if pose.OnGround {
+	// Landing: never below its height on its main gear, nose up (mainsCG),
+	// not its rest standing on compressed struts.
+	if pose.Landing {
+		cg = math.Max(cg, i.mainsCG(o))
+	}
+	o.touchdown = false
+	switch {
+	case pose.OnGround && pose.Landing && pose.PitchDeg > 0:
+		// Touched down, the nose still up: on its main gear at the height it
+		// came down at, the flag at once; the simulator rests it there too.
+		o.touchdown, o.mainArm = true, pose.MainGearBehindM
+	case pose.OnGround:
 		cg = o.cgFt
 		// Touching down, the flag not set yet: held off until the wheels are
 		// blended down to it; set at once, the simulator snapped them there
@@ -840,6 +871,17 @@ func mainGearLift(pose ApproachPose) float64 {
 		return 0
 	}
 	return pose.MainGearBehindM * math.Sin(pose.PitchDeg*math.Pi/180) / 0.3048
+}
+
+// mainsCG is the CG height (feet) the simulator rests o at on its main gear,
+// nose up, the turn on the gear taken off: as last seen for its kind
+// (Handle), else RestAboveStaticShare above its static CG height. i.mu
+// held.
+func (i *Injector) mainsCG(o *injected) float64 {
+	if m, ok := i.mains[o.title]; ok && o.title != "" {
+		return m
+	}
+	return o.cgFt * (1 + RestAboveStaticShare)
 }
 
 // groundFlagWithinFt: at touchdown the on-ground flag is set once the

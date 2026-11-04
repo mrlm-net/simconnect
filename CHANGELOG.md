@@ -7,6 +7,13 @@ This project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 ---
 
+## [0.167.3] - 2026-11-04
+
+### Fixed
+
+- A landing comes down onto its main gear at the height the simulator rests it there nose up, on extended struts, and the on-ground flag is set at once: no main wheels in the runway in the last 1.4 s of the flare, no pop up at touchdown (#1448; live LKPR: TVS745 B738 +0.77 ft, KAL187 B789 +0.89 ft). The height is learnt per model from the simulator at each touchdown, else `RestAboveStaticShare` above the static CG height; the static height once the nose wheel is down. New `traffic.ApproachPose.Landing`.
+
+
 ## [0.167.2] - 2026-11-04
 
 ### Fixed
