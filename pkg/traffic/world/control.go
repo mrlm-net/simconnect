@@ -4185,13 +4185,45 @@ func (it *controlled) askWeather(pos traffic.Position) {
 		return
 	}
 	p := it.cc.pending
-	p.later(it.clearAt(pos).Add(crewActDelay+p.jitter(crewActJitter)), func() {
+	tries := 0
+	var ask func()
+	ask = func() {
+		// Not before the controller's answer to its check-in, still waiting
+		// on a busy frequency: asked in between, the weather came after
+		// "report ready for departure" (live, TVS827 at LKPR).
+		if it.answerWaiting(pos) {
+			if tries++; tries < weatherAskTries {
+				p.later(it.clearAt(pos).Add(weatherAskRetry+p.jitter(crewActJitter)), ask)
+			}
+			return
+		}
 		it.say(traffic.RequestWeather(pos, it.Tail))
 		qnh, alt := it.cc.qnh()
 		it.callAfter(pos, prioTaxi, it.clearAt(pos), func() {
 			it.say(traffic.WeatherReport(pos, it.Tail, it.cc.windSaid(it.ICAO), qnh, alt))
 		})
-	})
+	}
+	p.later(it.clearAt(pos).Add(crewActDelay+p.jitter(crewActJitter)), ask)
+}
+
+// weatherAskRetry, weatherAskTries: a crew waiting to ask for the weather
+// until its check-in is answered looks again this long after the frequency
+// clears, this many times, then does not ask.
+const (
+	weatherAskRetry = 3 * time.Second
+	weatherAskTries = 10
+)
+
+// answerWaiting reports whether a controller's call to it on pos's
+// frequency is still on the agenda, not yet said.
+func (it *controlled) answerWaiting(pos traffic.Position) bool {
+	_, freq := it.station(pos)
+	for _, c := range it.cc.agenda.waiting() {
+		if c.tail == it.Tail && c.icao == it.ICAO && c.freq == freq {
+			return true
+		}
+	}
+	return false
 }
 
 // departureClimbSaid is the level departure clears a climbing departure

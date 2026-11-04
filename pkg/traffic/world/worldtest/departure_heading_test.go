@@ -28,7 +28,10 @@ func TestStaffedDepartureHeading(t *testing.T) {
 		t.Fatal(err)
 	}
 	var dep world.ControlView
-	if !h.Until(30*time.Minute, func() bool {
+	// Past a stand delay the first one may ask for (up to 15 minutes,
+	// WORLDTEST_SEED=1257411435651082003: TVS1985 asked to push at 19
+	// minutes).
+	if !h.Until(45*time.Minute, func() bool {
 		for _, v := range h.World.Snapshot().Aircraft {
 			if v.Kind == "departure" && slices.Contains(v.Actions, "heading") {
 				dep = v

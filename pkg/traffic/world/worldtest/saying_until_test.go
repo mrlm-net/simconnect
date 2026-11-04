@@ -25,7 +25,10 @@ func TestSayingUntil(t *testing.T) {
 		t.Fatal(err)
 	}
 	var dep world.ControlView
-	if !h.Until(10*time.Minute, func() bool {
+	// Past a stand delay the first one may ask for (up to 15 minutes,
+	// WORLDTEST_SEED=9486181099768779574: TVS1985 waiting 8 minutes for
+	// its passengers asked at 13 minutes).
+	if !h.Until(25*time.Minute, func() bool {
 		for _, v := range h.World.Snapshot().Aircraft {
 			if v.Kind == "departure" && !v.Done && v.ATC == "ground" && v.Request == "pushback" {
 				dep = v
@@ -34,7 +37,7 @@ func TestSayingUntil(t *testing.T) {
 		}
 		return false
 	}) {
-		t.Fatal("no departure asking to push in 10 simulated minutes")
+		t.Fatal("no departure asking to push in 25 simulated minutes")
 	}
 	// `upto` needs its limit, and the offer and the refusal say so (#1308).
 	if _, err := h.World.Do(http.MethodPost, fmt.Sprintf("/api/control/%d/upto", dep.ID), nil); err == nil || !strings.Contains(err.Error(), "400") || !strings.Contains(err.Error(), "node") {
