@@ -130,7 +130,7 @@ func TestInjectorNoRestFromRoll(t *testing.T) {
 	g := injectGround{GroundFt: 1200, CGFt: 8.48, StaticPitch: 0.7, PlaneFt: 1208.48, PlanePitch: 0.7, OnGround: 1}
 	inj.Handle(sampleMsg(DefaultInjectRequestBase+1, obj, g))
 	inj.Place(obj, GroundPose{Position: airport.LatLon{Lat: 50, Lon: 14}}) // lined up
-	for i := 0; i < 30; i++ { // a 3 s roll, placed every 100 ms
+	for i := 0; i < 30; i++ {                                              // a 3 s roll, placed every 100 ms
 		w = w.Add(100 * time.Millisecond)
 		inj.PlaceAir(obj, ApproachPose{OnGround: true, GroundSpeedKts: float64(10 + 3*i)})
 		rolled := g
