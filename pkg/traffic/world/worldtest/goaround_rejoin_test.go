@@ -34,14 +34,21 @@ func (l *lockedBuf) String() string {
 }
 
 // TestGoAroundRejoinKeepsSpacing (#1454): on LKPR 06 the arrival ahead goes
-// around on its short final and is sequenced again behind the others, one
-// of them sent direct to the final: all keep 3 NM or 1000 ft apart, the
-// none closer than 3 NM and 1000 ft (live, DLH299 after its go-around and AFR971 direct
-// to the final: 2.0 NM and 235 ft at 4600 ft).
+// around on its short final and is sequenced again behind the others on
+// LOMK8T, coming in from the north-west, one of them sent direct to the
+// final or not: none closer than 3 NM and 1000 ft, the conflict watch
+// quiet (live, DLH299 after its go-around and AFR971 direct to the final:
+// 2.0 NM and 235 ft at 4600 ft).
 func TestGoAroundRejoinKeepsSpacing(t *testing.T) {
 	if testing.Short() {
 		t.Skip("runs the World")
 	}
+	for _, direct := range []bool{true, false} {
+		t.Run(fmt.Sprintf("direct=%v", direct), func(t *testing.T) { goAroundRejoin(t, direct) })
+	}
+}
+
+func goAroundRejoin(t *testing.T, sendDirect bool) {
 	log := &lockedBuf{}
 	o := Options{DataDir: dataDir(t), ICAO: "LKPR", Manual: true, FrameRate: 10}
 	var out io.Writer = log
@@ -98,11 +105,10 @@ func TestGoAroundRejoinKeepsSpacing(t *testing.T) {
 			}
 		}
 		if wentAround && testing.Verbose() {
-			for _, c := range tails {
-				if a, ok := h.Aircraft(c); ok && a.Position.Lat != 0 && !a.OnGround {
-					t.Logf("%s %-6s %-12s %5.0f ft hdg %3.0f %4.1f NM %s", h.Clock.Now().Format("15:04:05"), c, a.State, a.AltFt, a.Heading,
-						calc.HaversineNM(a.Position.Lat, a.Position.Lon, thr.Lat, thr.Lon), a.Procedure)
-				}
+			for _, c := range air {
+				a, _ := h.Aircraft(c)
+				t.Logf("%s %-6s %-12s %5.0f ft hdg %3.0f %.4f,%.4f %4.1f NM %s", h.Clock.Now().Format("15:04:05"), c, a.State, a.AltFt, a.Heading, a.Position.Lat, a.Position.Lon,
+					calc.HaversineNM(a.Position.Lat, a.Position.Lon, thr.Lat, thr.Lon), a.Procedure)
 			}
 		}
 		d, ok := h.Aircraft("DLH299")
@@ -113,7 +119,7 @@ func TestGoAroundRejoinKeepsSpacing(t *testing.T) {
 			}
 			wentAround = true
 		}
-		if wentAround && !direct {
+		if wentAround && sendDirect && !direct {
 			if a, ok := h.Aircraft("AFR971"); ok && a.State == "approaching" {
 				if _, err := h.World.Do(http.MethodPost, "/api/approach/LKPR/AFR971/direct", nil); err == nil {
 					direct = true
@@ -133,16 +139,27 @@ func TestGoAroundRejoinKeepsSpacing(t *testing.T) {
 	if !wentAround {
 		t.Fatal("DLH299 never on its final to go around")
 	}
+	if sendDirect && !direct {
+		t.Error("AFR971 never sent direct to the final")
+	}
 	var conflicts []string
 	for _, l := range strings.Split(log.String(), "\n") {
 		if strings.Contains(l, "conflict:") || strings.Contains(l, "separation:") {
 			conflicts = append(conflicts, l)
 		}
 	}
-	if !direct || worst != "" {
-		t.Errorf("direct sent %v; lost separation: %q; conflict watch:\n%s", direct, worst, strings.Join(conflicts, "\n"))
+	// Planned apart: the conflict watch never sees them meet.
+	if worst != "" || len(conflicts) > 0 {
+		t.Errorf("lost separation: %q; conflict watch:\n%s", worst, strings.Join(conflicts, "\n"))
 	}
-	if len(conflicts) > 0 {
-		t.Logf("conflict watch (#1454: the go-around downwind at 5000 ft meets the STAR descents):\n%s", strings.Join(conflicts, "\n"))
+	// Told to by the tower, or saying so on an uncontrolled field.
+	around := map[string]bool{}
+	for _, tx := range h.Heard() {
+		if l := strings.ToLower(tx.Text); strings.Contains(l, "go around") || strings.Contains(l, "going around") {
+			around[tx.Callsign] = true
+		}
+	}
+	if len(around) != 1 || !around["DLH299"] {
+		t.Errorf("gone around: %v, want only DLH299", around)
 	}
 }

@@ -109,11 +109,15 @@ type track struct {
 	// alts: the altitude at each point of path (0: none); nil: the
 	// vertical speed on.
 	alts []float64
+	// terminal: arriving or departing at an airport, where the terminal
+	// minimum applies below the terminal area's top level.
+	terminal bool
 }
 
 // trackFor is a's track, along its route when o knows it.
 func trackFor(a TrackedAircraft, o ConflictOptions) track {
 	t := trackOf(a)
+	t.terminal = a.Airport != ""
 	if o.Profile != nil {
 		if pts := o.Profile(a); len(pts) > 0 {
 			for _, p := range pts {
@@ -262,12 +266,25 @@ func conflictBetween(a, b track, minNM float64, o ConflictOptions) (c Conflict, 
 		if l < c.ClosestNM {
 			c.ClosestNM, c.ClosestIn, c.VerticalFt = l, d, v
 		}
-		if l < minNM && v < minFt && c.In < 0 {
+		if l < terminalMin(a, b, aft, bft, minNM, o) && v < minFt && c.In < 0 {
 			c.In, c.LossNM, c.LossFt = d, l, v
 		}
 	}
 	c.MinNM = minNM
 	return c, c.In >= 0
+}
+
+// terminalMin is the lateral minimum where a and b are at aFt and bFt: the
+// terminal one where both will be in the terminal area, below its top
+// level, though one is above it now (offline LKPR: AFR971 at 12 000 ft on
+// its STAR held to the en-route 5 NM from a go-around at 5000 ft it would
+// pass 3.8 NM off, below 10 000 ft, and the go-around vectored for it).
+func terminalMin(a, b track, aFt, bFt, minNM float64, o ConflictOptions) float64 {
+	top := o.TerminalBelowFt + LevelToleranceFt
+	if a.terminal && b.terminal && o.TerminalNM > 0 && aFt < top && bFt < top {
+		return math.Min(minNM, o.TerminalNM)
+	}
+	return minNM
 }
 
 // LevelFlightFpm: slower than this an aircraft is level; LevelToleranceFt
@@ -356,12 +373,12 @@ type Resolution struct {
 	// The new ground speed (speed), altitude (level: hold it, climbing or
 	// descending there) or true heading (heading: fly it for the look-ahead,
 	// then resume).
-	Kts        float64 `json:"kts,omitempty"`
-	AltFt      float64 `json:"altFt,omitempty"`
+	Kts   float64 `json:"kts,omitempty"`
+	AltFt float64 `json:"altFt,omitempty"`
 	// Said (speed): Kts as the controller gives it, Mach or IAS (Kts is
 	// rounded to match it).
-	Said SaidSpeed `json:"said,omitempty"`
-	HeadingDeg float64 `json:"headingDeg,omitempty"`
+	Said       SaidSpeed `json:"said,omitempty"`
+	HeadingDeg float64   `json:"headingDeg,omitempty"`
 	// Stop (level): a climb or descent stopped at AltFt on its way, to
 	// go on once clear of the traffic ("stop climb at 5000 feet").
 	Stop bool `json:"stop,omitempty"`
@@ -557,7 +574,7 @@ func candidates(a TrackedAircraft, base track, sameRoute bool, fixes []DirectFix
 	for _, turn := range []float64{20, -20, 30, -30, 45, -45} {
 		t := base
 		t.hdg, t.path, t.alts = math.Mod(base.hdg+turn+360, 360), nil, nil // off the route: straight out
-		t.fpm, t.level = 0, 0 // level, as ResolvedRoute flies the heading
+		t.fpm, t.level = 0, 0                                              // level, as ResolvedRoute flies the heading
 		cost := 3 + math.Abs(turn)/45
 		if turn < 0 {
 			cost += 0.1 // right turns first
