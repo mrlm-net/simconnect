@@ -152,13 +152,14 @@ func goAroundRejoin(t *testing.T, sendDirect bool) {
 	if worst != "" || len(conflicts) > 0 {
 		t.Errorf("lost separation: %q; conflict watch:\n%s", worst, strings.Join(conflicts, "\n"))
 	}
-	around := 0
+	// Told to by the tower, or saying so on an uncontrolled field.
+	around := map[string]bool{}
 	for _, tx := range h.Heard() {
-		if strings.Contains(strings.ToLower(tx.Text), "go around") {
-			around++
+		if l := strings.ToLower(tx.Text); strings.Contains(l, "go around") || strings.Contains(l, "going around") {
+			around[tx.Callsign] = true
 		}
 	}
-	if around != 1 {
-		t.Errorf("%d go-arounds, want only DLH299's", around)
+	if len(around) != 1 || !around["DLH299"] {
+		t.Errorf("gone around: %v, want only DLH299", around)
 	}
 }

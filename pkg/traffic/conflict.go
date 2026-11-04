@@ -373,12 +373,12 @@ type Resolution struct {
 	// The new ground speed (speed), altitude (level: hold it, climbing or
 	// descending there) or true heading (heading: fly it for the look-ahead,
 	// then resume).
-	Kts        float64 `json:"kts,omitempty"`
-	AltFt      float64 `json:"altFt,omitempty"`
+	Kts   float64 `json:"kts,omitempty"`
+	AltFt float64 `json:"altFt,omitempty"`
 	// Said (speed): Kts as the controller gives it, Mach or IAS (Kts is
 	// rounded to match it).
-	Said SaidSpeed `json:"said,omitempty"`
-	HeadingDeg float64 `json:"headingDeg,omitempty"`
+	Said       SaidSpeed `json:"said,omitempty"`
+	HeadingDeg float64   `json:"headingDeg,omitempty"`
 	// Stop (level): a climb or descent stopped at AltFt on its way, to
 	// go on once clear of the traffic ("stop climb at 5000 feet").
 	Stop bool `json:"stop,omitempty"`
@@ -574,7 +574,7 @@ func candidates(a TrackedAircraft, base track, sameRoute bool, fixes []DirectFix
 	for _, turn := range []float64{20, -20, 30, -30, 45, -45} {
 		t := base
 		t.hdg, t.path, t.alts = math.Mod(base.hdg+turn+360, 360), nil, nil // off the route: straight out
-		t.fpm, t.level = 0, 0 // level, as ResolvedRoute flies the heading
+		t.fpm, t.level = 0, 0                                              // level, as ResolvedRoute flies the heading
 		cost := 3 + math.Abs(turn)/45
 		if turn < 0 {
 			cost += 0.1 // right turns first
