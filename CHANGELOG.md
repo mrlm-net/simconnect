@@ -7,6 +7,13 @@ This project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 ---
 
+## [0.167.7] - 2026-11-04
+
+### Fixed
+
+- A crew asks for the weather only once the controller has answered its check-in: asked while the answer still waited on a busy frequency, the weather came after "report ready for departure" (#1460; live LKPR: TVS827).
+- `TestSayingUntil` and `TestStaffedDepartureHeading` wait past a stand delay the first departure may ask for (#1461).
+
 ## [0.167.6] - 2026-11-04
 
 ### Fixed
