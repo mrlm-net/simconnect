@@ -7,6 +7,16 @@ This project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 ---
 
+## [0.167.4] - 2026-11-04
+
+### Fixed
+
+- A runway change no longer freezes the traffic: a departure on its stand has its pushback re-planned in the background, as at its spawn (#1450; live LKPR 24 → 06: 3.3 s of frames held back).
+- At a runway change only the departures rolling, lining up or lined up and the first one held short of the old runway finish on it; the rest of the queue and every departure still taxiing are re-cleared to the new runway at once (#1451; live LKPR: nine departures left going to 24, arrivals to 06 held 20 min and spread far out).
+- The runway in use goes back to a more preferred runway (not forced by its limits) only once the wind of the last hour (`nav.RunwayBackMemory`) has been within its limits (#1452; live LKPR: 06 → 24 in a calm half hour, back to 06 2.5 h later).
+- A departure still taxiing or holding short for the old runway once the changeover has no deadline any more (a minute after the change) goes to the new runway at once (#1455; live LKPR: PHVUZ lined up on 24 against the 06 arrivals for 20 minutes, three sent around).
+- An arrival in conflict with the one ahead is stopped where it is only while that one descends away, and never below it: behind one level on its ILS intercept it is slowed and vectored instead (#1453; live LKPR: DLH299 told 4500 ft behind AFR971 level at 4600 ft, 2.0 NM and 235 ft apart).
+
 ## [0.167.3] - 2026-11-04
 
 ### Fixed

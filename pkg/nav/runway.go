@@ -275,6 +275,13 @@ type windSeen struct {
 // four hours, twice a minute apart, arrivals and departures on both ends).
 const RunwayWindMemory = 30 * time.Minute
 
+// RunwayBackMemory: back to a more preferred runway (not one out of its
+// limits) only once the wind of this long before has been within its limits:
+// a calm half hour in a morning of north-easterlies put LKPR back on 24, and
+// the north-easterly back put it on 06 again (live, 06 → 24 → 06 in 2.5 h,
+// the departures re-planned both times).
+const RunwayBackMemory = 60 * time.Minute
+
 // RunwayForceOverKts: a runway this far or more beyond its wind limits is
 // changed at once; less, at a gap in the traffic within
 // RunwayOutOfLimitsWait.
@@ -466,6 +473,9 @@ func (s *RunwaySelector) Choose(now time.Time, l *airport.Layout, w Weather, lim
 	_ = peak
 	outAtSome := false
 	for _, x := range s.winds {
+		if now.Sub(x.at) > RunwayWindMemory && !back(fresh.Departure.Name) {
+			continue // older: only for a way back to a preferred runway
+		}
 		seen := w
 		seen.WindDirTrue, seen.WindKts, seen.GustKts, seen.Variable = x.dir, x.kts, 0, x.variable
 		if slices.ContainsFunc(append(slices.Clone(fresh.Departures), fresh.Arrivals...), func(e airport.RunwayEnd) bool { return !endWithin(e, seen, margined) }) {
@@ -494,7 +504,7 @@ func (s *RunwaySelector) Choose(now time.Time, l *airport.Layout, w Weather, lim
 func (s *RunwaySelector) peakWind(now time.Time, w Weather) float64 {
 	s.winds = append(s.winds, windSeen{at: now, dir: w.WindDirTrue, kts: max(w.WindKts, w.GustKts), variable: w.Variable})
 	i := 0
-	for i < len(s.winds) && now.Sub(s.winds[i].at) > RunwayWindMemory {
+	for i < len(s.winds) && now.Sub(s.winds[i].at) > max(RunwayWindMemory, RunwayBackMemory) {
 		i++
 	}
 	s.winds = s.winds[i:]

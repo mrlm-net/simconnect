@@ -67,6 +67,12 @@ func (cc *controlCenter) checkRunways(now time.Time) {
 		if !known || before == use {
 			continue
 		}
+		cc.mu.Lock()
+		if cc.runwayChangedAt == nil {
+			cc.runwayChangedAt = map[string]time.Time{}
+		}
+		cc.runwayChangedAt[icao] = now
+		cc.mu.Unlock()
 		keep := cc.lastOnOldRunway(g, items, arrs)
 		var rejoined []*controlled // joined their new STAR part-way: out of position
 		for _, it := range items {
@@ -320,13 +326,9 @@ const (
 	runwayChangeKeepNM       = 15.0
 )
 
-// finishTaxiM: a departure taxiing this close to its runway at a runway
-// change finishes on it.
-const finishTaxiM = 500.0
-
 // lastOnOldRunway is who finishes on a runway no longer in use (arrs: the
-// arrival runways now): departures holding short of their runway, lining
-// up, lined up or rolling; and the runwayChangeKeepArrivals arrivals
+// arrival runways now): departures rolling, lining up or lined up, and the
+// first one held short of each runway; and the runwayChangeKeepArrivals arrivals
 // nearest its threshold, approaching within runwayChangeKeepNM.
 func (cc *controlCenter) lastOnOldRunway(g *airport.Graph, items []*controlled, arrs []string) map[string]bool {
 	keep := map[string]bool{}
@@ -335,6 +337,11 @@ func (cc *controlCenter) lastOnOldRunway(g *airport.Graph, items []*controlled, 
 		nm   float64
 	}
 	var landing []near
+	type held struct {
+		tail string
+		at   time.Time
+	}
+	firstHeld := map[string]held{}
 	for _, it := range items {
 		it.mu.Lock()
 		v := it.view
@@ -352,16 +359,22 @@ func (cc *controlCenter) lastOnOldRunway(g *airport.Graph, items []*controlled, 
 			// or about to taxi: the new runway.
 			case traffic.TaxiDeparting:
 				keep[it.Tail] = true // rolling or climbing out: it goes
-			case traffic.TaxiTaxiing:
-				// Still taxiing: only one nearly there finishes on the old runway;
-				// the rest go to the new one at once, not sent round ten minutes
-				// later past the deadline (live, LKPR: FZEEP held at 24 with no
-				// slot, then sent round to 06; RYR1626 off 24 into the 06
-				// arrivals nine minutes after the change).
-				if v.TaxiRemainingM > 0 && v.TaxiRemainingM <= finishTaxiM && !(nav.RunwayLimits{Closed: cc.core.closed(g.Layout.ICAO)}).ClosedEnd(v.Runway) {
-					keep[it.Tail] = true
+			case traffic.TaxiHoldingShort:
+				// Only the first one held short of its runway finishes there;
+				// the queue behind it and every one still taxiing go to the
+				// new runway at once (live, LKPR 24 to 06: nine departures
+				// left taxiing to 24 into the 06 arrivals).
+				it.mu.Lock()
+				at := it.heldShortAt
+				it.mu.Unlock()
+				if at.IsZero() || (v.HoldingShortOf != "" && !strings.Contains(v.HoldingShortOf, v.Runway)) ||
+					(nav.RunwayLimits{Closed: cc.core.closed(g.Layout.ICAO)}).ClosedEnd(v.Runway) {
+					continue
 				}
-			case traffic.TaxiHoldingShort, traffic.TaxiLiningUp, traffic.TaxiLinedUp:
+				if f, ok := firstHeld[v.Runway]; !ok || at.Before(f.at) {
+					firstHeld[v.Runway] = held{it.Tail, at}
+				}
+			case traffic.TaxiLiningUp, traffic.TaxiLinedUp:
 				// Not for a runway that is closed: moved with the others.
 				if !(nav.RunwayLimits{Closed: cc.core.closed(g.Layout.ICAO)}).ClosedEnd(v.Runway) {
 					keep[it.Tail] = true
@@ -387,6 +400,9 @@ func (cc *controlCenter) lastOnOldRunway(g *airport.Graph, items []*controlled, 
 				landing = append(landing, near{it.Tail, nm})
 			}
 		}
+	}
+	for _, h := range firstHeld {
+		keep[h.tail] = true
 	}
 	slices.SortFunc(landing, func(a, b near) int { return cmp.Compare(a.nm, b.nm) })
 	for i, l := range landing {
@@ -483,11 +499,32 @@ func (cc *controlCenter) changeOverdue(g *airport.Graph, items []*controlled, de
 			if !ok || a == v.Runway || r.Name() != own.Name() {
 				continue
 			}
-			if by, ok := cc.changeDeadline(g.Layout.ICAO + " " + a); ok && now.After(by) {
+			by, ok := cc.changeDeadline(g.Layout.ICAO + " " + a)
+			cc.mu.Lock()
+			changed := cc.runwayChangedAt[g.Layout.ICAO]
+			cc.mu.Unlock()
+			if changeOverdueNow(by, ok, changed, now) {
 				cc.log.printf("%-6s runway change: past the changeover, to the new runway", it.Tail)
 				cc.changeDepartureRunway(g, it, cc.runwayFor(g, false, stand))
 			}
 			break
 		}
 	}
+}
+
+// changeSettle: after a runway change, the changeover's deadline is set
+// within this; without one after it the changeover is over.
+const changeSettle = time.Minute
+
+// changeOverdueNow: a departure still for the old runway at now goes to the
+// new one: past the changeover's deadline (by, ok), or with no deadline any
+// more once the change (changed) has settled. Without one it was left there:
+// in the queue behind another, not counted, it lined up on 24 against the
+// 06 arrivals and sat there 20 minutes, three of them sent around (live,
+// LKPR: PHVUZ).
+func changeOverdueNow(by time.Time, ok bool, changed, now time.Time) bool {
+	if ok {
+		return now.After(by)
+	}
+	return !changed.IsZero() && now.Sub(changed) >= changeSettle
 }

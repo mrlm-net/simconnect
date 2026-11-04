@@ -684,7 +684,7 @@ func (w *conflictWatch) resolveArrivals(now time.Time, c traffic.Conflict) {
 				} else {
 					w.s.cc.log.printf("%-6s conflict with %s: stop descent refused: %v", cs, oth, err)
 				}
-			} else if hold := math.Floor(me.AltFt/500) * 500; me.AltFt >= them.AltFt-arrivalLevelWithFt && hold >= arrivalDescendMinFt {
+			} else if hold, ok := holdAboveDescending(*me, *them); ok {
 				// Level with it, or above it within the vertical minimum (not
 				// below: the one ahead would descend through its level): the
 				// trailer stops
@@ -753,7 +753,28 @@ const (
 	// arrivalDescendMinFt: an arrival is sent down under another no lower
 	// than this on its STAR.
 	arrivalDescendMinFt = 4000.0
+	// arrivalDescendingFpm: the one ahead descends away only going down at
+	// least this fast.
+	arrivalDescendingFpm = 300.0
 )
+
+// holdAboveDescending is where a trailer me, level with the one ahead or
+// within the vertical minimum above it, stops its descent so the one ahead
+// descends away from it: where it is, at or above the one ahead, only while
+// that one is descending. Level (on its ILS intercept altitude) it never
+// descends away, and the hold put under it was no separation (live, LKPR:
+// DLH299 at 4800 ft told 4500 behind AFR971 level at 4600 ft on its 06
+// intercept, 2.0 NM and 235 ft apart).
+func holdAboveDescending(me, them traffic.TrackedAircraft) (float64, bool) {
+	hold := math.Floor(me.AltFt/100) * 100
+	if me.AltFt < them.AltFt-arrivalLevelWithFt || hold < arrivalDescendMinFt {
+		return 0, false
+	}
+	if them.VSFpm > -arrivalDescendingFpm || hold < them.AltFt {
+		return 0, false
+	}
+	return hold, true
+}
 
 // other is the other aircraft of conflict c.
 func other(c traffic.Conflict, cs string) string {
