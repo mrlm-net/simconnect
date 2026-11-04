@@ -233,3 +233,61 @@ func TestInjectorPlaceRest(t *testing.T) {
 		t.Errorf("parked pose learnt as the rest of its kind: %v, was %v", r, before)
 	}
 }
+
+// A landing comes down onto its main gear at the height the simulator
+// rests it there nose up (mainsCG), not its rest standing (compressed
+// struts) nor its static CG height: no wheels in the runway before the
+// on-ground flag, no pop as it comes (live LKPR: TVS745 B738 sank 0.77 ft
+// and popped up, KAL187 B789 0.89 ft). What the simulator then shows
+// becomes the height for the next landing of its kind.
+func TestLandingTouchdownOnMainGear(t *testing.T) {
+	c := &eventClient{}
+	inj := NewInjector(c)
+	w := time.Date(2026, 11, 4, 9, 0, 0, 0, time.UTC)
+	inj.now = func() time.Time { w = w.Add(time.Second / 60); return w }
+	const a, b, d, title = 42, 43, 44, "FSLTL_FAIB_B738_TVS-Skytravel_TSOC"
+	for _, id := range []uint32{a, b, d} {
+		if err := inj.Takeover(id); err != nil {
+			t.Fatal(err)
+		}
+		inj.SetModel(id, title)
+	}
+	// a stood on its stand, compressed: 8.13 ft.
+	inj.Handle(sampleMsg(DefaultInjectRequestBase+1, a, injectGround{GroundFt: 1200, CGFt: 8.48, StaticPitch: 0.71, PlaneFt: 1208.13, PlanePitch: 0.71, OnGround: 1}))
+	sent := func() types.SIMCONNECT_DATA_INITPOSITION {
+		var got types.SIMCONNECT_DATA_INITPOSITION
+		copy(unsafe.Slice((*byte)(unsafe.Pointer(&got)), unsafe.Sizeof(got)), c.waypoints[len(c.waypoints)-1])
+		return got
+	}
+	const arm, pitch = 1.2, 4.2
+	lift := arm * math.Sin(pitch*math.Pi/180) / 0.3048
+	land := func(id uint32, mains float64) {
+		t.Helper()
+		inj.Handle(sampleMsg(DefaultInjectRequestBase+2*uint32(id-a)+1, id, injectGround{GroundFt: 1200, CGFt: 8.48, StaticPitch: 0.71, PlaneFt: 1300, OnGround: 0}))
+		for k := 120; k >= 0; k-- { // the last 2 s of the flare
+			h := float64(k) / 12
+			if err := inj.PlaceAir(id, ApproachPose{HeightFt: h, PitchDeg: pitch, Landing: true, MainGearBehindM: arm}); err != nil {
+				t.Fatal(err)
+			}
+			if got := sent().Altitude - 1200; got < mains+lift-0.02 {
+				t.Fatalf("%.2f ft up: wheels %.2f ft into the runway", h, mains+lift-got)
+			}
+		}
+		for k := range 60 {
+			if err := inj.PlaceAir(id, ApproachPose{OnGround: true, PitchDeg: pitch, Landing: true, MainGearBehindM: arm}); err != nil {
+				t.Fatal(err)
+			}
+			p := sent()
+			if p.OnGround != 1 {
+				t.Fatalf("frame %d on the ground: no on-ground flag", k)
+			}
+			if got := p.Altitude - 1200; math.Abs(got-(mains+lift)) > 0.02 {
+				t.Fatalf("frame %d on the ground: CG at %.2f ft, want %.2f where the simulator rests it", k, got, mains+lift)
+			}
+		}
+	}
+	land(b, 8.48*(1+RestAboveStaticShare))
+	// The simulator showed b at 9.55 ft, 4.2° nose up: the next lands there.
+	inj.Handle(sampleMsg(DefaultInjectRequestBase+3, b, injectGround{GroundFt: 1200, CGFt: 8.48, StaticPitch: 0.71, PlaneFt: 1209.55, PlanePitch: -pitch, OnGround: 1}))
+	land(d, 9.55-lift)
+}
