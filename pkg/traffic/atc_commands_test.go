@@ -357,13 +357,17 @@ func goAroundStretched(t *testing.T, along float64) {
 func TestGoAroundToDownwind(t *testing.T) {
 	g := lkprGraph(t)
 	procs := lkprProcedures(t)
+	// LOMK8T to 06 comes in from behind the runway, no downwind: the
+	// go-around circuit, not 22 NM out against the arrivals on it, and on
+	// the right, away from the north-west they come in from (#1454).
 	for _, c := range []struct {
-		fix      string
-		downwind bool
-	}{{"LOMKI", true}, {"", false}} {
+		runway, fix string
+		downwind    bool
+		right       bool
+	}{{"24", "LOMKI", true, false}, {"24", "", false, false}, {"06", "LOMKI", false, true}} {
 		var route []airport.NavPoint
 		if c.fix != "" {
-			r, err := procs.Arrival("24", c.fix)
+			r, err := procs.Arrival(c.runway, c.fix)
 			if err != nil {
 				t.Fatal(err)
 			}
@@ -373,7 +377,7 @@ func TestGoAroundToDownwind(t *testing.T) {
 		inj := NewInjector(ec)
 		ctl := NewArrivalController(NewFleet(ec), ArrivalWithInjector(inj))
 		c22, _ := g.Layout.ParkingIndex("C22")
-		if err := ctl.Start(ArrivalRequest{Graph: g, Runway: "24", Parking: c22, Model: "A320", Tail: "CSA1958",
+		if err := ctl.Start(ArrivalRequest{Graph: g, Runway: c.runway, Parking: c22, Model: "A320", Tail: "CSA1958",
 			InjectApproach: true, RollThroughChance: -1, Procedure: route}); err != nil {
 			t.Fatal(err)
 		}
@@ -406,13 +410,25 @@ func TestGoAroundToDownwind(t *testing.T) {
 		if err := ctl.GoAround(); err != nil {
 			t.Fatal(err)
 		}
-		far := 0.0
+		far, out, side := 0.0, 0.0, 0.0
 		ahead := offsetHeading(p.End.Threshold, p.End.Heading, 10*1852)
 		for _, q := range ctl.ProcedureCorners() {
-			far = math.Max(far, math.Abs(calc.CrossTrackMeters(p.End.Threshold.Lat, p.End.Threshold.Lon, ahead.Lat, ahead.Lon, q.Lat, q.Lon))/1852)
+			x := calc.CrossTrackMeters(p.End.Threshold.Lat, p.End.Threshold.Lon, ahead.Lat, ahead.Lon, q.Lat, q.Lon) / 1852
+			if math.Abs(x) > far {
+				far, side = math.Abs(x), x
+			}
+		}
+		if !c.downwind && (side > 0) != c.right {
+			t.Errorf("%s %s: circuit %.1f NM right of the centreline, want right %v", c.runway, c.fix, side, c.right)
 		}
 		if got := far >= 4.5; got != c.downwind {
-			t.Errorf("%s: farthest %.1f NM off the centreline; on the STAR's downwind %v, want %v", c.fix, far, got, c.downwind)
+			t.Errorf("%s %s: farthest %.1f NM off the centreline; on the STAR's downwind %v, want %v", c.runway, c.fix, far, got, c.downwind)
+		}
+		for _, q := range ctl.ProcedurePlan() { // its whole way back to the final
+			out = math.Max(out, calc.HaversineNM(p.End.Threshold.Lat, p.End.Threshold.Lon, q.Position.Lat, q.Position.Lon))
+		}
+		if !c.downwind && out > goAroundCircuitMaxNM {
+			t.Errorf("%s %s: a corner %.1f NM out, want the go-around circuit within %.0f NM", c.runway, c.fix, out, goAroundCircuitMaxNM)
 		}
 		// Radar turns it round (live, LOT1058 heard nothing after "climb"):
 		// headings at its circuit corners, then direct to the STAR's fix.
@@ -491,3 +507,6 @@ func TestGoAroundKeepsItsLevel(t *testing.T) {
 		}
 	}
 }
+
+// goAroundCircuitMaxNM: a go-around's circuit stays this close to the runway.
+const goAroundCircuitMaxNM = 13.0

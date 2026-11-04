@@ -324,7 +324,7 @@ func (c *ArrivalController) GoAround() error {
 		}
 	}
 	t, hdg := end.Threshold, end.Heading
-	left := hdg - 90 // left-hand circuit
+	left := c.goAroundCircuitSide(t, hdg)
 	at := func(alongNm, sideNm float64) airport.LatLon {
 		return offsetHeading(offsetHeading(t, hdg, alongNm*1852), left, sideNm*1852)
 	}
@@ -450,7 +450,7 @@ func (c *ArrivalController) goAroundToDownwind(join, joinFt, circuitFt float64) 
 		if n.Kind == "R" || n.Position == (airport.LatLon{}) {
 			continue
 		}
-		if math.Abs(cross(n.Position)) >= GoAroundRejoinMinNM*1852 && alongHeading(t, hdg, n.Position) <= climbNM*1852 {
+		if math.Abs(cross(n.Position)) >= GoAroundRejoinMinNM*1852 && alongHeading(t, hdg, n.Position) <= climbNM*1852 && downwindLeg(route, i, hdg) {
 			k = i
 			break
 		}
@@ -506,6 +506,59 @@ func (c *ArrivalController) goAroundToDownwind(join, joinFt, circuitFt float64) 
 	c.setState(ArrivalApproaching, nil)
 	return true, nil
 }
+
+// downwindLeg reports whether the STAR's leg from route[i] to its next
+// placed point runs as a downwind: within downwindLegDeg of the reverse of
+// the runway heading hdg. A STAR coming in from behind the runway (LKPR
+// LOMK8T to 06, from the west) has none: rejoined at its first point, the
+// go-around flew 36 NM out against the arrivals coming in on it at its
+// level, sequenced behind ones 45 NM away (offline; live, DLH299 and
+// AFR971 2.0 NM and 235 ft apart).
+func downwindLeg(route []airport.NavPoint, i int, hdg float64) bool {
+	for j := i + 1; j < len(route); j++ {
+		if route[j].Kind == "R" || route[j].Position == (airport.LatLon{}) {
+			continue
+		}
+		a, b := route[i].Position, route[j].Position
+		if a == b {
+			continue
+		}
+		return math.Abs(headingDiff(calc.BearingDegrees(a.Lat, a.Lon, b.Lat, b.Lon), hdg+180)) <= downwindLegDeg
+	}
+	return false
+}
+
+// goAroundCircuitSide is the heading from the extended centreline (runway
+// threshold t, heading hdg) out to a go-around circuit's downwind: left-hand,
+// unless its STAR comes in to the final from the left, then right-hand,
+// clear of the arrivals coming in behind it (offline LKPR 06: the left-hand
+// downwind ran out north of the final under LOMK8T arrivals descending to
+// its level from the north-west; live, DLH299 and AFR971 2.0 NM and 235 ft
+// apart).
+func (c *ArrivalController) goAroundCircuitSide(t airport.LatLon, hdg float64) float64 {
+	ahead := offsetHeading(t, hdg, 10*1852)
+	side := 0.0
+	for _, n := range c.req.Procedure {
+		if n.Kind == "R" || n.Position == (airport.LatLon{}) || alongHeading(t, hdg, n.Position) >= 0 {
+			continue
+		}
+		if x := calc.CrossTrackMeters(t.Lat, t.Lon, ahead.Lat, ahead.Lon, n.Position.Lat, n.Position.Lon); math.Abs(x) >= goAroundStarSideNM*1852 {
+			side = x // the last off the centreline: where it turns in from
+		}
+	}
+	if side < 0 {
+		return hdg + 90
+	}
+	return hdg - 90
+}
+
+// goAroundStarSideNM: a STAR point this far off the extended centreline
+// tells the side its arrivals come in from (goAroundCircuitSide).
+const goAroundStarSideNM = 1.0
+
+// downwindLegDeg: how far off the reverse of the runway heading a STAR
+// leg still counts as its downwind.
+const downwindLegDeg = 60.0
 
 // goAroundVectors are radar's turns round a go-around's circuit (wps, names
 // as goAroundToDownwind sets them): at each of its own turning points the

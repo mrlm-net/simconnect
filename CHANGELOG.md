@@ -7,6 +7,13 @@ This project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 ---
 
+## [0.167.5] - 2026-11-04
+
+### Fixed
+
+- A go-around whose STAR has no downwind (it comes in from behind the runway) flies the go-around circuit, not back out to the start of its STAR, and that circuit is on the side of the runway away from where its STAR comes in to the final (#1454; live LKPR 06: DLH299 sent round 22 NM out on the north side against the LOMK8T arrivals, 2.0 NM and 235 ft from AFR971).
+- The conflict watch applies the terminal 3 NM where two aircraft will both be below the terminal area's top level when they pass, not the en-route 5 NM of one above it now (#1454; offline LKPR: an arrival at 12 000 ft passing a go-around 3.8 NM off at 5000 ft had the go-around vectored).
+
 ## [0.167.4] - 2026-11-04
 
 ### Fixed
