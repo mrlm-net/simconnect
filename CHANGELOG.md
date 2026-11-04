@@ -7,6 +7,14 @@ This project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 ---
 
+## [0.167.8] - 2026-11-05
+
+### Fixed
+
+- An aircraft on the ground is pitched by the slope of the ground between its nose and main gear, as the ground map has seen it, eased in at 0.5° a second and read over 15 m at least: placed at its level-ground pitch, it sat off its nose wheel facing downhill and into the ground facing uphill (#1463; live LKPR 06/24, 0.6 %: CSA164 BCS3 seemed to pop a wheelie after landing and before its take-off roll). Every type by its own gear, the default profile for an unknown one.
+- The nose wheel of our traffic steers through turns: the yaw rate the aircraft turns at is written (`ROTATION VELOCITY BODY Y`), never more than its main wheels roll with, none standing, the other way pushed (#1446; live LKPR: the nose wheel stayed straight through every turn).
+- A camera shot ending gives the camera back only while that shot still has it: spotting set as it ended, or a newer shot, stays (#1464).
+
 ## [0.167.7] - 2026-11-04
 
 ### Fixed
