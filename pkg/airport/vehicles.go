@@ -139,6 +139,17 @@ func (g *vehicleGraph) end(p LatLon) (vehicleEnd, bool) {
 	return vehicleEnd{at: g.pos[n], seg: [2]int{n, n}}, true
 }
 
+// VehicleRoadDistance is how far (meters) p is from the nearest vehicle
+// road's centreline; +Inf when the airport has none.
+func (l *Layout) VehicleRoadDistance(p LatLon) float64 {
+	g := l.vehicleGraph()
+	best := math.Inf(1)
+	for _, r := range g.roads {
+		best = math.Min(best, distM(p, closestOnSegment(p, g.pos[r[0]], g.pos[r[1]])))
+	}
+	return best
+}
+
 // closestOnSegment is the point of the segment ab nearest p (local, flat).
 func closestOnSegment(p, a, b LatLon) LatLon {
 	kx := 111320 * math.Cos(a.Lat*math.Pi/180)

@@ -129,7 +129,7 @@ func TestSimObjectBus(t *testing.T) {
 			if err := f.Attach(pose); err != nil {
 				t.Fatal(err)
 			}
-			spot := BusSpot(n)(pose, prof)
+			spot := BusSpotOn(l, n, pose, prof)
 			f.Handle(assignedMsg(9002, 56))
 			inj.Handle(groundMsg(DefaultInjectRequestBase+1, 56, 1200, 3))
 			nose := offsetHeading(pose.Position, pose.Heading, prof.WheelbaseMeters+4)
@@ -266,5 +266,33 @@ func TestSimObjectBusHandle(t *testing.T) {
 	}
 	if len(c.removed) != 1 {
 		t.Errorf("removed %v, want only the first", c.removed)
+	}
+}
+
+// A parked bus leaves the vehicle roads free: on every LKPR stand an
+// airliner uses, each bus spot keeps BusRoadClearMeters from a road's
+// centreline where its place ahead (BusSpot) is not already off it (live:
+// WZZ783 on N53, its second bus on the road in front of the stand).
+func TestBusSpotsOffRoads(t *testing.T) {
+	l := airportGraph(t, "LKPR").Layout
+	prof := MotionProfileFor("FSLTL A20N WZZ Wizzair")
+	checked := 0
+	for _, p := range l.Parking {
+		if p.Radius < 15 || p.Radius > 30 {
+			continue
+		}
+		pose := GroundPose{Position: StandPoint(p, DefaultNoseOffsetMeters), Heading: p.Heading}
+		for n := range BusesFor(prof) {
+			if l.VehicleRoadDistance(BusSpot(n)(pose, prof).Position) >= BusRoadClearMeters {
+				continue
+			}
+			checked++
+			if d := l.VehicleRoadDistance(BusSpotOn(l, n, pose, prof).Position); d < BusRoadClearMeters {
+				t.Errorf("%s bus %d: %.1f m from a vehicle road, want %.0f", p.Label(), n+1, d, BusRoadClearMeters)
+			}
+		}
+	}
+	if checked < 5 {
+		t.Errorf("%d bus spots near a road, want the N52-N56, S19 ones", checked)
 	}
 }

@@ -75,6 +75,38 @@ func BusSpot(n int) func(pose GroundPose, prof MotionProfile) GroundPose {
 	}
 }
 
+// BusRoadClearMeters: a bus spot keeps this far from a vehicle road's
+// centreline, so a parked bus leaves the road free (live LKPR: WZZ783 on
+// N53, its second bus BusGapMeters ahead on the road in front of the
+// stand; N52 to N56, S19 the same). BusBesideMeters: where the spot ahead
+// is too close, the bus parks this far outboard of the one before, beside
+// it.
+const (
+	BusRoadClearMeters = 8.0
+	BusBesideMeters    = 5.0
+)
+
+// BusSpotOn is BusSpot on the airport l: a spot closer than
+// BusRoadClearMeters to a vehicle road moves beside the one before
+// (BusBesideMeters outboard), when that is farther from the road. nil l:
+// BusSpot.
+func BusSpotOn(l *airport.Layout, n int, pose GroundPose, prof MotionProfile) GroundPose {
+	s := BusSpot(n)(pose, prof)
+	if l == nil || n == 0 {
+		return s
+	}
+	d := l.VehicleRoadDistance(s.Position)
+	if d >= BusRoadClearMeters {
+		return s
+	}
+	prev := BusSpotOn(l, n-1, pose, prof)
+	beside := GroundPose{Position: offsetHeading(prev.Position, pose.Heading-90, BusBesideMeters), Heading: s.Heading}
+	if l.VehicleRoadDistance(beside.Position) > d {
+		return beside
+	}
+	return s
+}
+
 // busOwner is who holds bus n of a departure in the fleet: the call sign,
 // then call sign/2, /3 for the others.
 func busOwner(tail string, n int) string {
@@ -135,7 +167,7 @@ func (b *SimObjectBus) ObjectID() uint32 {
 func (b *SimObjectBus) Attach(pose GroundPose) error {
 	b.mu.Lock()
 	defer b.mu.Unlock()
-	spot := BusSpot(b.n)(pose, b.prof)
+	spot := BusSpotOn(b.Layout, b.n, pose, b.prof)
 	b.pose, b.aircraft = spot, pose
 	if path, depot, ok := b.inbound(spot); ok {
 		b.arrive, b.depot, b.hasDepot = NewGroundMoverFrom(path, busProfile(), localBearing(path.PointAt(0), path.PointAt(math.Min(5, path.Length()))), 0), depot, true
