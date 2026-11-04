@@ -378,6 +378,10 @@ func (r *remoteArr) GoAround() error {
 	return err
 }
 
+func (r *remoteArr) SetGoAroundStreams(routes [][]airport.LatLon) {
+	r.c.dropped(r.c.call(r.t, "SetGoAroundStreams", []any{routes}))
+}
+
 func (r *remoteArr) Handle(msg engine.Message) bool { return false } // the actuator handles its messages
 
 func (r *remoteArr) HoldAltitude(altFt float64) error {

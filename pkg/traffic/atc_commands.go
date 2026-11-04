@@ -324,7 +324,7 @@ func (c *ArrivalController) GoAround() error {
 		}
 	}
 	t, hdg := end.Threshold, end.Heading
-	left := c.goAroundCircuitSide(t, hdg)
+	left := c.goAroundCircuitSide(t, hdg, join/1852)
 	at := func(alongNm, sideNm float64) airport.LatLon {
 		return offsetHeading(offsetHeading(t, hdg, alongNm*1852), left, sideNm*1852)
 	}
@@ -528,15 +528,45 @@ func downwindLeg(route []airport.NavPoint, i int, hdg float64) bool {
 	return false
 }
 
+// SetGoAroundStreams gives an arrival the ways ahead of the others coming
+// in to its runway (their routes to the final, as ProcedurePlan gives them):
+// a go-around circuit goes on the side of the runway they cross least
+// (#1458). Set before GoAround; nil: its own STAR alone.
+func (c *ArrivalController) SetGoAroundStreams(routes [][]airport.LatLon) {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	c.gaStreams = routes
+}
+
 // goAroundCircuitSide is the heading from the extended centreline (runway
-// threshold t, heading hdg) out to a go-around circuit's downwind: left-hand,
-// unless its STAR comes in to the final from the left, then right-hand,
-// clear of the arrivals coming in behind it (offline LKPR 06: the left-hand
-// downwind ran out north of the final under LOMK8T arrivals descending to
-// its level from the north-west; live, DLH299 and AFR971 2.0 NM and 235 ft
-// apart).
-func (c *ArrivalController) goAroundCircuitSide(t airport.LatLon, hdg float64) float64 {
+// threshold t, heading hdg, joining the final joinNM out) out to a
+// go-around circuit's downwind: on the side where the arrivals coming in
+// (its own STAR and the streams SetGoAroundStreams gave) fly least through
+// the circuit, clear of them (offline LKPR 06: the left-hand downwind ran
+// out north of the final under LOMK8T arrivals descending to its level
+// from the north-west; live, DLH299 and AFR971 2.0 NM and 235 ft apart; on
+// the right, under TVS947 on APRA2T from the south, #1458). Even: away
+// from where its own STAR comes in, else left-hand.
+func (c *ArrivalController) goAroundCircuitSide(t airport.LatLon, hdg, joinNM float64) float64 {
 	ahead := offsetHeading(t, hdg, 10*1852)
+	var own []airport.LatLon
+	for _, n := range c.req.Procedure {
+		if n.Kind != "R" && n.Position != (airport.LatLon{}) {
+			own = append(own, n.Position)
+		}
+	}
+	var leftNM, rightNM float64
+	for _, s := range append([][]airport.LatLon{own}, c.gaStreams...) {
+		l, r := circuitCrossings(t, hdg, joinNM, c.goAroundClimbNM(), s)
+		leftNM += l
+		rightNM += r
+	}
+	switch {
+	case leftNM > rightNM:
+		return hdg + 90
+	case rightNM > leftNM:
+		return hdg - 90
+	}
 	side := 0.0
 	for _, n := range c.req.Procedure {
 		if n.Kind == "R" || n.Position == (airport.LatLon{}) || alongHeading(t, hdg, n.Position) >= 0 {
@@ -555,6 +585,46 @@ func (c *ArrivalController) goAroundCircuitSide(t airport.LatLon, hdg float64) f
 // goAroundStarSideNM: a STAR point this far off the extended centreline
 // tells the side its arrivals come in from (goAroundCircuitSide).
 const goAroundStarSideNM = 1.0
+
+// circuitCrossings is how far (NM) route flies through the go-around
+// circuit's area left and right of the extended centreline (threshold t,
+// heading hdg): from climbNM past the threshold out to goAroundStreamBeyondNM
+// past the join (joinNM out: where the sequencer stretches the downwind),
+// goAroundStarSideNM to GoAroundOffsetNm+TerminalSeparationNM off it.
+func circuitCrossings(t airport.LatLon, hdg, joinNM, climbNM float64, route []airport.LatLon) (leftNM, rightNM float64) {
+	ahead := offsetHeading(t, hdg, 10*1852)
+	in := func(p airport.LatLon) float64 { // -1 left, 1 right, 0 outside
+		along := alongHeading(t, hdg, p) / 1852
+		if along > climbNM+1 || along < -joinNM-goAroundStreamBeyondNM {
+			return 0
+		}
+		x := calc.CrossTrackMeters(t.Lat, t.Lon, ahead.Lat, ahead.Lon, p.Lat, p.Lon) / 1852
+		if math.Abs(x) < goAroundStarSideNM || math.Abs(x) > GoAroundOffsetNm+TerminalSeparationNM {
+			return 0
+		}
+		return math.Copysign(1, x)
+	}
+	const stepNM = 0.25
+	for i := 1; i < len(route); i++ {
+		a, b := route[i-1], route[i]
+		d := calc.HaversineNM(a.Lat, a.Lon, b.Lat, b.Lon)
+		n := max(1, int(math.Ceil(d/stepNM)))
+		for k := range n {
+			f := (float64(k) + 0.5) / float64(n)
+			switch in(airport.LatLon{Lat: a.Lat + (b.Lat-a.Lat)*f, Lon: a.Lon + (b.Lon-a.Lon)*f}) {
+			case -1:
+				leftNM += d / float64(n)
+			case 1:
+				rightNM += d / float64(n)
+			}
+		}
+	}
+	return leftNM, rightNM
+}
+
+// goAroundStreamBeyondNM: how far past its join a go-around circuit's
+// downwind may be stretched for its place behind (circuitCrossings).
+const goAroundStreamBeyondNM = 8.0
 
 // downwindLegDeg: how far off the reverse of the runway heading a STAR
 // leg still counts as its downwind.

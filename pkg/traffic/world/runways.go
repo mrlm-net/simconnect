@@ -920,7 +920,7 @@ func (t *towers) apply(icao, rwy string, c traffic.RunwayClearances, ours map[st
 			if it.arr == nil {
 				return nil
 			}
-			if err := it.arr.GoAround(); err != nil {
+			if err := t.cc.goAround(it); err != nil {
 				return err
 			}
 			t.forgetLanding(cs) // the next approach is cleared again (#486)

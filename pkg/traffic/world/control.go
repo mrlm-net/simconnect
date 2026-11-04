@@ -2169,7 +2169,7 @@ func (it *controlled) act(action string, node airport.NodeID) error {
 	case it.arr != nil && action == "hold":
 		return it.arr.HoldPosition()
 	case it.arr != nil && action == "goaround":
-		if err := it.arr.GoAround(); err != nil {
+		if err := it.cc.goAround(it); err != nil {
 			return err
 		}
 		it.mu.Lock()
