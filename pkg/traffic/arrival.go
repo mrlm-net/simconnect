@@ -306,6 +306,7 @@ type ArrivalController struct {
 	// gaStreams: the ways in of the others to its runway, for the side of
 	// its go-around circuit (SetGoAroundStreams).
 	gaStreams [][]airport.LatLon
+
 	tngLeft    int           // touch-and-goes still to make (ArrivalRequest.TouchAndGos)
 	tng        *TakeoffMover // a touch-and-go's take-off, while it flies it
 	sng        *stopAndGo    // a stop-and-go's stop, before its take-off
