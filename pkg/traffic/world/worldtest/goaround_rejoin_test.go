@@ -69,8 +69,8 @@ func goAroundRejoin(t *testing.T, sendDirect bool) {
 	sta := h.Clock.Now().Add(25 * time.Minute)
 	if err := h.World.AddFlights([]traffic.Flight{
 		{Callsign: "DLH299", Airline: "DLH", Type: "A320", Origin: "EDDM", Destination: "LKPR", STD: sta.Add(-60 * time.Minute), STA: sta, DistanceNM: 192},
-		{Callsign: "AFR971", Airline: "AFR", Type: "A320", Origin: "LFPG", Destination: "LKPR", STD: sta.Add(-100 * time.Minute), STA: sta.Add(12 * time.Minute), DistanceNM: 480},
-		{Callsign: "TVS947", Airline: "TVS", Type: "B738", Origin: "LIRF", Destination: "LKPR", STD: sta.Add(-110 * time.Minute), STA: sta.Add(16 * time.Minute), DistanceNM: 500},
+		{Callsign: "AFR971", Airline: "AFR", Type: "A320", Origin: "LFPG", Destination: "LKPR", STD: sta.Add(-100 * time.Minute), STA: sta.Add(10 * time.Minute), DistanceNM: 480},
+		{Callsign: "TVS947", Airline: "TVS", Type: "B738", Origin: "LIRF", Destination: "LKPR", STD: sta.Add(-110 * time.Minute), STA: sta.Add(14 * time.Minute), DistanceNM: 500},
 	}); err != nil {
 		t.Fatal(err)
 	}

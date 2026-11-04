@@ -84,6 +84,7 @@ type arrivalCtl interface {
 	EnterHold(h traffic.Hold, altFt float64) (traffic.HoldEntry, error)
 	Expedite(on bool)
 	GoAround() error
+	SetGoAroundStreams(routes [][]airport.LatLon)
 	Handle(msg engine.Message) bool
 	HoldAltitude(altFt float64) error
 	HoldFix(minFromThresholdNM float64) (traffic.Hold, bool)

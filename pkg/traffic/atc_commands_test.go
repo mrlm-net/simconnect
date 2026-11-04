@@ -359,12 +359,15 @@ func TestGoAroundToDownwind(t *testing.T) {
 	procs := lkprProcedures(t)
 	// LOMK8T to 06 comes in from behind the runway, no downwind: the
 	// go-around circuit, not 22 NM out against the arrivals on it, and on
-	// the right, away from the north-west they come in from (#1454).
+	// the right, away from the north-west they come in from (#1454); on the
+	// left with an arrival on APRA2T coming in from the south through the
+	// right (#1458).
 	for _, c := range []struct {
 		runway, fix string
 		downwind    bool
 		right       bool
-	}{{"24", "LOMKI", true, false}, {"24", "", false, false}, {"06", "LOMKI", false, true}} {
+		stream      string // another arrival's STAR in
+	}{{"24", "LOMKI", true, false, ""}, {"24", "", false, false, ""}, {"06", "LOMKI", false, true, ""}, {"06", "LOMKI", false, false, "APRA2T"}} {
 		var route []airport.NavPoint
 		if c.fix != "" {
 			r, err := procs.Arrival(c.runway, c.fix)
@@ -407,6 +410,19 @@ func TestGoAroundToDownwind(t *testing.T) {
 		if ctl.approach == nil {
 			t.Fatalf("%s: never on the injected final", c.fix)
 		}
+		if c.stream != "" {
+			pts, err := procs.ResolveSTAR(c.stream, "", c.runway)
+			if err != nil {
+				t.Fatal(err)
+			}
+			var s []airport.LatLon
+			for _, n := range pts {
+				if n.Position != (airport.LatLon{}) {
+					s = append(s, n.Position)
+				}
+			}
+			ctl.SetGoAroundStreams([][]airport.LatLon{s})
+		}
 		if err := ctl.GoAround(); err != nil {
 			t.Fatal(err)
 		}
@@ -419,7 +435,7 @@ func TestGoAroundToDownwind(t *testing.T) {
 			}
 		}
 		if !c.downwind && (side > 0) != c.right {
-			t.Errorf("%s %s: circuit %.1f NM right of the centreline, want right %v", c.runway, c.fix, side, c.right)
+			t.Errorf("%s %s (%s in): circuit %.1f NM right of the centreline, want right %v", c.runway, c.fix, c.stream, side, c.right)
 		}
 		if got := far >= 4.5; got != c.downwind {
 			t.Errorf("%s %s: farthest %.1f NM off the centreline; on the STAR's downwind %v, want %v", c.runway, c.fix, far, got, c.downwind)

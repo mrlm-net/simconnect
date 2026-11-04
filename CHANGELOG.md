@@ -7,6 +7,12 @@ This project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 ---
 
+## [0.167.6] - 2026-11-04
+
+### Fixed
+
+- A go-around circuit goes on the side of the runway the other arrivals coming in to it fly through least: the World hands it their routes ahead (`ArrivalController.SetGoAroundStreams`), not its own STAR alone (#1458; offline LKPR 06: DLH299 on VLM6T sent round on the south side into TVS947 on APRA2T). Even, it keeps away from where its own STAR comes in, else left-hand.
+
 ## [0.167.5] - 2026-11-04
 
 ### Fixed

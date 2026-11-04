@@ -303,6 +303,9 @@ type ArrivalController struct {
 	// route re-planned on the way up keeps it (noClimb would hold it where
 	// it is; live, TVS354 levelled at 1400 ft at LKPR). 0 once reached.
 	goAroundFt float64
+	// gaStreams: the ways in of the others to its runway, for the side of
+	// its go-around circuit (SetGoAroundStreams).
+	gaStreams [][]airport.LatLon
 	tngLeft    int           // touch-and-goes still to make (ArrivalRequest.TouchAndGos)
 	tng        *TakeoffMover // a touch-and-go's take-off, while it flies it
 	sng        *stopAndGo    // a stop-and-go's stop, before its take-off

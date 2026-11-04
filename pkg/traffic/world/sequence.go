@@ -545,7 +545,7 @@ func (q *sequences) closingUp(now time.Time, it *controlled, e traffic.SequenceE
 				q.sayInCircuit(it, e, traffic.CircuitInstruction(e.Callsign, traffic.InstrExtendCallBase))
 			}
 			return
-		} else if err := q.cc.do(func() error { return it.arr.GoAround() }); err == nil {
+		} else if err := q.cc.do(func() error { return q.cc.goAround(it) }); err == nil {
 			q.cc.log.printf("%-6s sequence: sent around for spacing behind %s at %.1f NM to go", e.Callsign, e.Leader, e.DistanceToGoNM)
 			it.call(traffic.PosTower, prioUrgent, func() { it.say(it.goAround("spacing")) })
 			q.cc.rejoin(it.ICAO, it.Tail)
@@ -633,7 +633,7 @@ func (q *sequences) closingUp(now time.Time, it *controlled, e traffic.SequenceE
 	q.mu.Lock()
 	q.brokeOff[e.Callsign] = true
 	q.mu.Unlock()
-	if err := q.cc.do(func() error { return it.arr.GoAround() }); err != nil {
+	if err := q.cc.do(func() error { return q.cc.goAround(it) }); err != nil {
 		q.cc.log.printf("%-6s sequence: go-around for spacing refused: %v", e.Callsign, err)
 		return
 	}
