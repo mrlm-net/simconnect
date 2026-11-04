@@ -115,7 +115,9 @@ func (c *TaxiController) changeRoute(runway, entry string, departure []airport.N
 		if err := c.planFromStand(req, rwy, end); err != nil {
 			return err
 		}
-		c.planPushback()
+		// Off the connection's goroutine, as at the spawn: planned here,
+		// every aircraft stood still (live, LKPR 24 to 06: 3.3 s).
+		c.planPushbackLater()
 	case TaxiAwaitingTaxi:
 		// Waiting for the taxi on a stand it leaves without a push (no
 		// taxiway under it to plan from; live, SPDPS PC12 on N63 asking for

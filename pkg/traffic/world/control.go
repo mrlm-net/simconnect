@@ -55,6 +55,10 @@ type controlled struct {
 	// answered, so its IDs wait for a late answer (spawnstuck.go).
 	askedAt time.Time
 	holdIDs bool
+	// heldShortAt: since when a departure holds short (zero when not): at a
+	// runway change only the first one held there finishes on the old
+	// runway (lastOnOldRunway).
+	heldShortAt time.Time
 	// tug: a departure's pushback tug (SimObjectTug), for its way on the map.
 	tug *traffic.SimObjectTug
 	// fuel: a departure's fuel truck (#582), for its way on the map.
@@ -493,7 +497,9 @@ type controlCenter struct {
 	// departure and arrival runway then (#456).
 	runwayCheckAt time.Time
 	runwaysNow    map[string]string
-	standCheckAt  time.Time
+	// runwayChangedAt: each airport's last runway change (changeOverdue).
+	runwayChangedAt map[string]time.Time
+	standCheckAt    time.Time
 	// keepClearAt, keepClearKey: the last keepClear and the places taken then.
 	keepClearAt  time.Time
 	keepClearKey string
@@ -1694,6 +1700,11 @@ func (it *controlled) update(ev TaxiOrArrival) {
 	if e := ev.dep; e != nil {
 		v.State, v.HoldingShortOf, v.AtLimit, v.LimitNode = e.State.String(), e.HoldingShortOf, e.AtLimit, int(e.LimitNode)
 		v.TaxiRemainingM = e.Remaining
+		if e.State != traffic.TaxiHoldingShort {
+			it.heldShortAt = time.Time{}
+		} else if it.heldShortAt.IsZero() {
+			it.heldShortAt = traffic.Now()
+		}
 		v.Position, v.Heading, v.GroundSpeed, v.Lights, v.OnGround = e.Position, e.Heading, e.GroundSpeed, e.Lights.String(), e.OnGround
 		if e.Err != nil {
 			v.Error = e.Err.Error()
