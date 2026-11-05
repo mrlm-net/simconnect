@@ -7,6 +7,12 @@ This project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 ---
 
+## [0.167.9] - 2026-11-05
+
+### Fixed
+
+- Traffic on the ground is placed as in 0.167.7 again: the ground slope pitch (#1463) and the nose wheel yaw rate (#1446) of 0.167.8 are taken out, as aircraft bounced taxiing (#1466; live LKPR, taxiway H: THY1730 B739, LOT689 DH8D). Both come back after an offline replay of the ground there and a glitch-watch check. The camera fix of 0.167.8 (#1464) stays.
+
 ## [0.167.8] - 2026-11-05
 
 ### Fixed
