@@ -85,11 +85,6 @@ type injected struct {
 	title       string
 	placedAt    time.Time // when it was last placed on the ground (place)
 	onGroundRun int
-
-	// wheelbase and refAhead: its gear (MotionProfile, from the title);
-	// slope: the ground slope it is pitched by (slopeShown).
-	wheelbase, refAhead float64
-	slope               slopeState
 	// groundPrev: the last two ground samples (groundSeen of them), the
 	// later one at groundPrevAt (groundSample).
 	groundPrev [2]float64
@@ -124,8 +119,6 @@ type injected struct {
 	// reference point: what the simulator shows then is its mains height.
 	touchdown bool
 	mainArm   float64
-	// nose: its nose wheel steering (steer.go).
-	nose nosewheel
 }
 
 // mainsMinPitchDeg: nose up at least this much an aircraft on the ground
@@ -156,10 +149,6 @@ const injDefThrottle1 = injDefGearDown + 1
 // injDefGearDownPartial: the gear handle and the nose gear's position, for
 // a model that refuses the main gears' (HoldGearDown).
 const injDefGearDownPartial = injDefThrottle1 + injMaxEngines
-
-// injDefSteer: ROTATION VELOCITY BODY Y, the yaw rate the nose wheel's
-// steering is animated from (steer.go).
-const injDefSteer = injDefGearDownPartial + 1
 
 // gearTrackSends: the first HoldGearDown writes of an aircraft watched for
 // an exception (it is written every frame on the take-off roll).
@@ -305,9 +294,6 @@ func (i *Injector) register() error {
 		}
 	}
 	if err := i.track("define GEAR HANDLE POSITION", c.AddToDataDefinition(i.defBase+injDefGear, "GEAR HANDLE POSITION", "bool", types.SIMCONNECT_DATATYPE_FLOAT64, 0, 0)); err != nil {
-		return err
-	}
-	if err := i.track("define ROTATION VELOCITY BODY Y", c.AddToDataDefinition(i.defBase+injDefSteer, "ROTATION VELOCITY BODY Y", "radians per second", types.SIMCONNECT_DATATYPE_FLOAT64, 0, 0)); err != nil {
 		return err
 	}
 	// Flap surfaces directly: MSFS AI objects ignore the flaps handle and
@@ -504,7 +490,7 @@ func (i *Injector) place(objectID uint32, pose GroundPose, moving bool) error {
 		cg, pitch = o.restFt, o.restPitch
 	}
 	if !moving { // an aircraft (vehicles are placed moving): exactly its static pitch, on all its wheels
-		pitch = o.staticPitch - i.slopeShown(o, pose.Position, pose.Heading) // and on the ground's slope
+		pitch = o.staticPitch
 		o.placedAt = i.now()
 	}
 	o.placed = true
@@ -535,17 +521,8 @@ func (i *Injector) place(objectID uint32, pose GroundPose, moving bool) error {
 	}
 	// The speed passed on, so the wheels turn (vehicles and aircraft alike).
 	p.Airspeed = types.SIMCONNECT_DATA_INITPOSITION_AIRSPEED(math.Round(math.Max(0, pose.GroundSpeedKts)))
-	// An aircraft's nose wheel steers into its turn (steer.go): from how it
-	// moved.
-	yaw, steer := 0.0, false
-	if !moving {
-		yaw, steer = o.nose.update(pose.Position, pose.Heading, pose.GroundSpeedKts, i.now())
-	}
 	i.traceJump(objectID, o, "ground", pose.Position, pose.Heading, pose.GroundSpeedKts)
 	i.mu.Unlock()
-	if steer {
-		i.client.SetDataOnSimObject(i.defBase+injDefSteer, objectID, types.SIMCONNECT_DATA_SET_FLAG_DEFAULT, 0, 8, unsafe.Pointer(&yaw))
-	}
 	// Not tracked: at 60 Hz the send-ID map would grow without bound.
 	return i.client.SetDataOnSimObject(i.defBase+injDefPosition, objectID, types.SIMCONNECT_DATA_SET_FLAG_DEFAULT, 0, uint32(unsafe.Sizeof(p)), unsafe.Pointer(&p))
 }
@@ -806,11 +783,8 @@ func (i *Injector) PlaceAir(objectID uint32, pose ApproachPose) error {
 		OnGround:  onGround,
 		Airspeed:  types.SIMCONNECT_DATA_INITPOSITION_AIRSPEED(pose.GroundSpeedKts),
 	}
-	if w > 0 { // near the ground: on its slope, so none jumps in at touchdown or out at rotation
-		p.Pitch -= w * i.slopeShown(o, pose.Position, pose.Heading)
-	}
 	if pose.OnGround && pose.PitchDeg <= 0 { // wheels down, nose down: on all its wheels (MovingPitchDeg)
-		p.Pitch = o.staticPitch - o.slope.deg
+		p.Pitch = o.staticPitch
 	}
 	o.placed = true
 	// Placed: no rest learnt from the samples of a roll (live, TVS495 on its
@@ -949,8 +923,6 @@ func (i *Injector) SetModel(objectID uint32, title string) {
 	defer i.mu.Unlock()
 	if o, ok := i.objects[objectID]; ok {
 		o.title = title
-		prof := MotionProfileFor(title)
-		o.wheelbase, o.refAhead = prof.WheelbaseMeters, prof.RefAheadMeters
 		if o.haveRest && title != "" { // seen standing before its title came
 			i.rests[title] = [2]float64{o.restFt, o.restPitch}
 		}
