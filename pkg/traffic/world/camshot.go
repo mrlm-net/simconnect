@@ -97,14 +97,14 @@ func (m *cameraMan) playAlone(subject string, shot camera.Shot) {
 	// The shot over, the camera goes back to the simulator (unless another
 	// shot came since).
 	n := shotPlays.Add(1)
-	time.AfterFunc(shot.Length()+time.Second, func() {
-		m.mu.Lock()
-		still := m.mode == "shot"
-		m.mu.Unlock()
-		if still && shotPlays.Load() == n {
-			m.setMode("off", 0)
-		}
-	})
+	time.AfterFunc(shot.Length()+time.Second, func() { m.endShot(n) })
+}
+
+// endShot gives the camera back to the simulator at the end of shot play
+// n: only while that shot still has it, checked as the mode is set (a mode
+// set meanwhile, spotting set as the shot ended, stays).
+func (m *cameraMan) endShot(n int64) {
+	m.setModeIf("off", 0, func() bool { return m.mode == "shot" && shotPlays.Load() == n })
 }
 
 // shotPlays counts the shots played, so only the last one gives the camera

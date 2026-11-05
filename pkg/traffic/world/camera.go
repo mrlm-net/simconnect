@@ -217,6 +217,13 @@ func (m *cameraMan) tick(now time.Time) {
 
 // setMode switches the camera: off gives it back to the simulator.
 func (m *cameraMan) setMode(mode string, follow int) error {
+	return m.setModeIf(mode, follow, nil)
+}
+
+// setModeIf is setMode when still (nil: always), checked under the lock the
+// mode is set under: checked first and set after, a mode set between was
+// undone (live, a shot's end turned spotting off, set in that moment).
+func (m *cameraMan) setModeIf(mode string, follow int, still func() bool) error {
 	if m.dir == nil {
 		return errors.New("no camera on this connection")
 	}
@@ -226,6 +233,10 @@ func (m *cameraMan) setMode(mode string, follow int) error {
 		return errors.New("mode: off, follow, auto or view")
 	}
 	m.mu.Lock()
+	if still != nil && !still() {
+		m.mu.Unlock()
+		return nil
+	}
 	if mode != "off" {
 		m.rememberSim()
 	}
