@@ -64,8 +64,11 @@ func TestInjectorRestByModel(t *testing.T) {
 		t.Errorf("touchdown at %.3f ft, pitch %.2f, want the static 1212.25 and pitch 0.90, on all its wheels", alt, pitch)
 	}
 	w = w.Add(2 * time.Second)
-	if err := inj.Place(b, GroundPose{Position: airport.LatLon{Lat: 50, Lon: 14}}); err != nil {
-		t.Fatal(err)
+	for k := 0; k < 60; k++ { // standing: blended in a step a frame (standStepMaxSec)
+		if err := inj.Place(b, GroundPose{Position: airport.LatLon{Lat: 50, Lon: 14}}); err != nil {
+			t.Fatal(err)
+		}
+		w = w.Add(time.Second / 60)
 	}
 	if alt, pitch := placedAlt(); math.Abs(alt-1211.9) > 1e-6 || math.Abs(pitch-0.9) > 1e-6 {
 		t.Errorf("taxiing at %.3f ft, pitch %.2f, want a's rest 1211.9, its static pitch 0.90", alt, pitch)
@@ -103,9 +106,10 @@ func TestInjectorLearnsSettledRest(t *testing.T) {
 	w = w.Add(300 * time.Millisecond)
 	inj.Handle(sampleMsg(DefaultInjectRequestBase+1, obj, settled)) // the sim settled it
 	inj.Place(obj, pose)
-	// Blended in at CGBlendFtPerSecond, not snapped: 0.3 s, 0.3 ft of 0.35.
-	if got := placedAlt(); math.Abs(got-1208.18) > 1e-6 {
-		t.Errorf("0.3 s after settling, placed at %.2f, want 1208.18 on its way", got)
+	// Blended in, not snapped: standing, a step of standStepMaxSec at
+	// CGBlendFtPerSecond a placement, however long since the last one.
+	if got, want := placedAlt(), 1208.48-CGBlendFtPerSecond*standStepMaxSec; math.Abs(got-want) > 1e-6 {
+		t.Errorf("0.3 s after settling, placed at %.3f, want %.3f on its way", got, want)
 	}
 	for k := 0; k < 10; k++ {
 		w = w.Add(100 * time.Millisecond)
