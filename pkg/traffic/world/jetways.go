@@ -109,7 +109,7 @@ type jetwayState struct {
 	// refused: why a gate's last dock was refused, logged once each reason
 	// (a dock asked every second, refused, left no trace: live, LKPR B14).
 	refused map[string]string
-	tries    map[string]int // gate and model: docks asked
+	tries   map[string]int // gate and model: docks asked
 	// placed: where the simulator parked each gate's placeholders and
 	// helpers, the latest last.
 	placed map[string][]parkedAt
@@ -840,11 +840,12 @@ const gateFitMarginM = 2.0
 // the best-fitting gate it counts free, a docked one among them: an A320
 // helper for C24 (28 m) or B14 (35 m) went to a docked 22 m gate and took
 // its jetway (live, LKPR A1, C30, C23), a 22 m gate's never. Ours stands
-// with its door where the helper's is (gateNoseOffset, gateSide). The
-// wider helper with model's own door, else an A320's, when has (the
-// simulator lists it) says it is installed (jetway.HelperDoorTitle): its
-// jetway meets a smaller aircraft's door, not one higher and further back
-// (live, LKPR B14: a B748 helper's jetway above a B738's door).
+// with its door where the helper's is (gateNoseOffset, gateSide). For a
+// code C aircraft or smaller, the wider helper with model's own door,
+// else an A320's, when has (the simulator lists it) says it is installed
+// (jetway.HelperDoorTitle): its jetway meets a smaller aircraft's door,
+// not one higher and further back (live, LKPR B14: a B748 helper's jetway
+// above a B738's door).
 func gateHelper(svc *jetway.Helpers, g *airport.Graph, stand int, model string, has func(string) bool) string {
 	own := svc.HelperFor(model)
 	if g == nil || stand < 0 || stand >= len(g.Layout.Parking) {
@@ -882,9 +883,17 @@ func gateHelper(svc *jetway.Helpers, g *airport.Graph, stand int, model string, 
 	if best == "" {
 		return own
 	}
-	for _, d := range []string{strings.TrimPrefix(own, jetway.HelperTitlePrefix), "A320"} {
-		if t := jetway.HelperDoorTitle(best, d); has != nil && has(t) {
-			return t
+	// The door variants are a smaller aircraft's door (code C or below by
+	// its published span, not the installed model's): a widebody's door is
+	// far behind its nose gear, so on one it stood its nose gear up to 20 m
+	// past the circle (live, LKPR B14: QTR337's B789, 53.9 m installed, by
+	// the "B748 D-A320" helper, 29 m into the 35 m circle, its engine in
+	// the jetway); it takes the wider helper with that helper's own door.
+	if traffic.ICAOCodeFor(traffic.ProfileFor(model).WingspanM) <= 'C' {
+		for _, d := range []string{strings.TrimPrefix(own, jetway.HelperTitlePrefix), "A320"} {
+			if t := jetway.HelperDoorTitle(best, d); has != nil && has(t) {
+				return t
+			}
 		}
 	}
 	return svc.HelperFor(best)

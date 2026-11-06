@@ -57,6 +57,13 @@ func TestGroundShownEasedStanding(t *testing.T) {
 		t.Errorf("standing: %.2f, want eased from 1177.40", got)
 	}
 	at = at.Add(time.Second)
+	if got := i.groundShown(o, GroundPose{Position: p}); 1177.40-got > groundEaseFtPerSec*standStepMaxSec+0.03+1e-9 {
+		t.Errorf("a second on, one placement: %.2f, want a step of at most %.3f", got, groundEaseFtPerSec*standStepMaxSec)
+	}
+	for k := 0; k < 60; k++ { // placed every frame a second
+		at = at.Add(time.Second / 60)
+		i.groundShown(o, GroundPose{Position: p})
+	}
 	if got := i.groundShown(o, GroundPose{Position: p}); math.Abs(got-1176.92) > 0.01 {
 		t.Errorf("a second on: %.2f, want 1176.92", got)
 	}

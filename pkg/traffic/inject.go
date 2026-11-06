@@ -65,6 +65,7 @@ type Injector struct {
 }
 
 type injected struct {
+	id             uint32 // its object ID
 	slot           int
 	groundFt, cgFt float64
 	staticPitch    float64 // degrees, the simulator's convention
@@ -119,6 +120,11 @@ type injected struct {
 	// reference point: what the simulator shows then is its mains height.
 	touchdown bool
 	mainArm   float64
+	// cellBias: how far its samples stood from the ground map's cells others
+	// wrote (noteCellBias), measured at cellBiasPos at cellBiasAt.
+	cellBias    float64
+	cellBiasPos airport.LatLon
+	cellBiasAt  time.Time
 }
 
 // mainsMinPitchDeg: nose up at least this much an aircraft on the ground
@@ -410,7 +416,7 @@ func (i *Injector) watch(objectID uint32) (*injected, error) {
 		i.client.RequestDataOnSimObject(req+1, i.defBase+injDefGround, objectID, types.SIMCONNECT_PERIOD_SIM_FRAME, types.SIMCONNECT_DATA_REQUEST_FLAG_CHANGED, 0, 0, 0)); err != nil {
 		return nil, err
 	}
-	o := &injected{slot: slot, sentGround: -1}
+	o := &injected{id: objectID, slot: slot, sentGround: -1}
 	i.slots[slot] = true
 	i.objects[objectID] = o
 	i.byRequest[req+1] = objectID
@@ -490,6 +496,11 @@ func (i *Injector) place(objectID uint32, pose GroundPose, moving bool) error {
 		cg, pitch = o.restFt, o.restPitch
 	}
 	if !moving { // an aircraft (vehicles are placed moving): exactly its static pitch, on all its wheels
+		// Not tilted by the ground under its gear either: at any other
+		// pitch or bank the simulator holds it on its extended struts, struts
+		// above its static height, and drops it back in a frame wherever
+		// the tilt comes out at none (live LKPR, B738 9.00 → 8.48 ft, A20N
+		// 13.13 → 12.00 taxiing).
 		pitch = o.staticPitch
 		o.placedAt = i.now()
 	}
@@ -510,7 +521,7 @@ func (i *Injector) place(objectID uint32, pose GroundPose, moving bool) error {
 	if o.sentGround == 0 && math.Abs(o.cgShown-cg) > groundFlagWithinFt {
 		flag = 0
 	}
-	cg = i.smoothCG(o, cg, flag)
+	cg = i.smoothCG(o, cg, flag, pose.GroundSpeedKts <= restMaxKts)
 	p := types.SIMCONNECT_DATA_INITPOSITION{
 		Latitude:  pose.Position.Lat,
 		Longitude: pose.Position.Lon,
@@ -621,7 +632,8 @@ func (i *Injector) Handle(msg engine.Message) (bool, error) {
 			ground := o.groundSample(at, g.GroundFt)
 			o.groundFt, o.cgFt, o.staticPitch, o.haveGround = ground, g.CGFt, g.StaticPitch, true
 			if math.Abs(g.GroundFt-ground) < groundSpikeFt {
-				i.ground.put(at, g.GroundFt)
+				i.noteCellBias(o, at, g.GroundFt)
+				i.ground.putBy(at, g.GroundFt, obj, i.now())
 			}
 			rest := g.PlaneFt - ground
 			// Placed and left alone a while (standing, placed at the standing
@@ -629,7 +641,19 @@ func (i *Injector) Handle(msg engine.Message) (bool, error) {
 			// was first seen (frozen at its static height as created); placed
 			// there, it no longer sinks 0.3 ft as it stops nor rises as it
 			// starts (live, RYR852 8.48 → 8.13 ft).
-			settled := o.placed && !o.placedAt.IsZero() && i.now().Sub(o.placedAt) >= restSettleAfter
+			// Only on the ground it was placed on: a new ground under it is the
+			// scenery swapping detail, the aircraft where we put it; taken as
+			// its rest, its height swapped between that and the static one
+			// with each swap, and once in a frame (live, LOT1111 holding short:
+			// 13.30 → 12.84 ft, the ground 1159.89 ↔ 1160.35).
+			// Nor while ours still blends to its rest: what it shows then is
+			// ours on its way, and taken as its rest it stopped there, the
+			// simulator settling it at its own every few seconds (offline, a
+			// B738 resting at 8.13 held at 8.41; live RYR314 at 8.06 against
+			// 8.48, the simulator showing 8.48 for a frame every 5.6 s).
+			settled := o.placed && !o.placedAt.IsZero() && i.now().Sub(o.placedAt) >= restSettleAfter &&
+				!o.groundShownAt.IsZero() && math.Abs(ground-o.groundShownFt) <= restGroundAgreeFt &&
+				(!o.haveRest || math.Abs(o.cgShown-o.restFt) <= groundFlagWithinFt)
 			if (!o.placed || settled) && g.OnGround != 0 && g.GS < restMaxKts &&
 				math.Abs(rest-g.CGFt) <= restMaxOffFt && math.Abs(g.PlanePitch-g.StaticPitch) <= restMaxOffPitch {
 				// Placed by us on extended struts (MovingPitchDeg): its height, and
@@ -747,6 +771,15 @@ func (i *Injector) PlaceAir(objectID uint32, pose ApproachPose) error {
 		o.touchdown, o.mainArm = true, pose.MainGearBehindM
 	case pose.OnGround:
 		cg = o.cgFt
+		// Landed, the nose wheel coming down with the flag set: at its static
+		// pitch the simulator shows it at its own static height on compressed
+		// struts at once, then took ours again while ours still blended down
+		// from its height on the main gear (live LKPR 24 rollouts: QTR337
+		// B789 16.85 → 17.64 ft at 142 kt, AFR473 12.25 → 12.85): ours is
+		// its static height from that frame.
+		if pose.Landing && o.sentGround == 1 && pose.PitchDeg <= 0 {
+			o.cgShown = cg
+		}
 		// Touching down, the flag not set yet: held off until the wheels are
 		// blended down to it; set at once, the simulator snapped them there
 		// (live, 9.00 → 8.48 ft in a frame).
@@ -776,7 +809,7 @@ func (i *Injector) PlaceAir(objectID uint32, pose ApproachPose) error {
 	p := types.SIMCONNECT_DATA_INITPOSITION{
 		Latitude:  pose.Position.Lat,
 		Longitude: pose.Position.Lon,
-		Altitude:  airAltitude(pose, i.groundUnder(o, pose.Position)) + i.smoothCG(o, o.cgFt+w*(cg-o.cgFt), onGround) + mainGearLift(pose),
+		Altitude:  airAltitude(pose, i.groundUnder(o, pose.Position)) + i.smoothCG(o, o.cgFt+w*(cg-o.cgFt), onGround, false) + mainGearLift(pose),
 		Pitch:     offRest(w*base+rolling-pose.PitchDeg, base, o.staticPitch), // SimConnect: negative is nose up
 		Bank:      -pose.BankDeg,                                              // assumed like the pitch (negative right wing down); check live
 		Heading:   pose.Heading,
@@ -893,16 +926,23 @@ const groundFlagWithinFt = 0.03
 // CGBlendFtPerSecond. It never takes the height the simulator showed:
 // following that, ours and its switched back and forth (live, ±0.6 ft).
 // i.mu held.
-func (i *Injector) smoothCG(o *injected, target float64, onGround types.DWORD) float64 {
+func (i *Injector) smoothCG(o *injected, target float64, onGround types.DWORD, standing bool) float64 {
 	now := i.now()
 	o.sentGround = 0
 	if onGround != 0 {
 		o.sentGround = 1
 	}
-	if o.cgShownAt.IsZero() || now.Sub(o.cgShownAt) > time.Second {
+	dt := now.Sub(o.cgShownAt).Seconds()
+	if standing && !o.cgShownAt.IsZero() {
+		// Standing, placed every few frames or after a pause: a blend step
+		// of one frame's time each placement, never a snap (live, LOT1111
+		// holding short: 13.30 → 12.84 ft in one).
+		dt = math.Min(math.Max(0, dt), standStepMaxSec)
+	}
+	if o.cgShownAt.IsZero() || dt > time.Second.Seconds() {
 		o.cgShown = target
 	} else {
-		step := CGBlendFtPerSecond * now.Sub(o.cgShownAt).Seconds()
+		step := CGBlendFtPerSecond * dt
 		o.cgShown += math.Max(-step, math.Min(step, target-o.cgShown))
 	}
 	o.cgShownAt = now
@@ -1094,3 +1134,7 @@ const (
 // standing rate) has been settled by the simulator: its rest is learnt
 // again from what it shows.
 const restSettleAfter = 250 * time.Millisecond
+
+// restGroundAgreeFt: a rest is learnt only while the ground sampled under
+// the aircraft is within this of the ground it was placed on (groundShown).
+const restGroundAgreeFt = 0.02

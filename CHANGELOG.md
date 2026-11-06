@@ -7,6 +7,15 @@ This project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 ---
 
+## [0.167.10] - 2026-11-06
+
+### Fixed
+
+- Traffic on the ground no longer steps 0.3 to 0.5 ft in a frame where the ground map's cells, written by other aircraft, stand off its own ground: each aircraft reads them moved by how far its own samples stood from them (live LKPR 24: CSA1156 flickered on its take-off roll) (#1468).
+- An aircraft standing still moves to a new ground over a few seconds, never in one placement, and its rest is learnt only on the ground it was placed on and not while its height still blends (live LKPR, holding short: LOT1111 0.46 ft in one placement, RYR314 resting at 8.06 ft against 8.48 and shown 8.48 every 5.6 s) (#1468).
+- A landed aircraft hands over to its rest from the frame its nose wheel comes down, not a height before it (live LKPR: OKTWA -2.38 ft, LOT +0.99 ft) (#1468). The ground tilt of #1463 stays out: at any pitch or bank off its static one the simulator holds it on extended struts.
+- A widebody at a jetway gate takes the wider helper's own door, not a narrowbody door variant: QTR337 (B789) at LKPR B14 took "B748 D-A320", an A320 door on the 747's datum, and stopped about 22 m too deep with its engine in the jetway (#1469).
+
 ## [0.167.9] - 2026-11-05
 
 ### Fixed

@@ -53,3 +53,49 @@ func TestGateHelperBySize(t *testing.T) {
 		}
 	}
 }
+
+// A widebody whose installed span would fit a smaller gate takes the wider
+// helper with that helper's own door, not an A320's door variant: on LKPR
+// B14 (35 m) the "B748 D-A320" helper, the A320's door figures on the
+// 747's datum (nose gear 2.79 m ahead of it), stood QTR337's B789 with its
+// reference 29 m into the circle, nose gear 17 m past it (live,
+// 2026-11-05). Its nose gear stays inside the circle; an A320 keeps the
+// door variant.
+func TestGateHelperWidebodyNoDoorVariant(t *testing.T) {
+	g, err := airport.BuildGraph(lkprLayout(t))
+	if err != nil {
+		t.Fatal(err)
+	}
+	b14, err := g.Layout.ParkingIndex("B14")
+	if err != nil {
+		t.Fatal(err)
+	}
+	// The installed figures (feet), as the map reads them.
+	setDoors(map[string]addons.ModelDoor{
+		"FSLTL_B789_GE_QTR":                {Type: "B789", First: addons.InteractivePoint{Long: 31.43}, NoseGearFt: 75.125, HasNoseGear: true},
+		"FSLTL_A320_LYX":                   {Type: "A320", First: addons.InteractivePoint{Long: 37.65}, NoseGearFt: 37.319, HasNoseGear: true},
+		"MyCrew Jetway Helper B748":        {Type: "B748", First: addons.InteractivePoint{Long: -40.2}, NoseGearFt: 9.15, HasNoseGear: true},
+		"MyCrew Jetway Helper B748 D-A320": {Type: "B748", First: addons.InteractivePoint{Long: 37.65}, NoseGearFt: 9.15, HasNoseGear: true},
+	}, map[string]addons.ModelDoor{"B789": {WingSpanFt: 176.8}, "A320": {WingSpanFt: 117.4}, "B748": {WingSpanFt: 203.1}})
+	defer setDoors(nil, nil)
+	svc := jetway.NewHelpers(nil, jetway.HelperOptions{Types: []string{"A320", "B748", "B789"}})
+	has := func(t string) bool { return t == jetway.HelperDoorTitle("B748", "A320") }
+	r := g.Layout.Parking[b14].Radius
+	for _, tc := range []struct{ model, want string }{
+		{"FSLTL_B789_GE_QTR", jetway.HelperTitle("B748", false)},
+		{"FSLTL_A320_LYX", jetway.HelperDoorTitle("B748", "A320")},
+	} {
+		h := gateHelper(svc, g, b14, tc.model, has)
+		if h != tc.want {
+			t.Errorf("%s at B14: %q, want %q", tc.model, h, tc.want)
+		}
+		if tc.model != "FSLTL_B789_GE_QTR" {
+			continue
+		}
+		nose, _ := noseGearM(tc.model)
+		off := gateNoseOffset(tc.model, h, SimNoseGearInsetM)
+		if past := nose - off; past > 0 {
+			t.Errorf("%s at B14 by %q: reference %.1f m into the %.0f m circle, nose gear %.1f m past it", tc.model, h, r-off, r, past)
+		}
+	}
+}
