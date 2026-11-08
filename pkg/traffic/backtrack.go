@@ -118,7 +118,7 @@ func (c *TaxiController) startBacktrack(pose GroundPose, prof MotionProfile) boo
 	cum := func(i int) float64 { return pathLen(pts[:i+1]) }
 	path.LimitRange(cum(backStart), cum(turnEnd), BacktrackKts, prof.Decel)
 	path.LimitRange(cum(backStart+1), cum(turnEnd), TurnSpeedKts, prof.Decel)
-	c.alignDist = cum(turnEnd+2)
+	c.alignDist = cum(turnEnd + 2)
 	alignKts := LineUpSpeedKts
 	if c.takeoffCleared {
 		alignKts = LineUpRollingKts

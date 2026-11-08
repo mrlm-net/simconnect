@@ -73,8 +73,8 @@ func (p *GroundPicture) Report(id uint32, pos airport.LatLon, hdg float64, prof 
 	p.aircraft[id] = groundEntry{
 		pos: pos, hdg: hdg, at: now, ahead: p.aircraft[id].ahead, half: p.aircraft[id].half, pushing: p.aircraft[id].pushing, waiting: p.aircraft[id].waiting,
 		intent: p.aircraft[id].intent, parked: p.aircraft[id].parked,
-		nose:   prof.WheelbaseMeters*pushNoseFactor - prof.RefAheadMeters,
-		tail:   tail + prof.RefAheadMeters,
+		nose: prof.WheelbaseMeters*pushNoseFactor - prof.RefAheadMeters,
+		tail: tail + prof.RefAheadMeters,
 	}
 }
 

@@ -275,7 +275,7 @@ type state struct {
 	modelRules  *modelRuleStore
 	providers   *providerStore
 	standRules  *standRuleStore
-	tuning      *tuningStore // the traffic's timing, local (schedule_tuning.go, #1303)
+	tuning      *tuningStore     // the traffic's timing, local (schedule_tuning.go, #1303)
 	doorOffsets *doorOffsetStore // jetway door offsets, local (jetways.go)
 }
 

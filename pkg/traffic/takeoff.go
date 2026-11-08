@@ -120,8 +120,8 @@ type TakeoffMover struct {
 	// over the first takeoffAlignMeters (FromHeading).
 	offDeg float64
 	x, v   float64 // m, m/s
-	h, vs   float64 // ft, fpm
-	pitch   float64
+	h, vs  float64 // ft, fpm
+	pitch  float64
 	// shown, shownRate: the pitch as drawn, following pitch smoothly
 	// (PitchFollowRate): no corners where a rotation or settle starts or ends.
 	shown, shownRate float64
