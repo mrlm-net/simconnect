@@ -155,6 +155,106 @@ func (s *jetwayState) gateResting(k string, status jetway.Status, askedAt, now t
 	return true
 }
 
+// restingNow reports whether gate k rests now (gateResting), changing
+// nothing. cc.jw.mu held.
+func (s *jetwayState) restingNow(k string, now time.Time) bool {
+	return s.fails[k] >= JetwayGateFails && now.Sub(s.failAt[k]) < JetwayGateRest
+}
+
+// A gate whose jetway never came for an aircraft type (its dock timed out,
+// or the gate rested after failed docks with one there) has no jetway for
+// that type: stairs, GPU and buses as on a remote stand, kept over restarts
+// (jetway-gates.json) until one of the type docks there. It is tried again
+// once JetwayTypeRetest after the last failure (live, LKPR C21 2026-11-08:
+// an A321, a BCS3 and an A20N each waited for a jetway that never came).
+const JetwayTypeRetest = 6 * time.Hour
+
+// jetwayType is the type a gate's jetway lessons are kept by: model's
+// ICAO type when known, else model as given.
+func jetwayType(model string) string {
+	m := strings.ToUpper(strings.TrimSpace(model))
+	if t := strings.ToUpper(traffic.ProfileFor(m).Type); t != "" && strings.Contains(m, t) {
+		return t
+	}
+	return m
+}
+
+// dockResult hears how a dock for model at icao's stand ended
+// (jetway.HelperOptions.OnDock): its jetway never came, the gate has none
+// for that type from now on; docked, it has again. Under the backend's
+// lock: it takes none of ours but the lessons'.
+func (cc *controlCenter) dockResult(icao string, stand int, model string, docked bool) {
+	typ := jetwayType(model)
+	if typ == "" {
+		return
+	}
+	if gateLessons.setNoJetway(icao, stand, typ, traffic.Now(), !docked) && cc.core != nil {
+		if docked {
+			cc.core.log.printf("jetway %s stand %d: docked for %s again: its jetway counts for that type", icao, stand, typ)
+		} else {
+			cc.core.log.printf("jetway %s stand %d: no jetway came for %s: none for that type here (stairs and buses), tried again in %s", icao, stand, typ, JetwayTypeRetest)
+		}
+	}
+}
+
+// gateWithoutJetway reports that icao's stand has no jetway for model now:
+// learned so for its type (dockResult), or the gate resting after failed
+// docks.
+func (cc *controlCenter) gateWithoutJetway(icao string, stand int, model string) bool {
+	now := traffic.Now()
+	if gateLessons.noJetway(icao, stand, jetwayType(model), now) {
+		return true
+	}
+	cc.jw.mu.Lock()
+	defer cc.jw.mu.Unlock()
+	return cc.jw.restingNow(gateKey(icao, stand), now)
+}
+
+// jetwayAt reports that model at g's stand boards by a jetway: a gate,
+// unless its jetway does not come for model (gateWithoutJetway).
+func (cc *controlCenter) jetwayAt(g *airport.Graph, stand int, model string) bool {
+	if g == nil || stand < 0 || stand >= len(g.Layout.Parking) || !g.Layout.Parking[stand].IsGate() {
+		return false
+	}
+	return !cc.gateWithoutJetway(g.Layout.ICAO, stand, model)
+}
+
+// standServicesAdder is a departure controller that takes stand services
+// after its start (traffic.TaxiController).
+type standServicesAdder interface {
+	AddStandServices(stairs, gpu traffic.FuelService, buses []traffic.FuelService) bool
+}
+
+// lateStandServices gives a departure waiting on a gate whose jetway does
+// not come the stairs, GPU and buses of a remote stand, once.
+func (cc *controlCenter) lateStandServices(it *controlled) {
+	it.mu.Lock()
+	if it.standLate || it.dep == nil || it.standServices == nil || it.jetwayGone {
+		it.mu.Unlock()
+		return
+	}
+	it.standLate = true
+	dep, mk, tail := it.dep, it.standServices, it.Tail
+	label := fmt.Sprint(it.stand)
+	if g := it.graph; g != nil && it.stand >= 0 && it.stand < len(g.Layout.Parking) {
+		label = g.Layout.Parking[it.stand].Label()
+	}
+	icao := it.ICAO
+	it.mu.Unlock()
+	a, ok := dep.(standServicesAdder)
+	if !ok {
+		return // on a remote actuator: not given late
+	}
+	stairs, gpu, buses := mk()
+	if stairs == nil {
+		cc.core.log.printf("jetway %s %s: no jetway for %s, and no stairs to give", icao, label, tail)
+		return
+	}
+	if a.AddStandServices(stairs, gpu, buses) {
+		cc.core.log.printf("jetway %s %s: no jetway for %s: stairs and %d buses instead", icao, label, tail, len(buses))
+	}
+}
+
 func gateKey(icao string, stand int) string { return fmt.Sprintf("%s %d", icao, stand) }
 
 func splitGateKey(k string) (string, int) {
@@ -202,7 +302,7 @@ func (cc *controlCenter) jetwayService() *jetway.Helpers {
 			go gateLessons.add(gateLesson{ICAO: icao, Stand: stand, Helper: helper, Docked: docked})
 		}, OnGateResult: func(icao string, stand int, docked bool) {
 			go gateLessons.count(icao, stand, docked)
-		}})
+		}, OnDock: cc.dockResult})
 	gateLessons.teach(cc.jw.svc)
 	cc.jw.prepared, cc.jw.docked = map[string]bool{}, map[string]bool{}
 	return cc.jw.svc
@@ -322,6 +422,7 @@ func (cc *controlCenter) jetwayTick(now time.Time) {
 	}
 	cc.jw.mu.Unlock()
 	parked := map[string]bool{}
+	var late []*controlled // no jetway coming: stand services instead
 	for _, it := range items {
 		it.mu.Lock()
 		icao, stand, model, gone := it.ICAO, it.stand, it.view.Model, it.jetwayGone
@@ -332,6 +433,8 @@ func (cc *controlCenter) jetwayTick(now time.Time) {
 		}
 		k := gateKey(icao, stand)
 		parked[k] = true
+		typ := jetwayType(model)
+		noJet := gateLessons.noJetway(icao, stand, typ, now)
 		cc.jw.mu.Lock()
 		asked := cc.jw.docked[k]
 		// A dock that failed (the helper given another gate) is asked again
@@ -343,14 +446,27 @@ func (cc *controlCenter) jetwayTick(now time.Time) {
 		if asked && now.Sub(cc.jw.askedAt[k]) > time.Minute && status == jetway.StatusFailed && cc.jw.tries[key] < JetwayDockTries {
 			asked = false
 		}
-		if cc.jw.gateResting(k, status, cc.jw.askedAt[k], now) && !asked {
-			if cc.jw.tries[key] == 0 {
-				cc.core.log.printf("jetway %s %s: resting after %d failed docks, no jetway for %s", icao, g.Layout.Parking[stand].Label(), JetwayGateFails, tail)
-				cc.jw.tries[key] = JetwayDockTries // said once
+		resting := cc.jw.gateResting(k, status, cc.jw.askedAt[k], now)
+		if (resting || noJet) && !asked {
+			if cc.jw.tries == nil {
+				cc.jw.askedAt, cc.jw.tries = map[string]time.Time{}, map[string]int{}
 			}
+			if resting && cc.jw.tries[key] == 0 {
+				cc.core.log.printf("jetway %s %s: resting after %d failed docks, no jetway for %s", icao, g.Layout.Parking[stand].Label(), JetwayGateFails, tail)
+			}
+			cc.jw.tries[key] = JetwayDockTries // said once
 			cc.jw.docked[k] = true
 			cc.jw.mu.Unlock()
+			if resting && !noJet {
+				// The gate gives this type no jetway either, after a restart too.
+				gateLessons.setNoJetway(icao, stand, typ, now, true)
+			}
+			late = append(late, it)
 			continue
+		}
+		// Its last dock failed and none is asked again: no jetway for it.
+		if asked && status == jetway.StatusFailed && cc.jw.tries[key] >= JetwayDockTries && now.Sub(cc.jw.askedAt[k]) > time.Minute {
+			late = append(late, it)
 		}
 		if !asked {
 			if cc.jw.askedAt == nil {
@@ -385,6 +501,10 @@ func (cc *controlCenter) jetwayTick(now time.Time) {
 				}
 			}
 		}
+	}
+	// A departure whose jetway does not come: stairs and buses instead.
+	for _, it := range late {
+		cc.lateStandServices(it)
 	}
 	// A gate whose aircraft has gone (pushed, removed): its jetway home.
 	cc.jw.mu.Lock()
@@ -585,7 +705,7 @@ const JetwayBoarding = 3 * time.Minute
 // jetway is still on its way, 15 s at a time. it.mu held.
 func (it *controlled) boardingLeft() time.Duration {
 	svc := it.cc.jetwayBuilt()
-	if svc == nil || it.jetwayGone || it.stand < 0 {
+	if svc == nil || it.jetwayGone || it.stand < 0 || it.cc.gateWithoutJetway(it.ICAO, it.stand, it.view.Model) {
 		return 0
 	}
 	now := it.cc.clock.Now()
@@ -883,17 +1003,26 @@ func gateHelper(svc *jetway.Helpers, g *airport.Graph, stand int, model string, 
 	if best == "" {
 		return own
 	}
-	// The door variants are a smaller aircraft's door (code C or below by
-	// its published span, not the installed model's): a widebody's door is
-	// far behind its nose gear, so on one it stood its nose gear up to 20 m
-	// past the circle (live, LKPR B14: QTR337's B789, 53.9 m installed, by
-	// the "B748 D-A320" helper, 29 m into the 35 m circle, its engine in
-	// the jetway); it takes the wider helper with that helper's own door.
-	if traffic.ICAOCodeFor(traffic.ProfileFor(model).WingspanM) <= 'C' {
-		for _, d := range []string{strings.TrimPrefix(own, jetway.HelperTitlePrefix), "A320"} {
-			if t := jetway.HelperDoorTitle(best, d); has != nil && has(t) {
-				return t
-			}
+	// The door variants carry a type's door as far behind the nose gear as
+	// on that type (jetway.WritePackage), so ours stops where the sim parks
+	// its own type: its own type's variant first, any size (live, LKPR B14:
+	// an Emirates 777 by the B748's own door, the jetway 15 m aft of L1).
+	// An A320's door only for code C or below by its published span: a
+	// widebody's door is far behind its nose gear, so by an A320's it stood
+	// its nose gear up to 20 m past the circle (live, LKPR B14: QTR337's
+	// B789 by the "B748 D-A320" helper, its engine in the jetway).
+	// A widebody without its own type's helper (own the fallback's) none.
+	prof := traffic.ProfileFor(model)
+	var doors []string
+	if d := strings.TrimPrefix(own, jetway.HelperTitlePrefix); traffic.ICAOCodeFor(prof.WingspanM) <= 'C' || strings.EqualFold(d, prof.Type) {
+		doors = append(doors, d)
+	}
+	if traffic.ICAOCodeFor(prof.WingspanM) <= 'C' {
+		doors = append(doors, "A320")
+	}
+	for _, d := range doors {
+		if t := jetway.HelperDoorTitle(best, d); has != nil && has(t) {
+			return t
 		}
 	}
 	return svc.HelperFor(best)
@@ -918,6 +1047,11 @@ type gateLesson struct {
 	// elsewhere, of any type (Helper "": jetway.GateRecord).
 	Docks int `json:"docks,omitempty"`
 	Aways int `json:"aways,omitempty"`
+	// Type and NoJetwayAt: no jetway came at the gate for aircraft of
+	// Type (dockResult), last at NoJetwayAt (Unix seconds); kept until one
+	// of the type docks there.
+	Type       string `json:"type,omitempty"`
+	NoJetwayAt int64  `json:"noJetwayAt,omitempty"`
 }
 
 // gateLessonStore keeps the gates' lessons in a local file
@@ -925,9 +1059,10 @@ type gateLesson struct {
 // helpers at the next start: a gate that refuses a helper type is not
 // tried with it again after a restart.
 type gateLessonStore struct {
-	mu    sync.Mutex
-	file  string
-	items []gateLesson
+	mu     sync.Mutex
+	file   string
+	items  []gateLesson
+	saving sync.WaitGroup // saveLater's writes
 }
 
 var gateLessons = &gateLessonStore{}
@@ -953,7 +1088,7 @@ func (s *gateLessonStore) add(l gateLesson) {
 // put is add with s.mu held.
 func (s *gateLessonStore) put(l gateLesson) {
 	s.items = slices.DeleteFunc(s.items, func(i gateLesson) bool {
-		return i.ICAO == l.ICAO && i.Stand == l.Stand && i.Helper == l.Helper
+		return i.ICAO == l.ICAO && i.Stand == l.Stand && i.Helper == l.Helper && i.Type == l.Type
 	})
 	s.items = append(s.items, l)
 	if s.file == "" {
@@ -974,7 +1109,7 @@ func (s *gateLessonStore) count(icao string, stand int, docked bool) {
 	defer s.mu.Unlock()
 	var l gateLesson
 	for _, i := range s.items {
-		if i.ICAO == icao && i.Stand == stand && i.Helper == "" {
+		if i.ICAO == icao && i.Stand == stand && i.Helper == "" && i.Type == "" {
 			l = i
 		}
 	}
@@ -993,10 +1128,73 @@ func (s *gateLessonStore) teach(svc *jetway.Helpers) {
 	items := slices.Clone(s.items)
 	s.mu.Unlock()
 	for _, l := range items {
+		if l.Type != "" {
+			continue // the world's own (noJetway)
+		}
 		if l.Helper == "" {
 			svc.GateRecord(l.ICAO, l.Stand, l.Docks, l.Aways)
 			continue
 		}
 		svc.Learn(l.ICAO, l.Stand, l.Helper, l.Docked)
 	}
+}
+
+// setNoJetway notes (on) or clears that icao's stand gave typ no jetway,
+// at at; saved in the background (called under the jetway backend's
+// lock). Reports whether anything changed: a lesson new or cleared.
+func (s *gateLessonStore) setNoJetway(icao string, stand int, typ string, at time.Time, on bool) bool {
+	icao, typ = strings.ToUpper(icao), strings.ToUpper(typ)
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	i := slices.IndexFunc(s.items, func(l gateLesson) bool {
+		return l.ICAO == icao && l.Stand == stand && l.Type == typ
+	})
+	switch {
+	case on && i >= 0:
+		s.items[i].NoJetwayAt = at.Unix()
+		s.saveLater()
+		return false
+	case on:
+		s.items = append(s.items, gateLesson{ICAO: icao, Stand: stand, Type: typ, NoJetwayAt: at.Unix()})
+	case i >= 0:
+		s.items = slices.Delete(s.items, i, i+1)
+	default:
+		return false
+	}
+	s.saveLater()
+	return true
+}
+
+// noJetway reports that icao's stand gives typ no jetway now: it gave
+// none last time, less than JetwayTypeRetest ago.
+func (s *gateLessonStore) noJetway(icao string, stand int, typ string, now time.Time) bool {
+	icao, typ = strings.ToUpper(icao), strings.ToUpper(typ)
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	for _, l := range s.items {
+		if l.ICAO == icao && l.Stand == stand && l.Type == typ && typ != "" {
+			return now.Sub(time.Unix(l.NoJetwayAt, 0)) < JetwayTypeRetest
+		}
+	}
+	return false
+}
+
+// saveLater writes the lessons in the background. s.mu held.
+func (s *gateLessonStore) saveLater() {
+	if s.file == "" {
+		return
+	}
+	s.saving.Add(1)
+	go func() {
+		defer s.saving.Done()
+		s.mu.Lock()
+		defer s.mu.Unlock()
+		b, err := json.MarshalIndent(s.items, "", "  ")
+		if err == nil {
+			err = os.WriteFile(s.file, b, 0o644)
+		}
+		if err != nil {
+			fmt.Fprintf(stdout, "⚠️  %s: %v\n", s.file, err)
+		}
+	}()
 }

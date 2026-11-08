@@ -73,8 +73,8 @@ func (p *GroundPicture) Report(id uint32, pos airport.LatLon, hdg float64, prof 
 	p.aircraft[id] = groundEntry{
 		pos: pos, hdg: hdg, at: now, ahead: p.aircraft[id].ahead, half: p.aircraft[id].half, pushing: p.aircraft[id].pushing, waiting: p.aircraft[id].waiting,
 		intent: p.aircraft[id].intent, parked: p.aircraft[id].parked,
-		nose:   prof.WheelbaseMeters*pushNoseFactor - prof.RefAheadMeters,
-		tail:   tail + prof.RefAheadMeters,
+		nose: prof.WheelbaseMeters*pushNoseFactor - prof.RefAheadMeters,
+		tail: tail + prof.RefAheadMeters,
 	}
 }
 
@@ -570,6 +570,7 @@ func (p *GroundPicture) blocking(id uint32, path *GroundPath, from, look, half f
 		segs[i-lo] = s
 	}
 	half2 := half * half
+	wing2 := (half + wingClearMeters) * (half + wingClearMeters)
 	near := sc.near[:0]
 	defer func() { sc.near = near }()
 	for _, o := range others {
@@ -577,27 +578,59 @@ func (p *GroundPicture) blocking(id uint32, path *GroundPath, from, look, half f
 		// look from start along it): not tested point by point, the most
 		// of the frame's time with many taxiing (#370).
 		ox, oy := f.xy(o.pos)
-		if r := look + half + math.Max(o.nose, o.tail) + 1; ox*ox+oy*oy > r*r {
+		// Its wings too: turned off the way ahead, its fuselage clear of
+		// it, a wing still reached into it and the one behind taxied on
+		// into it at taxi speed (LKPR C22, one for 24 stopped 51 m into
+		// its turn off the way to 06: 1.6 m between them). Its half-span as
+		// reported, else this one's (the same kind).
+		wing := o.half
+		if wing <= 0 {
+			wing = half
+		}
+		if r := look + half + wingClearMeters + math.Max(math.Max(o.nose, o.tail), wing) + 1; ox*ox+oy*oy > r*r {
 			continue
 		}
 		hs, hc := math.Sincos(o.hdg * math.Pi / 180)
-		// Only the segments that can come within half of its body: their
-		// start within body + segment + half of its position.
-		body := math.Max(o.nose, o.tail)
+		// Only the segments that can come within half (and the wing
+		// margin) of its body: their start within body + segment + that of
+		// its position.
+		body := math.Max(math.Max(o.nose, o.tail), wing)
 		near = near[:0]
 		for i := lo; i < hi; i++ {
 			sg := segs[i-lo]
 			dx, dy := ox-sg.ax, oy-sg.ay
-			if r := body + sg.l + half + 1; dx*dx+dy*dy <= r*r {
+			if r := body + sg.l + half + wingClearMeters + 1; dx*dx+dy*dy <= r*r {
 				near = append(near, i)
 			}
 		}
 		if len(near) == 0 {
 			continue
 		}
-		// Points along the other aircraft's axis, nose to tail.
-		for d := -o.tail; d <= o.nose+0.01; d += trafficBodyStep {
-			qx, qy := ox+hs*d, oy+hc*d
+		// Points along the other aircraft's axis, nose to tail, then along
+		// its wings, root to tip and swept back (wingSweep).
+		axis := int(math.Floor((o.nose+o.tail)/trafficBodyStep+0.01)) + 1
+		steps := int(math.Ceil(wing / trafficBodyStep))
+		for k := 0; k < axis+2*steps+2; k++ {
+			var qx, qy float64
+			if k < axis {
+				d := -o.tail + float64(k)*trafficBodyStep
+				qx, qy = ox+hs*d, oy+hc*d
+			} else if k >= axis+2*steps { // the tailplane tips
+				w := tailplaneFactor * wing
+				if k == axis+2*steps+1 {
+					w = -w
+				}
+				back := -o.tail + tailplaneInMeters
+				qx, qy = ox+hc*w+hs*back, oy-hs*w+hc*back
+			} else {
+				w := math.Min(wing, float64((k-axis)/2+1)*trafficBodyStep)
+				if (k-axis)%2 == 1 {
+					w = -w
+				}
+				back := -wingSweep * math.Abs(w)
+				// Right of the heading (hc, -hs), back along it.
+				qx, qy = ox+hc*w+hs*back, oy-hs*w+hc*back
+			}
 			for _, i := range near {
 				sg := segs[i-lo]
 				along := math.Max(0, math.Min(sg.l, (qx-sg.ax)*sg.ux+(qy-sg.ay)*sg.uy))
@@ -606,7 +639,7 @@ func (p *GroundPicture) blocking(id uint32, path *GroundPath, from, look, half f
 					continue
 				}
 				dx, dy := qx-(sg.ax+sg.ux*along), qy-(sg.ay+sg.uy*along)
-				if dx*dx+dy*dy <= half2 {
+				if r2 := dx*dx + dy*dy; r2 <= half2 || (k >= axis && r2 <= wing2) {
 					best, who = s, o
 				}
 			}
@@ -614,6 +647,25 @@ func (p *GroundPicture) blocking(id uint32, path *GroundPath, from, look, half f
 	}
 	return best, who
 }
+
+// wingSweep: how far back a wing point lies of the reference point per
+// meter out along the wing (airliner wings swept about 25°: the tips some
+// 6 m behind the roots on a 36 m span).
+const wingSweep = 0.35
+
+// wingClearMeters: a wing of another aircraft this close to the way ahead
+// (its own half-span out) is in it: wingtip to wingtip, room to pass
+// (blocking).
+const wingClearMeters = 5.0
+
+// The tailplane: its half-span this share of the wing's (about a third on
+// airliners), its tips this far ahead of the tail end. Turned off the way,
+// its tail still reaches back towards it: the closest of it to the one
+// passing behind (blocking).
+const (
+	tailplaneFactor   = 0.35
+	tailplaneInMeters = 3.0
+)
 
 // sameWayAhead reports whether an aircraft at pos facing hdg is on path
 // (the points ahead of this one, nearest first) within reach of it, facing

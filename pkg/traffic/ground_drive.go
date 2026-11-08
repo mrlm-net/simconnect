@@ -84,6 +84,9 @@ type groundDrive struct {
 	limit     float64
 	hasLimit  bool
 	limitNode airport.NodeID
+
+	// ripple: how it moves up in a queue (ground_ripple.go).
+	ripple queueRipple
 }
 
 // advance steps the mover to now and places the aircraft.
@@ -432,7 +435,7 @@ func (d *groundDrive) followAhead(now time.Time) {
 	stop := math.Inf(1)
 	noseTip := (pushNoseFactor - 1) * d.prof.WheelbaseMeters // ahead of the nose gear
 	if !math.IsInf(body, 1) {
-		stop = body - noseTip - TrafficGapMeters
+		stop = body - noseTip - TrafficGapMeters - d.ripple.draw(d.object).gap // its own spacing
 		// Facing an aircraft coming the other way, keep the last junction
 		// before it clear: it turns off there (#444).
 		if math.Abs(headingDiff(who.hdg, localBearing(path.PointAt(math.Max(s0, body-5)), path.PointAt(body)))) >= oncomingDeg {
@@ -481,6 +484,11 @@ func (d *groundDrive) followAhead(now time.Time) {
 		} else if at < stop {
 			stop, giving = at, true
 		}
+	}
+	if !giving && !d.facing && d.blockedBy != 0 {
+		stop = d.ripple.hold(d.object, d.mover, s0, stop, now) // moves up only once the gap opened, after its reaction
+	} else {
+		d.ripple.reset()
 	}
 	d.givingWay = whom
 	behind := uint32(0) // stopped behind one in its way (not one held for)

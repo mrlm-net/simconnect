@@ -98,7 +98,7 @@ func (c *ArrivalController) PlanAvoidOccupied(occ []airport.Occupied) func() boo
 			c.plan, c.track = oldPlan, oldTrack
 			return false
 		}
-		c.mover = NewGroundMoverFrom(path, prof, pose.Heading, pose.GroundSpeedKts)
+		c.mover = NewGroundMoverFrom(path, c.moverProfile(), pose.Heading, pose.GroundSpeedKts)
 		if c.state == ArrivalAwaitingTaxi {
 			c.mover.HoldAt(0) // standing until cleared (startTaxi)
 		}
@@ -156,6 +156,7 @@ func (c *ArrivalController) taxiPathFrom(nose airport.LatLon, from int) (*Ground
 		pts = append(pts, c.turnAround(stopNose)...)
 	} else {
 		pts = append(pts, axis, stopNose)
+		pts = widenStandTurn(pts, len(pts)-3, c.moverProfile(), c.standHeading, prof)
 	}
 	path, err := newGroundPath(pts, prof, firmZone{})
 	if err != nil {

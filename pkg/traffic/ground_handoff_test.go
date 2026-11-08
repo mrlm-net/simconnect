@@ -13,14 +13,17 @@ import (
 // pitch with the on-ground flag the simulator shows the aircraft at its
 // own static height on compressed struts at once (16.85 ft), then took
 // ours again, still blending down from its height on the main gear (17.64
-// ft half a second on). From the frame the nose wheel is down it is placed
-// at its static height: no second step.
+// ft half a second on). The simulator modelled as live (simStruts: nose up
+// on its extended struts whatever was sent; at its static pitch the height
+// sent while its struts reach): from the frame the nose wheel is down no
+// step, and its static height a few seconds on (struts.go lets the struts
+// down from there).
 func TestRolloutNoseDownAtStaticHeight(t *testing.T) {
 	ec := &eventClient{}
 	inj := NewInjector(ec)
 	w := time.Date(2026, 11, 5, 20, 12, 10, 0, time.UTC)
 	inj.now = func() time.Time { return w }
-	const obj, cg, static, ground = 42, 16.85, 1.00, 1161.0
+	const obj, cg, static, ground, struts = 42, 16.85, 1.00, 1161.0, 0.79
 	if err := inj.Takeover(obj); err != nil {
 		t.Fatal(err)
 	}
@@ -33,13 +36,15 @@ func TestRolloutNoseDownAtStaticHeight(t *testing.T) {
 			inj.ground.put(offsetHeading(offsetHeading(start, hdg, x), hdg+90, y), ground)
 		}
 	}
-	pos, alt, pitch := start, ground+cg*(1+RestAboveStaticShare), static
+	sim := &simStruts{cg: cg, static: static, struts: struts, shown: cg + struts}
+	pos, pitch := start, static
 	v, x := 145*ktsToMS, 0.0
 	nosePitch := 3.0 // nose up, degrees
 	var downAt float64 = -1
-	for k := 0; k < 6*60; k++ {
+	prev := math.NaN()
+	for k := 0; k < 8*60; k++ {
 		inj.Handle(sampleMsg(DefaultInjectRequestBase+1, obj, injectGround{GroundFt: ground, CGFt: cg, StaticPitch: static,
-			PlaneFt: alt, PlanePitch: pitch, OnGround: 1, GS: v / ktsToMS, Lat: pos.Lat, Lon: pos.Lon}))
+			PlaneFt: ground + sim.shown, PlanePitch: pitch, OnGround: 1, GS: v / ktsToMS, Lat: pos.Lat, Lon: pos.Lon}))
 		w = w.Add(time.Second / 60)
 		x += v / 60
 		v -= 1.5 / 60
@@ -55,18 +60,25 @@ func TestRolloutNoseDownAtStaticHeight(t *testing.T) {
 		if len(p) == n {
 			t.Fatal("not placed")
 		}
-		alt, pitch = p[len(p)-1].Altitude, p[len(p)-1].Pitch
+		s := p[len(p)-1]
+		h := sim.step(s, ground, true)
+		pitch = s.Pitch
 		if pose.PitchDeg > 0 {
+			prev = h
 			continue
 		}
 		if downAt < 0 {
 			downAt = float64(k) / 60
 		}
-		if got := alt - ground; math.Abs(got-cg) > 0.01 {
-			t.Fatalf("nose wheel down %.2f s: placed %.2f ft above the runway, want its static %.2f (the simulator shows it there)", float64(k)/60-downAt, got, cg)
+		if math.Abs(h-prev) > strutsStepFt {
+			t.Fatalf("nose wheel down %.2f s: shown %.2f → %.2f ft above the runway", float64(k)/60-downAt, prev, h)
 		}
+		prev = h
 	}
 	if downAt < 0 {
 		t.Fatal("the nose wheel never came down")
+	}
+	if math.Abs(prev-cg) > 0.01 {
+		t.Errorf("rolled out at %.2f ft, want its static %.2f", prev, cg)
 	}
 }

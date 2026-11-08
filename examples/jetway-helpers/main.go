@@ -30,6 +30,7 @@ func main() {
 	sideStep := flag.Float64("side-step", 0.1, "door variant step, meters")
 	ahead := flag.String("ahead", "rules", "door variants along the fuselage, meters ahead (negative back), comma-separated; \"rules\": the stand rules' offsets (traffic.StandRules)")
 	doorOf := flag.String("door-of", "A320,B738", "doors of these types on each widebody's helper (wing span over 150 ft), comma-separated: at a gate only a widebody's helper keeps to, the jetway meets a narrowbody's door (none: \"\")")
+	doorOfWide := flag.Bool("door-of-wide", true, "also the door of each narrower widebody (wing span over 150 ft) on each widebody's helper")
 	flag.Parse()
 	var aheadM []float64
 	if *ahead == "rules" {
@@ -107,8 +108,21 @@ func main() {
 	}
 	wide := map[string][]string{}
 	for _, m := range models {
-		if doors[m.Type].WingSpanFt > 150 && len(narrow) > 0 {
-			wide[m.Type] = narrow
+		s := doors[m.Type].WingSpanFt
+		if s <= 150 {
+			continue
+		}
+		wide[m.Type] = append([]string(nil), narrow...)
+		if !*doorOfWide {
+			continue
+		}
+		// The doors of the narrower widebodies: a gate keeps to this
+		// helper for them too (live, LKPR B14: an Emirates 777 by the
+		// B748's own door, the jetway 15 m aft of its L1).
+		for _, o := range models {
+			if w := doors[o.Type].WingSpanFt; w > 150 && w < s {
+				wide[m.Type] = append(wide[m.Type], o.Type)
+			}
 		}
 	}
 	root, err := jetway.WritePackage(dest, models, jetway.PackageOptions{Creator: "MyCrew", Codes: cs, WingSpanFt: *span, SideSteps: *sideSteps, SideStepM: *sideStep, AheadM: aheadM, DoorOf: wide})

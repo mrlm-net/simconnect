@@ -174,6 +174,7 @@ func New(o Options) *World {
 	st.tuning = loadTuning(filepath.Join(o.DataDir, "schedule-tuning.json"), baseTiming(o.Schedule))
 	st.doorOffsets = loadDoorOffsets(filepath.Join(o.DataDir, "jetway-door-offsets.json"))
 	gateLessons.load(filepath.Join(o.DataDir, "jetway-gates.json"))
+	strutsLessons.load(filepath.Join(o.DataDir, "struts.json"))
 	st.reviewDir = filepath.Join(o.DataDir, "review")
 	st.airways, st.airwaysGiven = o.Airways, o.Airways
 	w := &World{st: st, opts: o, reqs: reqs}

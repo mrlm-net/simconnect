@@ -2,6 +2,7 @@ package traffic
 
 import (
 	"math"
+	"slices"
 	"time"
 
 	"github.com/mrlm-net/simconnect/pkg/airport"
@@ -122,11 +123,15 @@ const groundOwnFreshFor = 5 * time.Second
 // cells are not measured (own). i.mu held.
 func (i *Injector) noteCellBias(o *injected, p airport.LatLon, ft float64) {
 	now := i.now()
-	s, ok := i.ground.seen(p)
+	c := cellOf(p)
+	s, ok := i.ground.cells[c]
 	if !ok || s.ownFresh(o.id, now) {
 		return
 	}
-	b := ft - float64(s.ft)
+	// Measured against the cells around it, not a single odd one (oddCell).
+	b := ft - i.ground.oddCell(c, float64(s.ft), func(n groundSeen) (float64, bool) {
+		return float64(n.ft), !n.ownFresh(o.id, now)
+	})
 	if math.Abs(b) >= groundMapTrustFt {
 		return // a bridge, not the same ground
 	}
@@ -171,7 +176,80 @@ func (i *Injector) cellFt(o *injected, c groundCell, now time.Time) (float64, bo
 	if s.ownFresh(o.id, now) {
 		return float64(s.ft), true
 	}
-	return float64(s.ft) + o.cellBias*o.cellBiasWeight(c.at(), now), true
+	w := o.cellBiasWeight(c.at(), now)
+	ft := float64(s.ft) + o.cellBias*w
+	// Another aircraft's cell standing off the ones around it: theirs.
+	return i.ground.oddCell(c, ft, func(n groundSeen) (float64, bool) {
+		if n.ownFresh(o.id, now) {
+			return float64(n.ft), true
+		}
+		return float64(n.ft) + o.cellBias*w, true
+	}), true
+}
+
+// oddCell is cell c's ground ft, unless it stands alone: fewer than
+// oddCellAgree of the cells around it (each as value gives it, those it
+// refuses left out; at least oddCellMin of them) within oddCellFt of it.
+// Then the median of those. Along a runway most cells were written by the
+// last departure, at the detail of the scenery it was shown; where its
+// samples skipped one (a frame's way is about a cell at 90 kt) the cell kept
+// an older aircraft's ground, a few tenths off. Rolling over it the aircraft
+// dropped that much for a frame, and measured there its cellBias took half
+// of it on to the cells after, halving cell by cell (live LKPR 24,
+// 2026-11-06: AFR704, OKLVO, WZZ626, CSA354, -0.22 → +0.11 → +0.05 → +0.03
+// ft at 17 to 92 kt, the simulator's ground smooth). A step in the runway
+// mesh moves all the cells past it: there a cell has neighbours alike, even
+// where most of them lie before the step. i.mu held.
+func (m *groundMap) oddCell(c groundCell, ft float64, value func(groundSeen) (float64, bool)) float64 {
+	var vs [8]float64
+	n, agree := 0, 0
+	for dl := int32(-1); dl <= 1; dl++ {
+		for dn := int32(-1); dn <= 1; dn++ {
+			if dl == 0 && dn == 0 {
+				continue
+			}
+			s, ok := m.cells[groundCell{c.lat + dl, c.lon + dn}]
+			if !ok {
+				continue
+			}
+			v, ok := value(s)
+			if !ok {
+				continue
+			}
+			if math.Abs(v-ft) <= oddCellFt {
+				agree++
+			}
+			vs[n] = v
+			n++
+		}
+	}
+	if n < oddCellMin || agree >= oddCellAgree {
+		return ft
+	}
+	return cellMedian(vs[:n])
+}
+
+// oddCellFt: a cell around within this of another agrees with it. A
+// runway's slope (at most about 1.5 %) moves the ground about 0.07 ft from
+// one cell to the one diagonally next to it.
+const oddCellFt = 0.08
+
+// oddCellMin: with fewer cells around than this, none is judged odd;
+// oddCellAgree: a cell with this many around agreeing is not (two odd
+// cells side by side are still odd).
+const (
+	oddCellMin   = 3
+	oddCellAgree = 2
+)
+
+// cellMedian is the median of vs (sorted in place).
+func cellMedian(vs []float64) float64 {
+	slices.Sort(vs)
+	n := len(vs)
+	if n%2 == 1 {
+		return vs[n/2]
+	}
+	return (vs[n/2-1] + vs[n/2]) / 2
 }
 
 // groundUnder is the ground under o placed at p: as seen there before, else
@@ -234,13 +312,75 @@ func (i *Injector) groundShown(o *injected, pose GroundPose) float64 {
 	// short: 0.46 ft in one).
 	rate, dt := groundEaseFtPerSec, math.Min(math.Max(0, now.Sub(o.groundShownAt).Seconds()), standStepMaxSec)
 	if pose.GroundSpeedKts >= groundEaseMaxKts || localDist(o.groundShownPos, pose.Position) > groundEaseStillM {
-		rate, dt = groundRollFtPerSec, math.Max(0, now.Sub(o.groundShownAt).Seconds())
+		rate, dt = groundFollowFtPerSec(pose.GroundSpeedKts), math.Max(0, now.Sub(o.groundShownAt).Seconds())
+		// Rolling onto ground well above the one shown (a step not seen
+		// before, no ramp to it): the simulator has put it on its
+		// static height over it already; taken at once, not eased up from
+		// below it (live LKPR 2026-11-08, CSA1763 at 15 kt over the seam at
+		// 50.10845,14.26300 heading 028: +0.37 ft for 4 frames, 0.33 back
+		// down, then up again).
+		g += i.groundAlong(o, pose)
+		if g-o.groundShownFt > groundStepUpFt {
+			o.groundShownFt, o.groundShownPos, o.groundShownAt = g, pose.Position, now
+			return g
+		}
 	}
 	step := rate * dt
 	o.groundShownFt += math.Max(-step, math.Min(step, g-o.groundShownFt))
 	o.groundShownPos, o.groundShownAt = pose.Position, now
 	return o.groundShownFt
 }
+
+// groundAlong is how far the ground averaged over a few metres before and
+// after o along its heading at pose stands from the cell under it (the
+// map's cells, cellFt, no side effects): a step in the ground is met as a
+// ramp centred on it, at most half the step off on either side, a steady
+// slope unchanged. 0 when the cell under it is not known. Followed late, a
+// step left a rolling aircraft below the simulator's own static height over
+// the higher side, and the simulator put it there for a few frames, then
+// ours again (live LKPR 2026-11-08, TVS1774 lining up at 4 kt over the seam
+// at 50.11487,14.27405: +0.44 ft for 3 frames, then 0.40 down). i.mu held.
+func (i *Injector) groundAlong(o *injected, pose GroundPose) float64 {
+	now := i.now()
+	c0, ok := i.cellFt(o, cellOf(pose.Position), now)
+	if !ok {
+		return 0
+	}
+	// Only in pairs, as far behind as ahead: ahead not seen yet (the first
+	// over it), the cells behind alone would hold it back.
+	L := math.Max(groundAlongMinM, math.Min(groundAlongMaxM, groundAlongSec*pose.GroundSpeedKts*ktsToMS))
+	sum, n := 0.0, 0
+	for k := 1; k <= groundAlongN; k++ {
+		d := L * float64(k) / groundAlongN
+		a, okA := i.cellFt(o, cellOf(offsetHeading(pose.Position, pose.Heading, d)), now)
+		b, okB := i.cellFt(o, cellOf(offsetHeading(pose.Position, pose.Heading, -d)), now)
+		if !okA || !okB || math.Abs(a-c0) >= groundAlongMaxFt || math.Abs(b-c0) >= groundAlongMaxFt {
+			continue
+		}
+		sum += a + b - 2*c0
+		n += 2
+	}
+	if n == 0 {
+		return 0
+	}
+	// The cell under it left out: over a step it stands half the step off
+	// at most, the cell under it on either side.
+	return sum / float64(n)
+}
+
+// groundAlongSec, groundAlongMinM, groundAlongMaxM: the ground under a
+// rolling aircraft averaged over the way it rolls in groundAlongSec behind
+// and ahead, at least groundAlongMinM and at most groundAlongMaxM, so a
+// step is ramped no steeper than it is followed (groundFollowFtPerSec);
+// groundAlongN samples on either side. groundAlongMaxFt: a cell further
+// than this from the one under it is left out (a bridge, a stale cell).
+const (
+	groundAlongSec   = 0.2
+	groundAlongMinM  = 1.5
+	groundAlongMaxM  = 5.0
+	groundAlongN     = 3
+	groundAlongMaxFt = 1.0
+)
 
 // A standing aircraft (under groundEaseMaxKts, moved less than
 // groundEaseStillM since it was last placed) takes a new ground height at
@@ -259,3 +399,25 @@ const standStepMaxSec = 2.0 / InjectHz
 // groundRollFtPerSec: well above what a runway's slope asks at take-off speed
 // (1% at 140 kt is about 2.4 ft/s), about 0.13 ft a frame at 60 Hz.
 const groundRollFtPerSec = 8.0
+
+// groundStepUpFt: rolling onto ground this much above the one shown (a
+// step met without a ramp, groundAlong), the new ground is taken at once.
+const groundStepUpFt = 0.2
+
+// Taxiing, the ground under an aircraft is followed as steeply as
+// groundFollowGrade over the distance it rolls, at least groundTaxiFtPerSec
+// and at most groundRollFtPerSec: a step in the simulator's ground is
+// ridden over a few metres, not in a frame (live LKPR 2026-11-08, the
+// seam at 50.1110,14.2657 heading 035: the ground 0.39 ft up between two
+// frames at 16 kt, every aircraft lifted 0.38 ft in 4 frames, 0.1 ft a
+// frame; now 0.04).
+const (
+	groundFollowGrade  = 0.04
+	groundTaxiFtPerSec = 2.0
+)
+
+// groundFollowFtPerSec is how fast the ground under an aircraft rolling at
+// kts is followed (groundFollowGrade).
+func groundFollowFtPerSec(kts float64) float64 {
+	return math.Max(groundTaxiFtPerSec, math.Min(groundRollFtPerSec, groundFollowGrade*kts*ktsToMS/0.3048))
+}

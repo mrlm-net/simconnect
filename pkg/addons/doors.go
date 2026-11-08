@@ -42,6 +42,11 @@ type ModelDoor struct {
 	// foremost wheel of [CONTACT_POINTS]); HasNoseGear when found.
 	NoseGearFt  float64
 	HasNoseGear bool
+	// DatumFt is the reference datum, feet ahead of the simulator's
+	// position of the aircraft (reference_datum_position): the doors and
+	// contact points above are from the datum, so in the simulator each
+	// is DatumFt further ahead (the FSLTL B748's, and its helpers', 83.5).
+	DatumFt float64
 }
 
 // ParseInteractivePoint reads the values of an interactive_point line
@@ -101,6 +106,9 @@ func readModelDoor(dir, typ string) (ModelDoor, bool) {
 		if p, ok := ParseInteractivePoint(v); ok && p.Kind == 0 && p.Lat < 0 && p.Long > best {
 			d.Door, best = p, p.Long
 		}
+	}
+	if x, err := strconv.ParseFloat(firstField(cfgSection(fm, "WEIGHT_AND_BALANCE")["reference_datum_position"]), 64); err == nil {
+		d.DatumFt = x
 	}
 	if s, err := strconv.ParseFloat(firstField(cfgSection(fm, "AIRPLANE_GEOMETRY")["wing_span"]), 64); err == nil {
 		d.WingSpanFt = s

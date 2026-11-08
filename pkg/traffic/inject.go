@@ -57,11 +57,24 @@ type Injector struct {
 	// at on its main gear nose up, the turn on the gear taken off
 	// (mainsCG).
 	mains map[string]float64
+	// struts: by model (strutsKey, its static CG height), how far (feet)
+	// the simulator shows it above its static CG height on its extended
+	// struts, on the ground at any pitch but its static one (struts.go).
+	struts map[int]float64
+	// reach: by model, how far above its static CG height its struts hold
+	// it at its static pitch with the flag, learnt where it snapped back
+	// beyond (struts.go).
+	reach map[int]float64
+	// strutsGen: counts what struts and reach learnt (StrutsLearnt).
+	strutsGen uint64
 	// gearStep: by aircraft title, how far down the writes HoldGearDown has
 	// come for a model that refuses them.
 	gearStep map[string]int
 	// ground: the ground elevation seen under our aircraft, by position.
 	ground groundMap
+	// rateAt: the ground request rates last looked over; rateActiveAt: the
+	// last injector call (ground_rate.go).
+	rateAt, rateActiveAt time.Time
 }
 
 type injected struct {
@@ -104,6 +117,12 @@ type injected struct {
 	// set the simulator puts the wheels on the ground at its own height,
 	// whatever we send: a change of the flag blends (smoothCG).
 	sentGround int8
+	// strutsUp: raised on its struts ahead of rotation (strutsAhead), the
+	// only place their reach is learnt.
+	strutsUp bool
+	// strutsDown: let down from its struts after the nose came down on a
+	// rollout, the other place their reach is learnt.
+	strutsDown bool
 	sent       lastSent // the last placement sent (traceJump)
 	simStep    float64  // the simulator's step behind the coming placement, seconds (noteSimStep)
 	// groundShownFt: the ground height it was last placed on, at
@@ -120,11 +139,18 @@ type injected struct {
 	// reference point: what the simulator shows then is its mains height.
 	touchdown bool
 	mainArm   float64
+	// nose: its nose wheel steering (steer.go).
+	nose nosewheel
+	// wheels: which way it travels, for the wheel spin (wheels.go).
+	wheels wheelSpin
 	// cellBias: how far its samples stood from the ground map's cells others
 	// wrote (noteCellBias), measured at cellBiasPos at cellBiasAt.
 	cellBias    float64
 	cellBiasPos airport.LatLon
 	cellBiasAt  time.Time
+	// rate: its ground request's rate and its last placement
+	// (ground_rate.go).
+	rate groundRate
 }
 
 // mainsMinPitchDeg: nose up at least this much an aircraft on the ground
@@ -155,6 +181,10 @@ const injDefThrottle1 = injDefGearDown + 1
 // injDefGearDownPartial: the gear handle and the nose gear's position, for
 // a model that refuses the main gears' (HoldGearDown).
 const injDefGearDownPartial = injDefThrottle1 + injMaxEngines
+
+// injDefSteer: ROTATION VELOCITY BODY Y, the yaw rate the nose wheel's
+// steering is animated from (steer.go).
+const injDefSteer = injDefGearDownPartial + 1
 
 // gearTrackSends: the first HoldGearDown writes of an aircraft watched for
 // an exception (it is written every frame on the take-off roll).
@@ -268,6 +298,8 @@ func NewInjector(client engine.Client, opts ...InjectorOption) *Injector {
 		sent:      map[uint32]string{},
 		rests:     map[string][2]float64{},
 		mains:     map[string]float64{},
+		struts:    map[int]float64{},
+		reach:     map[int]float64{},
 		gearStep:  map[string]int{},
 	}
 	for _, o := range opts {
@@ -300,6 +332,9 @@ func (i *Injector) register() error {
 		}
 	}
 	if err := i.track("define GEAR HANDLE POSITION", c.AddToDataDefinition(i.defBase+injDefGear, "GEAR HANDLE POSITION", "bool", types.SIMCONNECT_DATATYPE_FLOAT64, 0, 0)); err != nil {
+		return err
+	}
+	if err := i.track("define ROTATION VELOCITY BODY Y", c.AddToDataDefinition(i.defBase+injDefSteer, "ROTATION VELOCITY BODY Y", "radians per second", types.SIMCONNECT_DATATYPE_FLOAT64, 0, 0)); err != nil {
 		return err
 	}
 	// Flap surfaces directly: MSFS AI objects ignore the flaps handle and
@@ -473,6 +508,7 @@ func (i *Injector) PlaceRest(objectID uint32, pose GroundPose) error {
 		Heading:   pose.Heading,
 		OnGround:  1,
 	}
+	i.notePlaced(o, p)
 	i.mu.Unlock()
 	return i.client.SetDataOnSimObject(i.defBase+injDefPosition, objectID, types.SIMCONNECT_DATA_SET_FLAG_DEFAULT, 0, uint32(unsafe.Sizeof(p)), unsafe.Pointer(&p))
 }
@@ -530,10 +566,27 @@ func (i *Injector) place(objectID uint32, pose GroundPose, moving bool) error {
 		Heading:   pose.Heading,
 		OnGround:  flag,
 	}
-	// The speed passed on, so the wheels turn (vehicles and aircraft alike).
-	p.Airspeed = types.SIMCONNECT_DATA_INITPOSITION_AIRSPEED(math.Round(math.Max(0, pose.GroundSpeedKts)))
+	// The speed passed on, so the wheels turn (vehicles and aircraft alike);
+	// 0 pushed back, or they spin forward (wheels.go).
+	p.Airspeed = o.wheels.airspeed(pose.Position, pose.Heading, pose.GroundSpeedKts)
+	// An aircraft's nose wheel steers into its turn (steer.go): from how it
+	// moved.
+	yaw, steer := 0.0, false
+	if !moving {
+		yaw, steer = o.nose.update(pose.Position, pose.Heading, pose.GroundSpeedKts, i.now())
+	}
 	i.traceJump(objectID, o, "ground", pose.Position, pose.Heading, pose.GroundSpeedKts)
+	same := i.notePlaced(o, p)
 	i.mu.Unlock()
+	// A vehicle stopped (frozen since Takeover): the same placement again
+	// changes nothing, not sent; aircraft keep theirs (their standing
+	// rate holds them at their rest).
+	if moving && same && !steer {
+		return nil
+	}
+	if steer {
+		i.client.SetDataOnSimObject(i.defBase+injDefSteer, objectID, types.SIMCONNECT_DATA_SET_FLAG_DEFAULT, 0, 8, unsafe.Pointer(&yaw))
+	}
 	// Not tracked: at 60 Hz the send-ID map would grow without bound.
 	return i.client.SetDataOnSimObject(i.defBase+injDefPosition, objectID, types.SIMCONNECT_DATA_SET_FLAG_DEFAULT, 0, uint32(unsafe.Sizeof(p)), unsafe.Pointer(&p))
 }
@@ -626,6 +679,7 @@ func (i *Injector) Handle(msg engine.Message) (bool, error) {
 		if uint32(d.DwObjectID) != obj {
 			return true, nil // the slot's former aircraft, still answering (#91)
 		}
+		i.groundRates(i.now())
 		if o := i.objects[obj]; o != nil {
 			g := engine.CastDataAs[injectGround](&d.DwData)
 			at := airport.LatLon{Lat: g.Lat, Lon: g.Lon}
@@ -678,6 +732,7 @@ func (i *Injector) Handle(msg engine.Message) (bool, error) {
 			if o.touchdown && o.title != "" && g.OnGround != 0 && -g.PlanePitch >= mainsMinPitchDeg {
 				i.mains[o.title] = rest - o.mainArm*math.Sin(-g.PlanePitch*math.Pi/180)/0.3048
 			}
+			i.noteStruts(o, g, rest)
 		}
 		return true, nil
 	case types.SIMCONNECT_RECV_ID_EXCEPTION:
@@ -777,8 +832,14 @@ func (i *Injector) PlaceAir(objectID uint32, pose ApproachPose) error {
 		// from its height on the main gear (live LKPR 24 rollouts: QTR337
 		// B789 16.85 → 17.64 ft at 142 kt, AFR473 12.25 → 12.85): ours is
 		// its static height from that frame.
+		// Its struts as the simulator showed them a frame ago, let down from
+		// there (struts.go), when known.
+		// Their reach learnt here too (snapped back to its static height
+		// above it: live THY1627 A321, LOT452 E195).
+		o.strutsDown = false
 		if pose.Landing && o.sentGround == 1 && pose.PitchDeg <= 0 {
-			o.cgShown = cg
+			o.cgShown = math.Min(o.cgShown, cg+i.strutsHeld(o))
+			o.strutsDown = o.cgShown > cg+strutsSnappedFt
 		}
 		// Touching down, the flag not set yet: held off until the wheels are
 		// blended down to it; set at once, the simulator snapped them there
@@ -788,6 +849,10 @@ func (i *Injector) PlaceAir(objectID uint32, pose ApproachPose) error {
 		}
 		if pose.Unpinned {
 			onGround = 0 // a take-off roll: the height ours alone
+			// Nearing rotation: its struts let out with the flag (struts.go).
+			if r := i.strutsAhead(o, pose); r > 0 {
+				onGround, cg = 1, cg+r
+			}
 		}
 	}
 	if pose.OnGround {
@@ -823,8 +888,17 @@ func (i *Injector) PlaceAir(objectID uint32, pose ApproachPose) error {
 	// Placed: no rest learnt from the samples of a roll (live, TVS495 on its
 	// take-off roll learnt its own placements, 8.48 → 8.08 → 9.00 ft).
 	o.placedAt = i.now()
+	// Handed over from the ground placements (a take-off roll begun in the
+	// line-up turn) with the nose wheel still steering: straight at once,
+	// never left steering on the roll or in the air (steer.go).
+	straighten := o.nose.handOff()
 	i.traceJump(objectID, o, "air", pose.Position, pose.Heading, pose.GroundSpeedKts)
+	i.notePlaced(o, p)
 	i.mu.Unlock()
+	if straighten {
+		var zero float64
+		i.client.SetDataOnSimObject(i.defBase+injDefSteer, objectID, types.SIMCONNECT_DATA_SET_FLAG_DEFAULT, 0, 8, unsafe.Pointer(&zero))
+	}
 	return i.client.SetDataOnSimObject(i.defBase+injDefPosition, objectID, types.SIMCONNECT_DATA_SET_FLAG_DEFAULT, 0, uint32(unsafe.Sizeof(p)), unsafe.Pointer(&p))
 }
 
@@ -873,11 +947,12 @@ func (i *Injector) PlaceFlown(objectID uint32, pose FlownPose) error {
 		Bank:      -pose.BankDeg,  // as PlaceAir takes it
 		Heading:   pose.Heading,
 		OnGround:  onGround,
-		Airspeed:  types.SIMCONNECT_DATA_INITPOSITION_AIRSPEED(math.Round(math.Max(0, pose.GroundSpeedKts))),
+		Airspeed:  o.wheels.airspeed(pose.Position, pose.Heading, pose.GroundSpeedKts),
 	}
 	o.placed = true
 	o.placedAt = i.now()
 	i.traceJump(objectID, o, "flown", pose.Position, pose.Heading, pose.GroundSpeedKts)
+	i.notePlaced(o, p)
 	i.mu.Unlock()
 	return i.client.SetDataOnSimObject(i.defBase+injDefPosition, objectID, types.SIMCONNECT_DATA_SET_FLAG_DEFAULT, 0, uint32(unsafe.Sizeof(p)), unsafe.Pointer(&p))
 }
