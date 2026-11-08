@@ -188,7 +188,7 @@ func (c *TaxiController) vacateAfterReject(pose TakeoffPose) error {
 		return err
 	}
 	c.takeoff = nil
-	c.mover = NewGroundMoverFrom(path, prof, pose.Heading, 0)
+	c.mover = NewGroundMoverFrom(path, moverGear(prof, c.req.Model), pose.Heading, 0)
 	c.route, c.pushJunction = route, 0
 	c.lineUpCleared, c.takeoffCleared, c.gearUp = false, false, false
 	// The crossings and limits of the old taxi-out do not apply to this

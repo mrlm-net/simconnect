@@ -68,9 +68,11 @@ type placePos struct{ Lat, Lon, AltFt, Hdg float64 }
 
 // placing is a helper being put by our aircraft: both positions asked for.
 type placing struct {
-	icao          string
-	stand         int
-	model         string
+	icao  string
+	stand int
+	model string
+	// title: the gate's helper (a variant's, DockAs), "" the model's type's.
+	title         string
 	ours, helper  uint32
 	oursAt, helAt *placePos
 	// placeholder: only its position is read, for OnPlaceholder.
@@ -154,6 +156,12 @@ type HelperOptions struct {
 	// helper put on another gate. Counted by the host and given back with
 	// GateRecord at the next start (GateUnfit).
 	OnGateResult func(icao string, stand int, docked bool)
+	// OnDock, when set, hears how a dock for our aircraft of model ended
+	// at the gate it was given: docked, or its jetway never came (the
+	// docking timed out, the helper on the gate). A helper the sim put on
+	// another gate is not told here (OnGateResult, OnLearn). Called with
+	// the backend's lock held: it must not call back.
+	OnDock func(icao string, stand int, model string, docked bool)
 }
 
 // gateLearning is what a gate has shown of the helpers it takes: the sim
@@ -282,6 +290,11 @@ type Helpers struct {
 	// half way for good (live, LKPR 13, 15, 17 to 21: "retract home"
 	// with nothing attached, every later dock there timed out).
 	retiring map[uint32]time.Time
+	// rest: "ICAO stand" → its jetway's main handle as last listed at rest
+	// with nothing attached, logged beside the handle when it docks (a
+	// "docked" whose jetway never moved, live LKPR C21 2026-11-08: the
+	// data to tell it by, once seen).
+	rest map[string]types.SIMCONNECT_DATA_XYZ
 }
 
 // NewHelpers makes the helper backend on client.
@@ -297,7 +310,7 @@ func NewHelpers(client Client, o HelperOptions) *Helpers {
 	}
 	return &Helpers{client: client, opt: o, byReq: map[uint32]*pending{}, byObj: map[uint32]*pending{},
 		gates: map[string]map[int]*gate{}, jetways: map[string]map[int]bool{}, filling: map[string]bool{}, emptyTries: map[string]int{}, refillAt: map[string]time.Time{}, accepted: map[string]map[int]bool{}, placings: map[uint32]*placing{}, retiring: map[uint32]time.Time{},
-		learned: map[string]*gateLearning{}, strays: map[string]int{}, strayWait: map[string]time.Duration{}}
+		learned: map[string]*gateLearning{}, strays: map[string]int{}, strayWait: map[string]time.Duration{}, rest: map[string]types.SIMCONNECT_DATA_XYZ{}}
 }
 
 // Learn gives back what a gate taught (OnLearn): helper docked there, or
@@ -371,7 +384,7 @@ func (h *Helpers) place(pl *placing) {
 	// The table's (set by hand) first, else from both models' doors.
 	off, ok := DoorOffsetFor(pl.model)
 	if !ok && h.opt.Offset != nil {
-		if a, r, k := h.opt.Offset(pl.model, h.helperTitle(pl.model)); k {
+		if a, r, k := h.opt.Offset(pl.model, h.placingTitle(pl)); k {
 			off, ok = DoorOffset{Type: "from the models' doors", AheadM: a, RightM: r}, true
 		}
 	}
@@ -380,13 +393,25 @@ func (h *Helpers) place(pl *placing) {
 		return
 	}
 	if !h.opt.MoveHelpers {
-		h.logf("jetway %s stand %d: helper %.2f m ahead, %.2f m right of %s (the sim's place; the door wants %.2f m ahead, %.2f m right; not moved)", pl.icao, pl.stand, ahead, right, pl.model, off.AheadM, off.RightM)
+		// The gap: where the jetway docks (the helper's door) from our
+		// door, ahead and right (live, LKPR C22: CSA1894's 9 m ahead).
+		h.logf("jetway %s stand %d: helper %.2f m ahead, %.2f m right of %s (the sim's place; %s: the door wants %.2f m ahead, %.2f m right; its jetway %.2f m ahead, %.2f m right of the door; not moved)", pl.icao, pl.stand, ahead, right, pl.model, h.placingTitle(pl), off.AheadM, off.RightM, ahead-off.AheadM, right-off.RightM)
 		return
 	}
 	lat, lon := fromOffset(o, off.AheadM, off.RightM)
 	pos := types.SIMCONNECT_DATA_INITPOSITION{Latitude: lat, Longitude: lon, Altitude: o.AltFt, Heading: o.Hdg, OnGround: 1}
 	h.client.SetDataOnSimObject(h.opt.DefineBase+1, pl.helper, types.SIMCONNECT_DATA_SET_FLAG_DEFAULT, 0, uint32(unsafe.Sizeof(pos)), unsafe.Pointer(&pos))
 	h.logf("jetway %s stand %d: helper %.2f m ahead, %.2f m right of %s, put %.2f m ahead, %.2f m right (door offset %s)", pl.icao, pl.stand, ahead, right, pl.model, off.AheadM, off.RightM, off.Type)
+}
+
+// placingTitle is the title of the helper pl places: the gate's (a variant,
+// DockAs), else the model's type's. Live, LKPR B14: the offset logged from
+// the B748's own door while its "B748 D-A320" variant stood there. h.mu held.
+func (h *Helpers) placingTitle(pl *placing) string {
+	if pl.title != "" {
+		return pl.title
+	}
+	return h.helperTitle(pl.model)
 }
 
 // mPerDegLat is metres per degree of latitude.
@@ -811,9 +836,9 @@ func (h *Helpers) Handle(msg engine.Message) bool {
 		if helper {
 			h.logf("jetway %s stand %d: helper is object %d", icao, stand, obj)
 		}
-		model := ""
+		model, title := "", ""
 		if g := h.gates[icao][stand]; g != nil {
-			model = g.model
+			model, title = g.model, g.title
 		}
 		h.mu.Unlock()
 		// Our aircraft asked for outside h.mu: AircraftAt takes the
@@ -821,7 +846,7 @@ func (h *Helpers) Handle(msg engine.Message) bool {
 		if helper && h.opt.AircraftAt != nil {
 			if ours := h.opt.AircraftAt(icao, stand); ours != 0 {
 				h.mu.Lock()
-				h.measure(&placing{icao: icao, stand: stand, model: model, ours: ours, helper: obj})
+				h.measure(&placing{icao: icao, stand: stand, model: model, title: title, ours: ours, helper: obj})
 				h.mu.Unlock()
 			}
 		}
@@ -851,6 +876,9 @@ func (h *Helpers) Handle(msg engine.Message) bool {
 		if pl.oursAt != nil && pl.helAt != nil {
 			h.place(pl)
 		}
+		// The model's type's title as before, not the gate's (placingTitle):
+		// the host's gate measure takes that title's nose gear, and the
+		// gate's would change where ours parks (to be decided).
 		title := h.helperTitle(pl.model)
 		h.mu.Unlock()
 		if uint32(d.DwObjectID) != pl.ours && h.opt.OnPlaceholder != nil {
@@ -960,8 +988,12 @@ func (h *Helpers) jetway(j types.SIMCONNECT_JETWAY_DATA) {
 			if j.Status == 7 {
 				if g.status != StatusDocked {
 					h.logf("jetway %s stand %d: docked", icao, stand)
+					h.logHandle(icao, stand, j)
 					g.since = h.now
 					h.gateResult(icao, stand, true)
+					if h.opt.OnDock != nil {
+						h.opt.OnDock(icao, stand, g.model, true)
+					}
 					if l := h.learned[fmt.Sprint(icao, " ", stand)]; g.title != "" && (l == nil || l.docked != g.title) {
 						h.learn(icao, stand, g.title, true, true)
 					}
@@ -969,6 +1001,9 @@ func (h *Helpers) jetway(j types.SIMCONNECT_JETWAY_DATA) {
 				g.status = StatusDocked
 			}
 		}
+	}
+	if j.Status == 0 && att == 0 {
+		h.rest[fmt.Sprint(icao, " ", stand)] = j.MainHandlePos
 	}
 	if g := h.gates[icao][stand]; g != nil && g.status == StatusUndocking && j.Status == 0 && (att == 0 || att == g.placeholder) && h.now.Sub(g.since) >= RetractWait {
 		// Home (the list says so before it is: live, 16 s after the helper
@@ -981,6 +1016,21 @@ func (h *Helpers) jetway(j types.SIMCONNECT_JETWAY_DATA) {
 			h.spawnPlaceholder(icao)
 		}
 	}
+}
+
+// logHandle logs a docked jetway's main handle and exit door beside its
+// handle at rest: the data to tell a "docked" whose jetway never moved
+// (live, LKPR C21 2026-11-08) from a real dock, not judged on yet: what the
+// fields hold at rest and docked was never read live. h.mu held.
+func (h *Helpers) logHandle(icao string, stand int, j types.SIMCONNECT_JETWAY_DATA) {
+	m, d := j.MainHandlePos, j.ExitDoorRelativePos
+	r, ok := h.rest[fmt.Sprint(icao, " ", stand)]
+	if !ok {
+		h.logf("jetway %s stand %d: handle %.2f %.2f %.2f, door %.2f %.2f %.2f (none seen at rest)", icao, stand, m.X, m.Y, m.Z, d.X, d.Y, d.Z)
+		return
+	}
+	moved := math.Sqrt((m.X-r.X)*(m.X-r.X) + (m.Y-r.Y)*(m.Y-r.Y) + (m.Z-r.Z)*(m.Z-r.Z))
+	h.logf("jetway %s stand %d: handle %.2f %.2f %.2f, at rest %.2f %.2f %.2f (moved %.2f), door %.2f %.2f %.2f", icao, stand, m.X, m.Y, m.Z, r.X, r.Y, r.Z, moved, d.X, d.Y, d.Z)
 }
 
 // keepAsPlaceholder turns g's docked helper into its placeholder: the
@@ -1110,6 +1160,9 @@ func (h *Helpers) Update(now time.Time) {
 			}
 			if (g.status == StatusDocking || g.status == StatusUndocking) && now.Sub(g.since) > DockTimeout {
 				h.logf("jetway %s stand %d: %s timed out", icao, stand, g.status)
+				if g.status == StatusDocking && h.opt.OnDock != nil {
+					h.opt.OnDock(icao, stand, g.model, false) // its jetway never came
+				}
 				switch {
 				case g.status == StatusUndocking && g.placeholder != 0:
 					// Its helper kept (Undock) holds the gate.

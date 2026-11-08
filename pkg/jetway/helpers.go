@@ -159,6 +159,9 @@ func WritePackage(community string, models []HelperModel, o PackageOptions) (str
 			}
 		}
 		for _, d := range o.DoorOf[t] {
+			if strings.EqualFold(d, t) {
+				continue // its own door: the helper itself
+			}
 			var from *HelperModel
 			for i := range models {
 				if strings.EqualFold(models[i].Type, d) {
@@ -327,7 +330,14 @@ func shiftDoor(path string, rightFt, aheadFt float64) error {
 }
 
 // copyDoor sets interactive_point.0 (the door the jetway docks to) of the
-// flight_model.cfg at path to the one of the flight_model.cfg at from.
+// flight_model.cfg at path to the one of the flight_model.cfg at from, put
+// where that door is on the aircraft from: as far behind the nose gear and
+// as high above the ground (doorFrom). The jetway meets the helper's door
+// and the helper parks as the sim parks its type, nose gear inside the
+// circle: copied as written, a B748 helper's A320 door was 0.9 m too high
+// (live, LKPR 22A) and 8.5 m further from its nose gear than an A320's, so
+// our A320 stopped that much further in (C22); a 777 at B14 got the B748's
+// own door, its jetway 15 m aft of L1.
 func copyDoor(path, from string) error {
 	door := func(p string) (int, []string, error) {
 		b, err := os.ReadFile(p)
@@ -350,7 +360,11 @@ func copyDoor(path, from string) error {
 	if err != nil {
 		return err
 	}
-	l := strings.TrimSuffix(src[j], "\r") + " ; MyCrew: the door of " + filepath.Base(filepath.Dir(from))
+	l := strings.TrimSuffix(src[j], "\r")
+	if moved, ok := doorFrom(readGeometry(src), readGeometry(lines), l); ok {
+		l = moved
+	}
+	l += " ; MyCrew: the door of " + filepath.Base(filepath.Dir(from))
 	if strings.HasSuffix(lines[i], "\r") {
 		l += "\r"
 	}

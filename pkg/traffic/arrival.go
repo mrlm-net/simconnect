@@ -73,6 +73,10 @@ type ArrivalRequest struct {
 	// right: the injected final is flown crabbed into it
 	// (ApproachMover.SetCrosswind).
 	CrosswindKts float64
+	// WindKts and GustKts (0: no gusts) are the wind at the airport: the
+	// injected final balances in it, more in gusts and crosswind
+	// (ApproachMover.SetBalance).
+	WindKts, GustKts float64
 	// Exit forces a runway exit; nil chooses one for the required rollout.
 	Exit *airport.RunwayExit
 	// GroundAGL sends ground waypoints at 0 ft above ground instead of the

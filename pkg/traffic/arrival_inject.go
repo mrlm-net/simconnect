@@ -156,6 +156,9 @@ func (c *ArrivalController) takeover(m arrivalMonitor, pos airport.LatLon, onRun
 		pts = append(pts, c.turnAround(stopNose)...) // self-manoeuvring stand
 	} else {
 		pts = append(pts, axis, stopNose)
+		wide := widenStandTurn(pts, len(pts)-3, c.moverProfile(), c.standHeading, prof)
+		join += pathLen(wide) - pathLen(pts) // the junction as far from the stop as before
+		pts = wide
 	}
 	c.crossZones = crossingZones(c.req.Graph, route, holds)
 	fast := prof
@@ -169,7 +172,7 @@ func (c *ArrivalController) takeover(m arrivalMonitor, pos airport.LatLon, onRun
 	if err != nil {
 		return err
 	}
-	moverProf := prof
+	moverProf := c.moverProfile()
 	if onRunway {
 		// Rollout: one even deceleration from the touchdown to the exit
 		// speed at the exit (the user: a smooth slowdown into the first
@@ -255,6 +258,10 @@ func (c *ArrivalController) profile() MotionProfile {
 	return taxiSpeed(p, c.timing.taxiSpeed, limit)
 }
 
+// moverProfile is profile for its GroundMover: turning about the model's
+// own main gear (moverGear).
+func (c *ArrivalController) moverProfile() MotionProfile { return moverGear(c.profile(), c.req.Model) }
+
 // step advances the mover to now and places the aircraft.
 func (c *ArrivalController) step() GroundPose {
 	pose, err := c.advance()
@@ -331,7 +338,7 @@ func (c *ArrivalController) onInjectedFrame() {
 		// Clear of the runway: taxi behaviour, landing lights and strobes off.
 		if pose.Distance >= c.clearDist {
 			if c.exitFastTo <= c.clearDist {
-				c.mover.SetProfile(c.profile())
+				c.mover.SetProfile(c.moverProfile())
 			}
 			// Clear of the runway: strobes and landing lights off, flaps and
 			// spoilers up, as the after-landing flow does.
@@ -348,7 +355,7 @@ func (c *ArrivalController) onInjectedFrame() {
 	case ArrivalVacating:
 		// Its tail clear too: taxi behaviour.
 		if c.exitFastTo > c.clearDist && pose.Distance >= c.exitFastTo {
-			c.mover.SetProfile(c.profile())
+			c.mover.SetProfile(c.moverProfile())
 			c.exitFastTo = 0
 		}
 		// Stopped clear of the runway (or, rolling through, at the slowest
@@ -477,6 +484,9 @@ func (c *ArrivalController) startInjectedApproach(startMeters float64) error {
 	c.approach.SetCrosswind(c.req.CrosswindKts)
 	c.approach.SetAimShift(TouchdownSpreadMeters * (2*c.rng.Float64() - 1))
 	c.approach.SetSideShift(TouchdownSideMeters * (2*c.rng.Float64() - 1))
+	// Its own phases, seeded by the object: no draw from c.rng, whose
+	// sequence the other choices keep.
+	c.approach.SetBalance(c.req.WindKts, c.req.GustKts, balanceRand(c.objectID))
 	at := c.approach.Pose()
 	c.seq.add(c.now(), "takeover on final: gear down, approach flaps", at.HeightFt, at.GroundSpeedKts)
 	c.monitorEvery(types.SIMCONNECT_PERIOD_SIM_FRAME)

@@ -149,14 +149,14 @@ var gsxStairs = map[string]bool{
 }
 
 // stairs are the boarding stairs of a departure (#831): an airliner (not
-// GA or cargo) on a remote stand (not a gate), when the simulator has
+// GA or cargo) on a remote stand, or a gate whose jetway does not come for
+// its type (jetwayAt), when the simulator has
 // stairs; created with the third last request ID of the aircraft's block.
 func (cc *controlCenter) stairs(r SpawnRequest, g *airport.Graph, reqBase uint32, prof traffic.MotionProfile) *traffic.SimObjectStairs {
 	if r.Kind != "departure" || !cc.core.vehicleOn(traffic.VehicleStairs) || r.Circuit || r.StandUse != standAirline || r.Stand < 0 || r.Stand >= len(g.Layout.Parking) {
 		return nil
 	}
-	stand := g.Layout.Parking[r.Stand]
-	if stand.IsGate() || traffic.NoJetway(r.Model) {
+	if cc.jetwayAt(g, r.Stand, r.Model) || traffic.NoJetway(r.Model) {
 		return nil // a jetway, or its own airstairs (a CRJ)
 	}
 	cc.mu.Lock()
@@ -179,13 +179,13 @@ func (cc *controlCenter) stairs(r SpawnRequest, g *airport.Graph, reqBase uint32
 }
 
 // gpu is the ground power unit of a departure (#832): an airliner on a
-// remote stand (a gate has its own power), when the simulator has one;
+// remote stand (a gate has its own power: jetwayAt), when the simulator has one;
 // created with the fourth last request ID of the aircraft's block.
 func (cc *controlCenter) gpu(r SpawnRequest, g *airport.Graph, reqBase uint32, prof traffic.MotionProfile) *traffic.SimObjectFuelTruck {
 	if r.Kind != "departure" || !cc.core.vehicleOn(traffic.VehicleGPU) || r.Circuit || r.StandUse != standAirline || r.Stand < 0 || r.Stand >= len(g.Layout.Parking) {
 		return nil
 	}
-	if g.Layout.Parking[r.Stand].IsGate() && !traffic.NoJetway(r.Model) {
+	if cc.jetwayAt(g, r.Stand, r.Model) && !traffic.NoJetway(r.Model) {
 		return nil // the jetway's power
 	}
 	cc.mu.Lock()

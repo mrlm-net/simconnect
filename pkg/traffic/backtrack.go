@@ -124,7 +124,7 @@ func (c *TaxiController) startBacktrack(pose GroundPose, prof MotionProfile) boo
 		alignKts = LineUpRollingKts
 	}
 	path.LimitRange(cum(turnEnd), path.Length(), alignKts, prof.Decel)
-	c.mover = NewGroundMoverFrom(path, prof, pose.Heading, pose.GroundSpeedKts)
+	c.mover = NewGroundMoverFrom(path, moverGear(prof, c.req.Model), pose.Heading, pose.GroundSpeedKts)
 	if !c.takeoffCleared {
 		c.mover.HoldAt(c.alignDist)
 	}

@@ -495,6 +495,7 @@ func (c *TaxiController) Start(req TaxiRequest) error {
 		return fmt.Errorf("%w: parking index %d", ErrBadTaxiRequest, req.Parking)
 	}
 	req.resolveAircraft()
+	fitTug(req.Tug, req.Model) // on the model's real nose gear (refahead.go)
 	req.Options = withSpan(req.Options, req.Profile)
 	c.padNode = -1
 	if d := req.Deice; d != nil && d.Pad != nil {

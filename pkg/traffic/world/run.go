@@ -37,7 +37,6 @@ import (
 	"github.com/mrlm-net/simconnect/pkg/calc"
 	"github.com/mrlm-net/simconnect/pkg/convert"
 	"github.com/mrlm-net/simconnect/pkg/engine"
-	"github.com/mrlm-net/simconnect/pkg/jetway"
 	"github.com/mrlm-net/simconnect/pkg/nav"
 	"github.com/mrlm-net/simconnect/pkg/traffic"
 	"github.com/mrlm-net/simconnect/pkg/types"
@@ -85,10 +84,9 @@ const (
 	trafficRadius uint32 = traffic.MaxScanRadiusMeters // meters around the user aircraft: SimConnect's maximum
 )
 
-// trafficRaw matches the defTraffic data definition.
+// trafficRaw matches the defTraffic data definition (the names apart:
+// trafficNames).
 type trafficRaw struct {
-	Title                                          [256]byte
-	AtcID                                          [32]byte
 	State                                          [256]byte
 	Lat, Lon, AGL, GS, Heading, VS, OnGround, Gear float64
 	Landing, Taxi, Strobe, Beacon, Nav             float64
@@ -670,9 +668,10 @@ func runOn(ctx context.Context, st *state, client engine.Client, stream <-chan e
 		fmt.Fprintf(stdout, "❌ RequestDataOnSimObject: %v\n", err)
 	}
 
-	// Live traffic: title, tail, AI state, position and flight parameters.
-	client.AddToDataDefinition(defTraffic, "TITLE", "", types.SIMCONNECT_DATATYPE_STRING256, 0, 0)
-	client.AddToDataDefinition(defTraffic, "ATC ID", "", types.SIMCONNECT_DATATYPE_STRING32, 0, 1)
+	// Live traffic: AI state, position and flight parameters every second;
+	// title and tail once per aircraft (trafficNames).
+	client.AddToDataDefinition(defTrafficNames, "TITLE", "", types.SIMCONNECT_DATATYPE_STRING256, 0, 0)
+	client.AddToDataDefinition(defTrafficNames, "ATC ID", "", types.SIMCONNECT_DATATYPE_STRING32, 0, 1)
 	client.AddToDataDefinition(defTraffic, "AI TRAFFIC STATE", "", types.SIMCONNECT_DATATYPE_STRING256, 0, 2)
 	for i, v := range []struct{ name, unit string }{
 		{"PLANE LATITUDE", "degrees"}, {"PLANE LONGITUDE", "degrees"}, {"PLANE ALT ABOVE GROUND", "feet"},
@@ -689,6 +688,7 @@ func runOn(ctx context.Context, st *state, client engine.Client, stream <-chan e
 		// Last position per object: aircraft moved by position injection
 		// (pkg/traffic Injector) report 0 kt, so their speed is derived.
 		lastPos = map[uint32]fix{}
+		names   = newTrafficNames()
 	)
 
 	// The loader sends facility requests; this loop hands it every message.
@@ -1071,6 +1071,16 @@ func runOn(ctx context.Context, st *state, client engine.Client, stream <-chan e
 
 			case types.SIMCONNECT_RECV_ID_SIMOBJECT_DATA_BYTYPE:
 				d := msg.AsSimObjectDataBType()
+				if uint32(d.DwRequestID) == reqTrafficNames {
+					nm := engine.CastDataAs[trafficNameRaw](&d.DwData)
+					names.name(uint32(d.DwObjectID), engine.BytesToString(nm.Title[:]), engine.BytesToString(nm.AtcID[:]))
+					if uint32(d.DwEntryNumber) >= uint32(d.DwOutOf) {
+						if named, ok := names.namesDone(); ok {
+							feed.Traffic(named) // the second's scan, waiting for these
+						}
+					}
+					continue
+				}
 				if uint32(d.DwRequestID) != reqTraffic {
 					continue
 				}
@@ -1084,23 +1094,29 @@ func runOn(ctx context.Context, st *state, client engine.Client, stream <-chan e
 				if uint32(d.DwEntryNumber) <= 1 {
 					scan = scan[:0] // a new scan
 				}
-				// An invisible jetway helper (#572) is not traffic, but the scan
-				// still ends on it: skipped with continue, a scan whose last
-				// object was a helper was never handed on (live, LKPR: no
-				// aircraft on the map while jetways were docked).
-				if !jetway.IsHelper(engine.BytesToString(t.Title[:])) {
-					scan = append(scan, Traffic{
-						ObjectID: uint32(d.DwObjectID), Title: engine.BytesToString(t.Title[:]), Tail: engine.BytesToString(t.AtcID[:]),
-						State: engine.BytesToString(t.State[:]), Latitude: t.Lat, Longitude: t.Lon, AGL: t.AGL, GroundKts: t.GS,
-						Heading: t.Heading, VerticalFpm: vs, OnGround: t.OnGround != 0, Gear: t.Gear, Lights: lights(t), Span: t.SpanFt * 0.3048, Alt: t.AltFt, User: uint32(d.DwObjectID) == userID || uint32(d.DwObjectID) == types.SIMCONNECT_OBJECT_ID_USER,
-					})
-				}
+				// Named, and an invisible jetway helper (#572) left out, as the
+				// scan ends (trafficNames.fill): the scan still ends on a
+				// helper (a scan whose last object was one was never handed
+				// on: live, LKPR, no aircraft on the map while jetways were
+				// docked).
+				scan = append(scan, Traffic{
+					ObjectID: uint32(d.DwObjectID),
+					State:    engine.BytesToString(t.State[:]), Latitude: t.Lat, Longitude: t.Lon, AGL: t.AGL, GroundKts: t.GS,
+					Heading: t.Heading, VerticalFpm: vs, OnGround: t.OnGround != 0, Gear: t.Gear, Lights: lights(t), Span: t.SpanFt * 0.3048, Alt: t.AltFt, User: uint32(d.DwObjectID) == userID || uint32(d.DwObjectID) == types.SIMCONNECT_OBJECT_ID_USER,
+				})
 				if uint32(d.DwEntryNumber) >= uint32(d.DwOutOf) {
-					feed.Traffic(scan)
+					out, ask := names.complete(scan)
+					if out != nil {
+						feed.Traffic(out)
+					}
+					if ask {
+						client.RequestDataOnSimObjectType(reqTrafficNames, defTrafficNames, trafficRadius, types.SIMCONNECT_SIMOBJECT_TYPE_AIRCRAFT)
+					}
 					scan = nil
 					for k, f := range lastPos {
 						if now.Sub(f.at) > time.Minute {
 							delete(lastPos, k) // gone from the scans (#85)
+							names.forget(k)
 						}
 					}
 				}

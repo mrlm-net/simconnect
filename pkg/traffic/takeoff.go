@@ -96,6 +96,8 @@ type TakeoffPose struct {
 	AirborneSeconds float64
 	// LiftoffDistance is where the wheels left the runway, once airborne.
 	LiftoffDistance float64
+	// RotateKts is the profile's rotation speed (TakeoffProfile.RotateKts).
+	RotateKts float64
 }
 
 // ApproachPose returns the pose in the form Injector.PlaceAir takes.
@@ -104,6 +106,7 @@ func (p TakeoffPose) ApproachPose() ApproachPose {
 		Position: p.Position, Heading: p.Heading, HeightFt: p.HeightFt, PitchDeg: p.PitchDeg,
 		GroundSpeedKts: p.GroundSpeedKts, VerticalFpm: p.VerticalFpm, Distance: p.Distance,
 		OnGround: p.Phase != TakeoffAirborne, Unpinned: p.Phase != TakeoffAirborne,
+		RotateKts: p.RotateKts,
 	}
 }
 
@@ -248,6 +251,7 @@ func (m *TakeoffMover) Pose() TakeoffPose {
 		Position: offsetHeading(m.start, m.heading, m.x), Heading: m.facing(),
 		HeightFt: m.h, PitchDeg: m.shown, GroundSpeedKts: m.v / ktsToMS, VerticalFpm: m.vs,
 		Distance: m.x, Phase: m.phase, LiftoffDistance: m.liftoffX, AirborneSeconds: m.airborneFor,
+		RotateKts: m.p.RotateKts,
 	}
 }
 

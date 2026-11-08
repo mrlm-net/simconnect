@@ -364,7 +364,7 @@ const (
 // towbar tug, checked live against an A320.
 const (
 	DefaultTugTitle      = "FSDT_Pushback_03"
-	TugAheadMeters       = 3.0
+	TugAheadMeters       = 0.0 // its cradle (model origin) on the nose wheel; was 3.0, the wheel stood in its front mouth (user, live 2026-11-07)
 	TugYawDeg            = 180.0
 	TugDisconnectSeconds = 8.0
 	TugBackOffMeters     = 15.0 // more than the mover's 10 m look-ahead, or it never starts

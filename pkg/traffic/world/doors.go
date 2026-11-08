@@ -29,6 +29,9 @@ type doorTable struct {
 	noseByTitle, noseByType map[string]float64
 	// spanByType: the installed models' wingspan by type, meters.
 	spanByType map[string]float64
+	// datum: the reference datum, feet ahead of the simulator's position,
+	// by lower-case title (addons.ModelDoor.DatumFt; 0 not listed).
+	datum map[string]float64
 }
 
 var modelDoors = &doorTable{byTitle: map[string]float64{}, byType: map[string]float64{}, jetway: map[string]addons.InteractivePoint{},
@@ -117,7 +120,12 @@ func jetwayDoorOffset(model, helper string) (ahead, right float64, ok bool) {
 	if !ok1 || !ok2 {
 		return 0, 0, false
 	}
-	return (o.Long - h.Long) * 0.3048, (o.Lat - h.Lat) * 0.3048, true
+	// Each door from its own model's datum (live, LKPR C22: the "B748
+	// D-A320" helper's door 37.65 ft from a datum 83.5 ft ahead of its
+	// position; logged as door to door, its jetway 9 m ahead of CSA1894's).
+	od, _ := titled(modelDoors.datum, model)
+	hd, _ := titled(modelDoors.datum, helper)
+	return (o.Long + od - h.Long - hd) * 0.3048, (o.Lat - h.Lat) * 0.3048, true
 }
 
 // SetModelDoors sets the main doors of the installed models, by title
@@ -152,7 +160,11 @@ func setDoors(byTitle, byType map[string]addons.ModelDoor) {
 		}
 	}
 	j := make(map[string]addons.InteractivePoint, len(byTitle))
+	dt := map[string]float64{}
 	for k, d := range byTitle {
+		if d.DatumFt != 0 {
+			dt[strings.ToLower(k)] = d.DatumFt
+		}
 		if d.First.Raw != "" || d.First.Long != 0 {
 			j[strings.ToLower(k)] = d.First
 		}
@@ -160,7 +172,7 @@ func setDoors(byTitle, byType map[string]addons.ModelDoor) {
 	modelDoors.mu.Lock()
 	modelDoors.byTitle, modelDoors.byType, modelDoors.jetway = t, y, j
 	modelDoors.noseByTitle, modelDoors.noseByType = nt, ny
-	modelDoors.spanByType = sp
+	modelDoors.spanByType, modelDoors.datum = sp, dt
 	modelDoors.mu.Unlock()
 }
 

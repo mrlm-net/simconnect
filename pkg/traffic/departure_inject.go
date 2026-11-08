@@ -290,8 +290,11 @@ func (c *TaxiController) onDepartureFrame(m taxiMonitor) {
 	if !c.frameAt.IsZero() && c.flaps.step(math.Min(now.Sub(c.frameAt).Seconds(), MaxFrameStepSeconds)) {
 		c.note("flaps", c.inj.SetFlaps(c.objectID, c.flaps.pct))
 	}
+	tugDT := 0.0 // pushing, the tug moves after the aircraft (below)
 	if !c.frameAt.IsZero() {
-		c.updateTug(math.Min(now.Sub(c.frameAt).Seconds(), MaxFrameStepSeconds))
+		if tugDT = math.Min(now.Sub(c.frameAt).Seconds(), MaxFrameStepSeconds); c.state != TaxiPushback {
+			c.updateTug(tugDT)
+		}
 		c.updateFuel(math.Min(now.Sub(c.frameAt).Seconds(), MaxFrameStepSeconds))
 		c.updateStairs(math.Min(now.Sub(c.frameAt).Seconds(), MaxFrameStepSeconds))
 	}
@@ -421,6 +424,12 @@ func (c *TaxiController) onDepartureFrame(m taxiMonitor) {
 		c.holdPushForTraffic(now)
 	}
 	pose, err := c.advance()
+	// The tug on the nose wheel where the aircraft is now: placed from the
+	// frame before, it trailed by a frame's travel, and slid on the wheel
+	// as the push braked (live, 2026-11-07).
+	if c.state == TaxiPushback && tugDT > 0 {
+		c.updateTug(tugDT)
+	}
 	if err != nil && !errors.Is(err, ErrGroundUnknown) {
 		c.emit(err, true)
 	}
@@ -707,7 +716,7 @@ func (c *TaxiController) standInPlace() error {
 	if err != nil {
 		return err
 	}
-	c.mover = NewGroundMoverFrom(path, prof, stand.Heading, 0)
+	c.mover = NewGroundMoverFrom(path, moverGear(prof, c.req.Model), stand.Heading, 0)
 	c.lastStep = c.now()
 	return nil
 }
@@ -1652,7 +1661,7 @@ func (c *TaxiController) startTaxiOut() error {
 	apron.limit(path, c.req.Airport, prof.Decel)
 	// Start where the aircraft is (not a wheelbase along the path), at the
 	// speed it has: 0 from a stop, its taxi speed on a re-plan.
-	c.mover = NewGroundMoverFrom(path, prof, pose.Heading, pose.GroundSpeedKts)
+	c.mover = NewGroundMoverFrom(path, moverGear(prof, c.req.Model), pose.Heading, pose.GroundSpeedKts)
 	c.holdNextCrossing()
 	if c.padNode >= 0 && !c.deiced {
 		// Stop on the de-icing pad, the nose gear on its node.
@@ -1718,13 +1727,13 @@ func (c *TaxiController) startLineUp() {
 	// run past the waypoint, and the take-off starts on the runway heading
 	// (live at EDDM: lined up 3.5° off, the heading snapped as the roll
 	// began).
-	c.alignDist = alignedFrom(path, prof, pose.Heading, hdg, c.alignDist)
+	c.alignDist = alignedFrom(path, moverGear(prof, c.req.Model), pose.Heading, hdg, c.alignDist)
 	alignKts := LineUpSpeedKts
 	if c.takeoffCleared {
 		alignKts = LineUpRollingKts
 	}
 	path.LimitRange(c.alignDist-LineUpAlignMeters, path.Length(), alignKts, prof.Decel)
-	c.mover = NewGroundMoverFrom(path, prof, pose.Heading, pose.GroundSpeedKts) // rolling on, or from a stop
+	c.mover = NewGroundMoverFrom(path, moverGear(prof, c.req.Model), pose.Heading, pose.GroundSpeedKts) // rolling on, or from a stop
 	if !c.takeoffCleared {
 		c.mover.HoldAt(c.alignDist)
 	}

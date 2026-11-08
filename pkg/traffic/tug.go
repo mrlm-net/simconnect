@@ -58,6 +58,7 @@ type SimObjectTug struct {
 	reversing bool    // backing off the nose, before driving away
 	bar       float64 // tow bar direction, from the nose wheel to the tug
 	haveBar   bool
+	engine    vehicleEngine  // running, so its lights are on (tug_engine.go)
 	lastNose  airport.LatLon // nose gear at the last bar update
 	haveNose  bool
 	waitLeft  float64        // seconds to the drive-off after the push
@@ -309,6 +310,10 @@ func (t *SimObjectTug) Handle(msg engine.Message) bool {
 	// Frozen and placed by the injector, like the aircraft; an error comes
 	// back from the next Update.
 	t.err = t.inj.Takeover(t.objectID)
+	if t.err == nil {
+		// Engine on at once, so its lights burn (tug_engine.go).
+		t.engine.keep(t.inj, t.objectID, 0)
+	}
 	return true
 }
 
@@ -322,6 +327,8 @@ func (t *SimObjectTug) Update(pose GroundPose, pushing bool, dt float64) error {
 		t.err = nil
 		return err
 	}
+	// Engine on, so its lights burn (tug_engine.go).
+	t.engine.keep(t.inj, t.objectID, dt)
 	// Driving in from the depot; once there, on the nose.
 	if t.arrive != nil {
 		if t.check(t.arrive) {

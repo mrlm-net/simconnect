@@ -69,10 +69,10 @@ func TestGroundShownEasedStanding(t *testing.T) {
 	}
 	i.ground.put(p, 1177.40)
 	at = at.Add(20 * time.Millisecond)
-	if got := i.groundShown(o, GroundPose{Position: p, GroundSpeedKts: 10}); math.Abs(got-(1176.92+0.16)) > 0.01 {
-		t.Errorf("rolling: %.2f, want %.2f in 20 ms", got, 1176.92+0.16)
+	if got := i.groundShown(o, GroundPose{Position: p, GroundSpeedKts: 10}); math.Abs(got-(1176.92+groundFollowFtPerSec(10)*0.02)) > 0.01 {
+		t.Errorf("rolling: %.2f, want %.2f in 20 ms", got, 1176.92+groundFollowFtPerSec(10)*0.02)
 	}
-	at = at.Add(100 * time.Millisecond)
+	at = at.Add(300 * time.Millisecond)
 	if got := i.groundShown(o, GroundPose{Position: p, GroundSpeedKts: 10}); math.Abs(got-1177.40) > 0.01 {
 		t.Errorf("rolling, later: %.2f, want the ground", got)
 	}

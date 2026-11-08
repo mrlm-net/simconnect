@@ -80,6 +80,11 @@ type controlled struct {
 	groundStop bool
 	// boardWaitSince: when it began waiting for its jetway to dock.
 	boardWaitSince time.Time
+	// standServices makes a departure's stairs, GPU and buses as on a
+	// remote stand, for one whose jetway never comes (lateStandServices);
+	// standLate: given (or tried) once.
+	standServices func() (stairs, gpu traffic.FuelService, buses []traffic.FuelService)
+	standLate     bool
 	// tugAfter: its tug comes once the jetway is home (drawn at the spawn);
 	// tugStand: its stand for that. Atomic: read inside the controller's
 	// frame, which must not take it.mu (tugWaitsForJetway).
@@ -629,7 +634,7 @@ type controlCenter struct {
 func newControlCenter(client engine.Client, k *core) *controlCenter {
 	log := k.log
 	cc := &controlCenter{
-		core: k, log: log, client: client, fleet: traffic.NewFleet(client), inj: traffic.NewInjector(client, traffic.InjectorWithIDs(k.libIDs().injDef, k.libIDs().injReq, k.libIDs().injEvt)), clock: traffic.NewSimClock(), startedAt: traffic.Now(),
+		core: k, log: log, client: client, fleet: traffic.NewFleet(client), inj: traffic.NewInjector(posDiagWrap(client, k.libIDs().injDef) /* POSDIAG */, traffic.InjectorWithIDs(k.libIDs().injDef, k.libIDs().injReq, k.libIDs().injEvt)), clock: traffic.NewSimClock(), startedAt: traffic.Now(),
 		cmds: make(chan func(), 16), items: map[int]*controlled{},
 		models:   map[string]bool{},
 		own:      map[uint32]bool{},
@@ -687,6 +692,7 @@ func newControlCenter(client engine.Client, k *core) *controlCenter {
 				f(t) // the front end: its voice, camera, open maps
 			}
 		}})
+	posDiag.setLog(cc.core.log.printf) // POSDIAG
 	return cc
 }
 
@@ -838,6 +844,7 @@ func (cc *controlCenter) pruneDone() {
 // spawned, 20–40 minutes before; a reservation does not stop MSFS AI or the
 // user). Runs in the connection goroutine.
 func (cc *controlCenter) recheckArrivalStands() {
+	defer cc.recheckArrivalStandPlaces() // the stop on the stand too (standplace.go)
 	cc.mu.Lock()
 	items := make([]*controlled, 0, len(cc.items))
 	for _, it := range cc.items {
@@ -896,12 +903,47 @@ func (cc *controlCenter) recheckArrivalStands() {
 
 // handle passes a message to the injector and every controller.
 func (cc *controlCenter) handle(msg engine.Message) bool {
+	// POSDIAG: data gaps and slow handling logged (posdiag.go); the
+	// original body is handleTimed.
+	posDiag.arrived(msg, cc.posDiagTail)
+	t := newPosDiagTimer(msg)
+	by := "nobody"
+	defer func() { t.done(by) }()
+	return cc.handleTimed(msg, t, &by)
+}
+
+// posDiagTail is our aircraft with object obj ("" none). POSDIAG.
+func (cc *controlCenter) posDiagTail(obj uint32) string {
+	cc.mu.Lock()
+	items := make([]*controlled, 0, len(cc.items))
+	for _, it := range cc.items {
+		items = append(items, it)
+	}
+	cc.mu.Unlock()
+	for _, it := range items {
+		it.mu.Lock()
+		id, tail := it.objectID, it.Tail
+		it.mu.Unlock()
+		if id == obj {
+			return tail
+		}
+	}
+	return ""
+}
+
+// handleTimed is handle, each stage marked on t, by the one that took it.
+// POSDIAG.
+func (cc *controlCenter) handleTimed(msg engine.Message, t *posDiagTimer, by *string) bool {
 	if svc := cc.jetwayBuilt(); svc != nil && svc.Handle(msg) {
+		*by = "jetways"
 		return true
 	}
+	t.mark("jetways")
 	if cc.lateCreation(msg) {
+		*by = "late creation"
 		return true
 	}
+	t.mark("late creation")
 	cc.mu.Lock()
 	allocs := make([]*traffic.StandAllocator, 0, len(cc.stands))
 	for _, a := range cc.stands {
@@ -910,31 +952,41 @@ func (cc *controlCenter) handle(msg engine.Message) bool {
 	cc.mu.Unlock()
 	for _, a := range allocs {
 		if a.Handle(msg) {
+			*by = "stand allocator"
 			return true
 		}
 	}
+	t.mark("stand allocators")
 	if cc.rescueHandle(msg) {
+		*by = "rescue"
 		return true
 	}
+	t.mark("rescue")
 	if cc.extra != nil && cc.extra(msg) {
+		*by = "extra"
 		return true
 	}
+	t.mark("extra")
 	if types.SIMCONNECT_RECV_ID(msg.DwID) == types.SIMCONNECT_RECV_ID_ENUMERATE_SIMOBJECT_AND_LIVERY_LIST {
 		switch e := msg.AsSimObjectAndLiveryEnumeration(); uint32(e.DwRequestID) {
 		case reqModels:
+			*by = "models"
 			cc.addModels(msg)
 			return true
 		case reqGroundVehicles:
+			*by = "ground vehicles"
 			cc.addFuelTitles(msg)
 			return true
 		}
 	}
 	if ok, err := cc.inj.Handle(msg); ok {
+		*by = "injector"
 		if err != nil {
 			fmt.Fprintf(stdout, "⚠️  injector: %v\n", err)
 		}
 		return true
 	}
+	t.mark("injector")
 	cc.mu.Lock()
 	items := make([]*controlled, 0, len(cc.items))
 	for _, it := range cc.items {
@@ -944,6 +996,7 @@ func (cc *controlCenter) handle(msg engine.Message) bool {
 	for _, it := range items {
 		t0 := traffic.Now()
 		if it.dep != nil && it.dep.Handle(msg) || it.arr != nil && it.arr.Handle(msg) {
+			*by = it.Tail // POSDIAG
 			if d := traffic.Since(t0); d > slowStep {
 				it.mu.Lock()
 				state := it.view.State // under its lock: update writes it on another goroutine
@@ -953,6 +1006,7 @@ func (cc *controlCenter) handle(msg engine.Message) bool {
 			return true
 		}
 	}
+	t.mark("controllers") // POSDIAG
 	return false
 }
 
@@ -1265,6 +1319,19 @@ func (cc *controlCenter) spawn(g *airport.Graph, r SpawnRequest) (*controlled, e
 			gpu = u
 		}
 		buses := cc.buses(g, reqBase, prof, stairs)
+		if stairs == nil {
+			it.standServices = func() (traffic.FuelService, traffic.FuelService, []traffic.FuelService) {
+				s := cc.stairs(r, g, reqBase, prof)
+				if s == nil {
+					return nil, nil, nil
+				}
+				var gpu traffic.FuelService
+				if u := cc.gpu(r, g, reqBase, prof); u != nil {
+					gpu = u
+				}
+				return s, gpu, cc.buses(g, reqBase, prof, s)
+			}
+		}
 		var deboard []traffic.FuelService
 		if r.adopt != 0 { // a turnaround: the passengers off first
 			deboard = cc.buses(g, reqBase, prof, stairs)
@@ -1330,11 +1397,12 @@ func (cc *controlCenter) spawn(g *airport.Graph, r SpawnRequest) (*controlled, e
 		}
 		nose, side := cc.standPlace(g, r.Stand, model)
 		startAt := traffic.Now()
+		windKts, gustKts := cc.wind()
 		ctl, ach, err := cc.sim.StartArrival(defBase, reqBase, traffic.ArrivalRequest{Graph: g, Runway: r.Runway, Parking: r.Stand, NoseOffset: nose, StandSide: side, Model: model, Livery: livery, Tail: r.Tail, ObjectID: r.adopt, Exit: exit, Circuit: circuit, TouchAndGos: r.TouchAndGos, StopAndGo: r.StopAndGo, CircuitEntry: entryPoint, CircuitJoin: join,
 			Options:          airport.RouteOptions{Via: r.Via, Taxiways: r.Taxiways},
 			HoldForClearance: r.Gates, HoldAtCrossings: true, InjectApproach: !r.AILanding, Profile: prof, FollowMe: cc.followMe(r, g, reqBase, prof),
 			Procedure: procRoute, MissedApproach: cc.missedFor(g, r.Runway), Aircraft: &ac, Airport: &lim,
-			CrosswindKts: cc.crosswind(g, r.Runway)})
+			CrosswindKts: cc.crosswind(g, r.Runway), WindKts: windKts, GustKts: gustKts})
 		startTook = traffic.Since(startAt)
 		if err != nil {
 			return nil, err
@@ -3053,6 +3121,18 @@ func (cc *controlCenter) crosswind(g *airport.Graph, rwy string) float64 {
 	return w.WindKts * math.Sin((w.WindDirTrue-end.Heading)*math.Pi/180)
 }
 
+// wind is the wind and gusts now, knots (0, 0 without weather): arrivals
+// balance in it on final.
+func (cc *controlCenter) wind() (kts, gustKts float64) {
+	if cc.weather == nil {
+		return 0, 0
+	}
+	if w := cc.weather(); w != nil {
+		return w.WindKts, w.GustKts
+	}
+	return 0, 0
+}
+
 // activeRunway is the runway in use at g's airport now: from the weather
 // (wind, limits, preferential runways), else the first preferred runway,
 // else the first runway end. Departures and arrivals may differ. With
@@ -3665,8 +3745,16 @@ func (cc *controlCenter) standNoseOffset(g *airport.Graph, stand int, model stri
 
 // standPlace is model's stand offset and side on stand (TaxiRequest
 // NoseOffset, StandSide): at a gate as the simulator parks there, moved by
-// the stand's rule (traffic.StandRuleFor) where it has one.
+// the stand's rule (traffic.StandRuleFor) where it has one. An offset past
+// the parking point is logged (standPastCentre): StandPoint stops there.
 func (cc *controlCenter) standPlace(g *airport.Graph, stand int, model string) (nose, side float64) {
+	nose, side = cc.standPlaceRuled(g, stand, model)
+	cc.standPastCentre(g, stand, model, nose)
+	return nose, side
+}
+
+// standPlaceRuled is standPlace without the log.
+func (cc *controlCenter) standPlaceRuled(g *airport.Graph, stand int, model string) (nose, side float64) {
 	nose, side = cc.standPlaceSim(g, stand, model)
 	if g == nil || stand < 0 || stand >= len(g.Layout.Parking) {
 		return nose, side
@@ -4100,7 +4188,9 @@ func (cc *controlCenter) tug(r SpawnRequest, reqBase uint32, prof traffic.Motion
 	if !r.Tug || !cc.core.vehicleOn(traffic.VehicleTug) {
 		return nil
 	}
-	title := traffic.TugTitleOr(r.TugTitle, spanM) // sized to the aircraft
+	// One that clears the aircraft: by its type, else its kind and size.
+	model, _, _ := strings.Cut(r.Model, liverySep)
+	title := traffic.TugTitleForModel(r.TugTitle, model, spanM)
 	t := traffic.NewSimObjectTug(cc.client, cc.inj, title, reqBase+controlIDBlock-1, prof)
 	if g, err := cc.graph(r.ICAO); err == nil {
 		t.Layout = g.Layout // from its depot on the vehicle roads, and back

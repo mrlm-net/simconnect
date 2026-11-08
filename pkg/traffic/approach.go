@@ -33,6 +33,10 @@ type ApproachProfile struct {
 	// touchdown; the speed falls at DerotateDecel meanwhile.
 	DerotateSeconds float64
 	DerotateDecel   float64
+	// BalanceScale sizes the small balancing movements in the air on final
+	// (ApproachMover.SetBalance): 1 for an A320, more for a light aircraft,
+	// less for a heavy.
+	BalanceScale float64
 }
 
 // DefaultApproachProfile is an A320 family approach, tried live at LKPR
@@ -44,6 +48,7 @@ func DefaultApproachProfile() ApproachProfile {
 		FlareFt: 30, TouchdownFpm: -120,
 		ApproachPitchDeg: 2.5, FlarePitchDeg: 5.5,
 		DerotateSeconds: 4, DerotateDecel: 0.5,
+		BalanceScale: 1,
 	}
 }
 
@@ -94,6 +99,9 @@ type ApproachPose struct {
 	// without it the height is ours alone (the gear held down,
 	// HoldGearDown).
 	Unpinned bool
+	// RotateKts: a take-off roll's rotation speed (0 unknown). Its struts
+	// are let out over the last strutsRampKts before it (PlaceAir).
+	RotateKts float64
 	// Landing: an arrival's flare and touchdown. Nose up on its main gear
 	// the simulator rests it on extended struts, above its static CG height
 	// (Injector.mainsCG); placed lower its main wheels sank into the runway
@@ -139,6 +147,9 @@ type ApproachMover struct {
 	// side shifts it across, meters right of the centreline (SetSideShift),
 	// faded in on short final.
 	side float64
+	// t is seconds flown; bal the balancing on final (SetBalance).
+	t   float64
+	bal balance
 }
 
 // SetAimShift moves the aiming point, and so the touchdown, by meters
@@ -232,9 +243,10 @@ func (m *ApproachMover) Pose() ApproachPose {
 		fade := math.Max(0, math.Min(1, (m.x+m.aim+sideFadeFromMeters)/sideFadeMeters))
 		pos = offsetHeading(pos, m.heading+90, m.side*fade)
 	}
+	dRoll, dPitch, dHdg := m.balanceNow()
 	return ApproachPose{
-		Position: pos, Heading: math.Mod(m.heading+m.crabDeg()+360, 360),
-		HeightFt: m.h, PitchDeg: m.pitch, BankDeg: m.bankDeg(), GroundSpeedKts: m.v / ktsToMS, VerticalFpm: m.vs,
+		Position: pos, Heading: math.Mod(m.heading+m.crabDeg()+dHdg+360, 360),
+		HeightFt: m.h, PitchDeg: m.pitch + dPitch, BankDeg: m.bankDeg() + dRoll, GroundSpeedKts: m.v / ktsToMS, VerticalFpm: m.vs,
 		Distance: m.x + m.aim, Phase: m.phase, OnGround: m.phase >= ApproachDerotate,
 		Touchdown: m.touchX + m.aim, TouchdownFpm: m.touchFpm,
 	}
@@ -289,6 +301,7 @@ func (m *ApproachMover) speedAt(x float64) float64 {
 
 func (m *ApproachMover) step(dt float64) {
 	p := m.p
+	m.t += dt
 	switch m.phase {
 	case ApproachFinal, ApproachFlare:
 		target := m.speedAt(m.x)
