@@ -7,6 +7,12 @@ This project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 ---
 
+## [0.168.1] - 2026-11-08
+
+### Fixed
+- Take-off rotation: struts seeded for the B789 (QTR1869 +0.77 ft) and the reach of the easyJet A20N (EZY1739 back at its static height for a frame at 0.59 ft) (#1479).
+- Removed the position diagnostic (posdiag) that went out in 0.168.0 by mistake: log lines only, no behaviour change (#1479).
+
 ## [0.168.0] - 2026-11-08
 
 ### Added

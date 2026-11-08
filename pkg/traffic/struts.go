@@ -59,6 +59,7 @@ var strutsSeed = map[int]float64{
 	850:  0.57, // B738 (live THY1039: 8.49 → 9.07 ft as the nose came up)
 	342:  0.53, // GA (live OKLOZ: 3.42 → 3.95 ft)
 	410:  2.38, // GA (live DZTPU rollout: held 6.48 nose up, 4.10 at static pitch)
+	1685: 0.78, // B789 (live QTR1869: 16.85 → 17.63 ft as the nose came up)
 }
 
 // strutsKey is a model's fingerprint: its static CG height in hundredths
@@ -140,6 +141,7 @@ var strutsReachSeed = map[int]float64{
 	1246: 0.60, // A321
 	485:  0.21, // CJ3
 	1330: 0.60, // E195 (LOT452: 1.04 ft of struts, shown at 0.65, back at static from 0.94)
+	1200: 0.54, // A20N easyJet (EZY1739: 1.13 ft of struts, back at static for a frame at 0.59)
 }
 
 const (
