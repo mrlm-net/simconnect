@@ -352,8 +352,8 @@ func (i *Injector) groundAlong(o *injected, pose GroundPose) float64 {
 	sum, n := 0.0, 0
 	for k := 1; k <= groundAlongN; k++ {
 		d := L * float64(k) / groundAlongN
-		a, okA := i.cellFt(o, cellOf(offsetHeading(pose.Position, pose.Heading, d)), now)
-		b, okB := i.cellFt(o, cellOf(offsetHeading(pose.Position, pose.Heading, -d)), now)
+		a, okA := i.cellNearFt(o, cellOf(offsetHeading(pose.Position, pose.Heading, d)), now)
+		b, okB := i.cellNearFt(o, cellOf(offsetHeading(pose.Position, pose.Heading, -d)), now)
 		if !okA || !okB || math.Abs(a-c0) >= groundAlongMaxFt || math.Abs(b-c0) >= groundAlongMaxFt {
 			continue
 		}
@@ -367,6 +367,40 @@ func (i *Injector) groundAlong(o *injected, pose GroundPose) float64 {
 	// at most, the cell under it on either side.
 	return sum / float64(n)
 }
+
+// cellNearFt is cell c's ground for o (cellFt), or when c was never seen
+// the median of the cells around it that were: an aircraft a metre off the
+// line the ones before took over a step in the ground found no cells ahead
+// to ramp it, and met the step in a frame (live LKPR 2026-11-08, TVS414 at
+// 15 kt over the seam at 50.11007,14.26575 heading 128: the ground 0.27 ft
+// up between two frames, the aircraft 0.26 ft up three frames late).
+// i.mu held.
+func (i *Injector) cellNearFt(o *injected, c groundCell, now time.Time) (float64, bool) {
+	if ft, ok := i.cellFt(o, c, now); ok {
+		return ft, true
+	}
+	var vs [8]float64
+	n := 0
+	for dl := int32(-1); dl <= 1; dl++ {
+		for dn := int32(-1); dn <= 1; dn++ {
+			if dl == 0 && dn == 0 {
+				continue
+			}
+			if ft, ok := i.cellFt(o, groundCell{c.lat + dl, c.lon + dn}, now); ok {
+				vs[n] = ft
+				n++
+			}
+		}
+	}
+	if n < cellNearMin {
+		return 0, false
+	}
+	return cellMedian(vs[:n]), true
+}
+
+// cellNearMin: a cell never seen is taken from at least this many seen
+// around it (cellNearFt).
+const cellNearMin = 2
 
 // groundAlongSec, groundAlongMinM, groundAlongMaxM: the ground under a
 // rolling aircraft averaged over the way it rolls in groundAlongSec behind

@@ -7,6 +7,13 @@ This project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 ---
 
+## [0.168.2] - 2026-11-08
+
+### Fixed
+- Rollout without a height step for models whose struts extend more than 1.2 ft, or 0.2 ft beyond what they hold at the static pitch: they land flat, nose down with the mains (OKJZW Praetor 500 6.48 → 4.10 ft, LOT452 E195, EZY1739 A20N) (#1490).
+- B739 (static CG 8.50 ft) reach seeded at 0.40 ft (THY1718 9.07 → 8.50 → 8.92 on the rollout) (#1490).
+- Taxiing over a ground seam a metre off the line earlier traffic took: a ground cell never seen is taken from the median of the seen cells around it, so the step is ramped (TVS414 +0.26 ft three frames late) (#1490).
+
 ## [0.168.1] - 2026-11-08
 
 ### Fixed
