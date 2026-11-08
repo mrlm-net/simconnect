@@ -267,24 +267,43 @@ func ProcedurePath(legs []Leg, start LatLon, startAlt, magVar, turnRadius float6
 		return openLegMeters
 	}
 	// turnTo joins the path to p, arriving on heading to: a turn in the
-	// charted direction (or the shorter way) when one is needed.
-	turnTo := func(l Leg, p LatLon, to float64, force bool) {
+	// charted direction (or the shorter way) when one is needed. It returns
+	// the heading it arrives on: to, or the track of a direct-to where the
+	// join to heading to would orbit.
+	turnTo := func(l Leg, p LatLon, to float64, force bool) float64 {
 		dir := 0
 		if l.TurnRight {
 			dir = 1
 		} else if l.TurnLeft {
 			dir = -1
 		}
-		change := math.Abs(math.Mod(to-hdg+540, 360) - 180)
+		signed := math.Mod(to-hdg+540, 360) - 180 // + right
+		change := math.Abs(signed)
 		if have && haveHdg && (force || dir != 0 || change > 90) {
 			if arc := calc.Dubins(cur.Lat, cur.Lon, hdg, p.Lat, p.Lon, to, turnRadius, 100, dir); arc != nil {
+				// Too close to the fix to arrive on its course, the
+				// Dubins circles round (EIDW 28R: CA 277 then CF 308 to
+				// DW128 3 km off drew a 300° orbit, #1471). Flown, the
+				// aircraft turns for the fix and goes straight to it.
+				want := change
+				if dir == 1 && signed < 0 || dir == -1 && signed > 0 {
+					want = 360 - change
+				}
+				if arcTurn(arc) > want+180 {
+					if da, track, ok := directTo(l, cur, hdg, calc.BearingDegrees(cur.Lat, cur.Lon, p.Lat, p.Lon), turnRadius, true); ok {
+						pts = append(pts, da...)
+						pts = append(pts, p)
+						return track
+					}
+				}
 				for _, q := range arc[1:] {
 					pts = append(pts, LatLon{Lat: q[0], Lon: q[1]})
 				}
-				return
+				return to
 			}
 		}
 		pts = append(pts, p)
+		return to
 	}
 	// turnOnto flies an open leg: first the turn from the current heading
 	// onto course c (the charted way, or the shorter), then along it.
@@ -348,7 +367,10 @@ func ProcedurePath(legs []Leg, start LatLon, startAlt, magVar, turnRadius float6
 			if l.Type == types.SIMCONNECT_FACILITY_LEG_TYPE_CF {
 				to, force = course(l), !fixed // intercept the course after an open leg
 			}
-			if have && cur == l.Position {
+			// A fix a few meters off is the same point: the bearing to it is
+			// noise (EIDW 28R: DE28R 1.9 m south of the runway end gave a
+			// heading of 182° and a 3.3 NM teardrop, #1471).
+			if have && calc.HaversineMeters(cur.Lat, cur.Lon, l.Position.Lat, l.Position.Lon) < samePointMeters {
 				continue
 			}
 			if ip, ok := courseIntercept(cur, hdg, l.Position, to, turnRadius); have && haveHdg && l.Type == types.SIMCONNECT_FACILITY_LEG_TYPE_CF && ok {
@@ -356,8 +378,15 @@ func ProcedurePath(legs []Leg, start LatLon, startAlt, magVar, turnRadius float6
 				// and onto it, as flown (LKKB ILS 24 via SULOV: from D140J
 				// onto 237° short of CF24; a Dubins to the fix looped).
 				pts = append(pts, ip, l.Position)
+			} else if arc, track, ok := directTo(l, cur, hdg, to, turnRadius, false); have && haveHdg && l.Type == types.SIMCONNECT_FACILITY_LEG_TYPE_DF && ok {
+				// Direct to: turn until the fix is ahead, then straight to it,
+				// on whatever track that leaves; a Dubins arriving on the
+				// first bearing overshot and looped back (EIDW 16 DF OP, #1471).
+				pts = append(pts, arc...)
+				pts = append(pts, l.Position)
+				to = track
 			} else if have {
-				turnTo(l, l.Position, to, force)
+				to = turnTo(l, l.Position, to, force)
 			} else {
 				pts = append(pts, l.Position)
 			}
@@ -375,6 +404,79 @@ func ProcedurePath(legs []Leg, start LatLon, startAlt, magVar, turnRadius float6
 		fixed = false
 	}
 	return pts
+}
+
+// samePointMeters: a fix this close to the current point is that point
+// (a departure end and its DER fix lie a few meters apart).
+const samePointMeters = 30.0
+
+// directTo is a DF leg flown from p on heading hdg: a turn of radius r
+// (the charted direction, else the shorter way to the bearing brg) until
+// fix bears dead ahead, as arc points every 5° or so, and the track from
+// there to the fix. ok false when no turn is needed (the charted turn
+// absent and the bearing within 90°, drawn straight as before, unless
+// force) or the fix lies inside the turn circle.
+func directTo(l Leg, p LatLon, hdg, brg, r float64, force bool) ([]LatLon, float64, bool) {
+	turn := math.Mod(brg-hdg+540, 360) - 180 // + right
+	side := 1.0
+	switch {
+	case l.TurnRight:
+	case l.TurnLeft:
+		side = -1
+	case math.Abs(turn) <= 90 && !force:
+		return nil, 0, false
+	case turn < 0:
+		side = -1
+	}
+	fix := l.Position
+	center := displace(p, hdg+90*side, r)
+	dc := calc.HaversineMeters(center.Lat, center.Lon, fix.Lat, fix.Lon)
+	if dc <= r {
+		// The fix is inside the turn: drawn tighter, as courseIntercept
+		// does, never round the other way (EIDW 28R: DW128 3 km off the
+		// end of a CA, inside a 2.5 km turn, #1471). The circle through
+		// the fix tangent to the heading has radius D / (2 sin θ).
+		d := calc.HaversineMeters(p.Lat, p.Lon, fix.Lat, fix.Lon)
+		s := math.Abs(math.Sin(turn * math.Pi / 180))
+		if s < 1e-3 {
+			return nil, 0, false
+		}
+		r = 0.8 * d / (2 * s)
+		center = displace(p, hdg+90*side, r)
+		dc = calc.HaversineMeters(center.Lat, center.Lon, fix.Lat, fix.Lon)
+		if dc <= r {
+			return nil, 0, false
+		}
+	}
+	// Tangent from the fix to the circle: the turn ends where the radius
+	// to it is perpendicular to the line on to the fix.
+	cf := calc.BearingDegrees(center.Lat, center.Lon, fix.Lat, fix.Lon)
+	tangent := cf - side*math.Acos(r/dc)*180/math.Pi
+	from := hdg - 90*side // center to p
+	sweep := math.Mod((tangent-from)*side+720, 360)
+	if sweep < 0.5 || sweep > 359.5 {
+		return nil, 0, false
+	}
+	var arc []LatLon
+	n := int(sweep/5) + 1
+	for k := 1; k <= n; k++ {
+		arc = append(arc, displace(center, from+side*sweep*float64(k)/float64(n), r))
+	}
+	end := arc[len(arc)-1]
+	return arc, calc.BearingDegrees(end.Lat, end.Lon, fix.Lat, fix.Lon), true
+}
+
+// arcTurn is how far a sampled path turns in all, degrees either way.
+func arcTurn(arc [][2]float64) float64 {
+	sum, prev, have := 0.0, 0.0, false
+	for i := 1; i < len(arc); i++ {
+		b := calc.BearingDegrees(arc[i-1][0], arc[i-1][1], arc[i][0], arc[i][1])
+		if have {
+			sum += math.Abs(math.Mod(b-prev+540, 360) - 180)
+		}
+		prev, have = b, true
+	}
+	return sum
 }
 
 // courseIntercept is where a path from p heading hdg crosses the course c
