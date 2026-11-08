@@ -7,6 +7,12 @@ This project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 ---
 
+## [0.167.11] - 2026-11-08
+
+### Fixed
+
+- A procedure path no longer loops where the procedure has no turn (#1471; EIDW 28R and 16: 17 of 294 chart paths drew a 3.3 NM teardrop). A fix closer than 30 m to the point the path stands on counts as that point, and its bearing is no longer taken as a heading (EIDW 28R: the departure end 1.9 m from DE28R read as heading 182°). A direct-to turns until the fix is ahead and then flies straight to it, without having to arrive on the first bearing to it (EIDW 16: overshot OP and came back). A join that would circle round goes direct to the fix, and a fix inside the turn circle gets a tighter turn. 13 airports with offline data: 119 looping paths before, 64 after, none new; traffic flies the same paths.
+
 ## [0.167.10] - 2026-11-06
 
 ### Fixed
