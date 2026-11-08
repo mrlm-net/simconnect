@@ -56,6 +56,9 @@ var strutsSeed = map[int]float64{
 	715:  0.30,
 	540:  0.26,
 	1330: 1.04, // E195
+	850:  0.57, // B738 (live THY1039: 8.49 → 9.07 ft as the nose came up)
+	342:  0.53, // GA (live OKLOZ: 3.42 → 3.95 ft)
+	410:  2.38, // GA (live DZTPU rollout: held 6.48 nose up, 4.10 at static pitch)
 }
 
 // strutsKey is a model's fingerprint: its static CG height in hundredths
@@ -83,6 +86,7 @@ func (i *Injector) noteStruts(o *injected, g *injectGround, rest float64) {
 		r := math.Max(0, sent-strutsReachBackFt)
 		if old, ok := i.reach[k]; !ok || r < old {
 			i.reach[k] = r
+			i.strutsGen++
 		}
 		return
 	}
@@ -90,6 +94,9 @@ func (i *Injector) noteStruts(o *injected, g *injectGround, rest float64) {
 		return
 	}
 	if s := rest - g.CGFt; s >= strutsMinFt && s <= strutsMaxFt {
+		if old, ok := i.struts[k]; !ok || math.Abs(old-s) >= 0.01 {
+			i.strutsGen++
+		}
 		i.struts[k] = s
 	}
 }

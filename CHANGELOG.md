@@ -20,6 +20,8 @@ This project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 - Take-off rotation and landing nose-down without a height pop: the struts are let out before rotation within how far the model's struts hold it at its static pitch (seeded for B738, A320, A321, A20N, BCS3, C56X, CJ3, E195; learnt from the first snap-back for any other), the on-ground flag kept until lift-off (the simulator takes the flag a frame before the pitch: CSA1883 7.39 → 7.05 → 7.47 ft, AFR284 13.08 → 12.46, THY1627, LOT452).
 - Struts keyed by model (static CG height), not ICAO type (two A20N models, 1.13 and 0.33 ft).
+- What was learnt of the struts is kept across runs (`DataDir/struts.json`, `Injector.StrutsLearnt` / `SetStrutsLearnt`): a model's first take-off after a restart no longer pops (THY1039 B738 +0.58 ft, OKLOZ +0.53); seeds for B738 at 8.50 ft and two GA models (DZTPU rollout −2.38 ft).
+- Taxiing onto a higher ground seam not seen before: the new ground taken at once, as the simulator already shows it, not eased up from below (CSA1763: +0.37 ft for 4 frames, then 0.33 back down).
 - Ground seams smoothed while rolling (ground averaged 1.5 m behind and ahead).
 - An aircraft taxiing behind one turning off across its way stops for its wings and tailplane, not only its centre line (LKPR C22: passed at 13 kt within 3 m).
 - A holding-short queue moves up with a small delay per aircraft, not in sync.

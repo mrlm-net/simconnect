@@ -313,7 +313,17 @@ func (i *Injector) groundShown(o *injected, pose GroundPose) float64 {
 	rate, dt := groundEaseFtPerSec, math.Min(math.Max(0, now.Sub(o.groundShownAt).Seconds()), standStepMaxSec)
 	if pose.GroundSpeedKts >= groundEaseMaxKts || localDist(o.groundShownPos, pose.Position) > groundEaseStillM {
 		rate, dt = groundFollowFtPerSec(pose.GroundSpeedKts), math.Max(0, now.Sub(o.groundShownAt).Seconds())
+		// Rolling onto ground well above the one shown (a step not seen
+		// before, no ramp to it): the simulator has put it on its
+		// static height over it already; taken at once, not eased up from
+		// below it (live LKPR 2026-11-08, CSA1763 at 15 kt over the seam at
+		// 50.10845,14.26300 heading 028: +0.37 ft for 4 frames, 0.33 back
+		// down, then up again).
 		g += i.groundAlong(o, pose)
+		if g-o.groundShownFt > groundStepUpFt {
+			o.groundShownFt, o.groundShownPos, o.groundShownAt = g, pose.Position, now
+			return g
+		}
 	}
 	step := rate * dt
 	o.groundShownFt += math.Max(-step, math.Min(step, g-o.groundShownFt))
@@ -389,6 +399,10 @@ const standStepMaxSec = 2.0 / InjectHz
 // groundRollFtPerSec: well above what a runway's slope asks at take-off speed
 // (1% at 140 kt is about 2.4 ft/s), about 0.13 ft a frame at 60 Hz.
 const groundRollFtPerSec = 8.0
+
+// groundStepUpFt: rolling onto ground this much above the one shown (a
+// step met without a ramp, groundAlong), the new ground is taken at once.
+const groundStepUpFt = 0.2
 
 // Taxiing, the ground under an aircraft is followed as steeply as
 // groundFollowGrade over the distance it rolls, at least groundTaxiFtPerSec

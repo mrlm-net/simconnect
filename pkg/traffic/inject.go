@@ -65,6 +65,8 @@ type Injector struct {
 	// it at its static pitch with the flag, learnt where it snapped back
 	// beyond (struts.go).
 	reach map[int]float64
+	// strutsGen: counts what struts and reach learnt (StrutsLearnt).
+	strutsGen uint64
 	// gearStep: by aircraft title, how far down the writes HoldGearDown has
 	// come for a model that refuses them.
 	gearStep map[string]int

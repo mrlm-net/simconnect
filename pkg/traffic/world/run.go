@@ -715,6 +715,7 @@ func runOn(ctx context.Context, st *state, client engine.Client, stream <-chan e
 	}
 	stopWorld := st.startWorld(cc)
 	defer stopWorld()
+	defer strutsLessons.attach(cc.inj)()
 	// COM1 tuned from the map, in this connection's goroutine.
 	if h := st.core.hooks.OnTune; h != nil {
 		defer h(nil)
