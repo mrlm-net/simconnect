@@ -491,16 +491,16 @@ func TugTitleOr(asked string, spanM float64) string {
 
 // TugAheadFor is where tug title sits ahead of the nose gear when it is not
 // TugAheadMeters, measured live against an A320 and an A330 (#495). Negative:
-// behind the nose gear. A towbar tug's bar ends at its hook, a towbarless
-// tug's nose wheel sits in its cradle, under the aircraft's nose.
+// behind the nose gear. A towbarless tug's nose wheel sits in its cradle,
+// under the aircraft's nose. The stick tugs (tug_bar.go) are at
+// TugAheadMeters: their model origin is the bar's hook end, on the nose
+// wheel (their -1.8 m was set live with the tug standing across its bar).
 func TugAheadFor(title string) (float64, bool) {
 	switch title {
 	case TugSmallTitle:
 		return 1.0, true
 	case TugMediumTitle:
 		return 1.5, true
-	case "FSDT_Pushback_M1A", "FSDT_Pushback_TMX_150", "FSDT_Pushback_Trepel_280", "FSDT_Pushback_Trepel_700":
-		return -1.8, true
 	case "FSDT_TPX_100_E":
 		return -3.6, true
 	case "FSDT_TPX_200":

@@ -10,9 +10,9 @@ import (
 // with its slot round the nose wheel: its 2.17 m cab 3.3 to 5 m ahead of
 // the wheel, under the radome, and its 1.25 to 1.42 m arms 4.2 m behind it,
 // under the fuselage. Only a widebody clears it. Narrowbodies and regional
-// jets get TugNarrowTitle, turboprops and business jets TugLowTitle (0.44 m
-// tall); both at TugAheadFor's -1.8 m. Measured from the GSX and FSLTL
-// models (tug_pick_test.go).
+// jets get TugNarrowTitle, turboprops and business jets TugLowTitle; both
+// stick tugs (tug_bar.go), the hook on the nose wheel and the tug a bar's
+// length ahead. Measured from the GSX and FSLTL models (tug_pick_test.go).
 const (
 	TugNarrowTitle = "FSDT_Pushback_Trepel_700"
 	TugLowTitle    = "FSDT_Pushback_M1A"
@@ -49,7 +49,10 @@ var tugForType = map[string]string{
 	// regional jets.
 	"B734": TugLowTitle,
 	"AT43": TugLowTitle, "AT45": TugLowTitle, "AT46": TugLowTitle, "AT72": TugLowTitle, "AT75": TugLowTitle, "AT76": TugLowTitle,
-	"DH8A": TugLowTitle, "DH8B": TugLowTitle, "DH8C": TugLowTitle, "DH8D": TugLowTitle,
+	"DH8A": TugLowTitle, "DH8B": TugLowTitle, "DH8C": TugLowTitle,
+	// The Q400: the low tug's bar 0.12 m under its nose, the narrow tug's
+	// 0.19 m.
+	"DH8D": TugNarrowTitle,
 	"SF34": TugLowTitle, "SB20": TugLowTitle, "D328": TugLowTitle, "JS41": TugLowTitle, "B190": TugLowTitle, "E120": TugLowTitle, "F50": TugLowTitle,
 	"CRJ1": TugLowTitle, "CRJ2": TugLowTitle, "E135": TugLowTitle, "E145": TugLowTitle, "E35L": TugLowTitle,
 	"LJ25": TugLowTitle, "LJ35": TugLowTitle, "LJ45": TugLowTitle, "LJ60": TugLowTitle, "LJ75": TugLowTitle,

@@ -294,16 +294,27 @@ func (y *vehicleYield) check(m *GroundMover) bool {
 }
 
 // lane is where a vehicle on mover m (nil: not on its way) is shown:
-// VehicleLaneMeters right of its way, blended in over
-// vehicleLaneBlendMeters at both ends.
+// VehicleLaneMeters right of its way, eased in over vehicleLaneBlendMeters
+// at both ends, and turned along that ease: moved across without turning,
+// it crabbed onto its lane and off it (live LKPR, a tug "slides").
 func lane(pose GroundPose, m *GroundMover) GroundPose {
 	if m == nil {
 		return pose
 	}
 	s, l := m.Pose().Distance, m.Path().Length()
-	k := math.Max(0, math.Min(1, math.Min(s, l-s)/vehicleLaneBlendMeters))
-	if k > 0 {
-		pose.Position = offsetHeading(pose.Position, pose.Heading+90, VehicleLaneMeters*k)
+	x := math.Max(0, math.Min(1, math.Min(s, l-s)/vehicleLaneBlendMeters))
+	if x <= 0 {
+		return pose
+	}
+	k := x * x * (3 - 2*x)
+	pose.Position = offsetHeading(pose.Position, pose.Heading+90, VehicleLaneMeters*k)
+	if x < 1 {
+		// The ease's slope across per metre along: + moving out, - back.
+		slope := 6 * x * (1 - x) / vehicleLaneBlendMeters
+		if l-s < s {
+			slope = -slope
+		}
+		pose.Heading = normDeg(pose.Heading + math.Atan(VehicleLaneMeters*slope)*180/math.Pi)
 	}
 	return pose
 }
