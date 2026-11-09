@@ -191,6 +191,11 @@ const injDefSteer = injDefGearDownPartial + 1
 // injDefGround's other values are not used (ground_rate.go).
 const injDefGroundFast = injDefSteer + 1
 
+// injDefTowbar: WAGON BACK LINK ORIENTATION, the angle of a GSX stick
+// tug's towbar (SetTowbarAngle, tug_bar.go). Clear of injDefSteer + 2, the
+// follow-me signals.
+const injDefTowbar = injDefSteer + 3
+
 // gearTrackSends: the first HoldGearDown writes of an aircraft watched for
 // an exception (it is written every frame on the take-off roll).
 const gearTrackSends = 3
@@ -345,6 +350,9 @@ func (i *Injector) register() error {
 		return err
 	}
 	if err := i.track("define ROTATION VELOCITY BODY Y", c.AddToDataDefinition(i.defBase+injDefSteer, "ROTATION VELOCITY BODY Y", "radians per second", types.SIMCONNECT_DATATYPE_FLOAT64, 0, 0)); err != nil {
+		return err
+	}
+	if err := i.track("define WAGON BACK LINK ORIENTATION", c.AddToDataDefinition(i.defBase+injDefTowbar, "WAGON BACK LINK ORIENTATION", "number", types.SIMCONNECT_DATATYPE_FLOAT64, 0, 0)); err != nil {
 		return err
 	}
 	for k, v := range []struct{ name, unit string }{{"GROUND ALTITUDE", "feet"}, {"PLANE LATITUDE", "degrees"}, {"PLANE LONGITUDE", "degrees"}} {

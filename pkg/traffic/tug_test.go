@@ -6,9 +6,9 @@ import (
 	"time"
 
 	"github.com/mrlm-net/simconnect/pkg/airport"
-	"github.com/mrlm-net/simconnect/pkg/engine"
 	"github.com/mrlm-net/simconnect/pkg/calc"
 	"github.com/mrlm-net/simconnect/pkg/dict"
+	"github.com/mrlm-net/simconnect/pkg/engine"
 	"github.com/mrlm-net/simconnect/pkg/types"
 )
 
@@ -441,10 +441,16 @@ func TestTugTitleOrKeepsRobotsToLightAircraft(t *testing.T) {
 	}
 }
 
-// TestTugAheadForMeasured: the places measured live; a towbar's hook and a
-// cradle lie behind the point TugAheadMeters ahead (#495).
+// TestTugAheadForMeasured: the places measured live; a towbarless tug's
+// cradle lies behind the point TugAheadMeters ahead (#495). The stick tugs'
+// hook is on it (tug_bar.go).
 func TestTugAheadForMeasured(t *testing.T) {
-	for _, title := range []string{"FSDT_Pushback_M1A", "FSDT_Pushback_TMX_150", "FSDT_Pushback_Trepel_280", "FSDT_Pushback_Trepel_700", "FSDT_TPX_100_E", "FSDT_TPX_200", "FSDT_TPX_500_MTS"} {
+	for _, title := range []string{"FSDT_Pushback_M1A", "FSDT_Pushback_TMX_150", "FSDT_Pushback_Trepel_280", "FSDT_Pushback_Trepel_700"} {
+		if a, ok := TugAheadFor(title); ok {
+			t.Errorf("%s: %v, want TugAheadMeters (the hook on the nose wheel)", title, a)
+		}
+	}
+	for _, title := range []string{"FSDT_TPX_100_E", "FSDT_TPX_200", "FSDT_TPX_500_MTS"} {
 		if a, ok := TugAheadFor(title); !ok || a >= 0 {
 			t.Errorf("%s: %v %v, want behind the nose gear", title, a, ok)
 		}

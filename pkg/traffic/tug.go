@@ -69,6 +69,12 @@ type SimObjectTug struct {
 	heldIn    float64        // seconds held on the way in, for aircraft or at gates
 	retried   bool           // created again once (RetryCreate)
 	stand     airport.LatLon // the nose gear on the stand, before the push
+	stick     bool           // a stick tug (tug_bar.go): the tug turns on its bar
+	rearAxle  float64        // a stick tug: its rear axle this far behind the model origin, bar straight
+	barLen    float64        // a stick tug: the bar's pivot this far behind the model origin
+	rel       float64        // a stick tug: its heading off the bar's, degrees clockwise
+	barSent   bool           // the bar's angle written once
+	barShown  float64        // the bar's angle written last
 	homing    bool           // driving back to the depot
 	err       error          // from the takeover, reported by Update
 	done      bool
@@ -78,8 +84,82 @@ type SimObjectTug struct {
 // aircraft moving with prof; reqID is the SimConnect request ID of its
 // creation (one per tug).
 func NewSimObjectTug(client engine.Client, inj *Injector, title string, reqID uint32, prof MotionProfile) *SimObjectTug {
-	return &SimObjectTug{client: client, inj: inj, title: title, reqID: reqID, prof: prof,
+	t := &SimObjectTug{client: client, inj: inj, title: title, reqID: reqID, prof: prof,
 		AheadMeters: TugAheadMeters, YawDeg: TugYawDeg, waitLeft: TugDisconnectSeconds}
+	if s, ok := stickTugFor(title); ok {
+		t.stick, t.rearAxle, t.barLen = true, s.rearAxleM, s.barM
+	}
+	return t
+}
+
+// The tug is moved by its rear axle (t.pose: the point that tracks its way,
+// so it never slides) and shown by its model origin. For a stick tug the
+// origin is the bar's hook end: the bar's pivot on the tug is rearAxle -
+// barLen ahead of the axle, the hook barLen on along the bar, which is rel
+// off the tug's heading. For other tugs the axle and the origin are one.
+
+// origin is where the model goes, and its heading, for the tug at p.
+func (t *SimObjectTug) origin(p GroundPose) GroundPose {
+	if !t.stick {
+		return p
+	}
+	pivot := offsetHeading(p.Position, p.Heading, t.rearAxle-t.barLen)
+	p.Heading = normDeg(p.Heading - t.rel)
+	p.Position = offsetHeading(pivot, p.Heading, t.barLen)
+	return p
+}
+
+// axle is the tug whose model origin is at o, its bar rel off its heading.
+func (t *SimObjectTug) axle(o GroundPose) GroundPose {
+	if !t.stick {
+		return o
+	}
+	pivot := offsetHeading(o.Position, o.Heading+180, t.barLen)
+	o.Heading = normDeg(o.Heading + t.rel)
+	o.Position = offsetHeading(pivot, o.Heading+180, t.rearAxle-t.barLen)
+	return o
+}
+
+// follow turns a stick tug on its bar as it pushes: the bar's pivot goes
+// where the bar puts it and the rear axle trails it (it rolls, never slides),
+// the tug at most TugMaxTugDeg off the bar. o is the model's new place on the
+// nose wheel. t.mu held.
+func (t *SimObjectTug) follow(o GroundPose) {
+	pivot := offsetHeading(o.Position, o.Heading+180, t.barLen)
+	heading := localBearing(t.pose.Position, pivot)
+	if localDist(t.pose.Position, pivot) < 0.5 {
+		heading = t.pose.Heading
+	}
+	t.rel = math.Max(-TugMaxTugDeg, math.Min(TugMaxTugDeg, headingDiff(o.Heading, heading)))
+}
+
+// easeBar brings a stick tug back in line with its bar once off the nose
+// (the bar swings straight about its pivot). t.mu held.
+func (t *SimObjectTug) easeBar(dt float64) {
+	if t.rel == 0 {
+		return
+	}
+	// The tug stays (t.pose, its axle and heading); the bar swings.
+	t.rel *= math.Exp(-dt / TugBarEaseSeconds)
+	if math.Abs(t.rel) < 0.05 {
+		t.rel = 0
+	}
+}
+
+// writeBar writes a stick tug's bar angle (WAGON BACK LINK ORIENTATION)
+// once it is ours, and again when it has turned TugBarResendDeg since; a
+// refused write is tried again on the next update. t.mu held.
+func (t *SimObjectTug) writeBar() {
+	if !t.stick || t.objectID == 0 {
+		return
+	}
+	v := TugBarStraight + TugBarSign*t.rel
+	if t.barSent && math.Abs(v-t.barShown) < TugBarResendDeg && (v != TugBarStraight || t.barShown == TugBarStraight) {
+		return
+	}
+	if t.inj.SetTowbarAngle(t.objectID, v) == nil {
+		t.barSent, t.barShown = true, v
+	}
 }
 
 // ObjectID is the tug's simulated object, 0 until it has been created.
@@ -89,8 +169,15 @@ func (t *SimObjectTug) ObjectID() uint32 {
 	return t.objectID
 }
 
-// at is where the tug is for an aircraft pose.
+// at is where the tug is for an aircraft pose: its model origin
+// AheadMeters from the nose gear along the bar (t.axle of it).
 func (t *SimObjectTug) at(pose GroundPose) GroundPose {
+	return t.axle(t.onNose(pose))
+}
+
+// onNose is where the tug's model goes for an aircraft pose: AheadMeters
+// from the nose gear along the bar, turned YawDeg from it.
+func (t *SimObjectTug) onNose(pose GroundPose) GroundPose {
 	nose := NoseGear(pose.Position, pose.Heading, t.prof)
 	bar := pose.Heading
 	if t.haveBar {
@@ -141,8 +228,9 @@ func (t *SimObjectTug) Attach(pose GroundPose) error {
 		t.arrive, t.depot, t.haveDepot, t.inPath = NewGroundMoverFrom(path, tugRoadProfile(), localBearing(path.PointAt(0), path.PointAt(math.Min(5, path.Length()))), 0), depot, true, path
 		t.pose = t.arrive.Pose()
 	}
+	o := t.origin(t.pose)
 	return t.client.AICreateSimulatedObject(t.title, types.SIMCONNECT_DATA_INITPOSITION{
-		Latitude: t.pose.Position.Lat, Longitude: t.pose.Position.Lon, Heading: t.pose.Heading, OnGround: 1,
+		Latitude: o.Position.Lat, Longitude: o.Position.Lon, Heading: o.Heading, OnGround: 1,
 	}, t.reqID)
 }
 
@@ -171,8 +259,9 @@ func (t *SimObjectTug) RetryCreate() bool {
 	}
 	t.arrive = NewGroundMoverFrom(path, tugRoadProfile(), localBearing(path.PointAt(0), path.PointAt(math.Min(5, path.Length()))), 0)
 	t.pose = t.arrive.Pose()
+	o := t.origin(t.pose)
 	if err := t.client.AICreateSimulatedObject(t.title, types.SIMCONNECT_DATA_INITPOSITION{
-		Latitude: t.pose.Position.Lat, Longitude: t.pose.Position.Lon, Heading: t.pose.Heading, OnGround: 1,
+		Latitude: o.Position.Lat, Longitude: o.Position.Lon, Heading: o.Heading, OnGround: 1,
 	}, t.reqID); err != nil {
 		return false
 	}
@@ -191,7 +280,8 @@ func (t *SimObjectTug) inbound(pose GroundPose) (*GroundPath, airport.LatLon, bo
 		return nil, airport.LatLon{}, false
 	}
 	nose := NoseGear(pose.Position, pose.Heading, t.prof)
-	front := offsetHeading(nose, pose.Heading, TugApproachMeters)
+	// Straight on for the last TugApproachMeters to its rear axle's spot.
+	front := offsetHeading(nose, pose.Heading, TugApproachMeters+t.rearAxle)
 	depot, ok := nearestDepot(t.Layout, front)
 	if !ok {
 		return nil, airport.LatLon{}, false
@@ -313,6 +403,7 @@ func (t *SimObjectTug) Handle(msg engine.Message) bool {
 	if t.err == nil {
 		// Engine on at once, so its lights burn (tug_engine.go).
 		t.engine.keep(t.inj, t.objectID, 0)
+		t.writeBar()
 	}
 	return true
 }
@@ -329,6 +420,7 @@ func (t *SimObjectTug) Update(pose GroundPose, pushing bool, dt float64) error {
 	}
 	// Engine on, so its lights burn (tug_engine.go).
 	t.engine.keep(t.inj, t.objectID, dt)
+	defer t.writeBar()
 	// Driving in from the depot; once there, on the nose.
 	if t.arrive != nil {
 		if t.check(t.arrive) {
@@ -342,9 +434,13 @@ func (t *SimObjectTug) Update(pose GroundPose, pushing bool, dt float64) error {
 	}
 	if pushing {
 		t.steer(pose, dt)
+		if t.stick {
+			t.follow(t.onNose(pose))
+		}
 		t.pose = t.at(pose)
 		return t.place()
 	}
+	t.easeBar(dt)
 	// Disconnected: stand a moment, back away from the nose (the tug faces
 	// the aircraft), then turn off to the side and leave.
 	if t.away == nil {
@@ -418,7 +514,7 @@ func (t *SimObjectTug) place() error {
 	}
 	shown := lane(t.pose, road)
 	t.report(t.objectID, shown, tugProfile().WheelbaseMeters+1)
-	err := t.inj.PlaceMoving(t.objectID, shown)
+	err := t.inj.PlaceMoving(t.objectID, t.origin(shown))
 	if errors.Is(err, ErrGroundUnknown) {
 		return nil
 	}
