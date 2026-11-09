@@ -250,6 +250,10 @@ type ArrivalController struct {
 	detailS detailState
 	// monitorStopped: the monitor's data request is stopped (stopMonitor).
 	monitorStopped bool
+	// mon: the monitor as asked for (monitor_tick.go); monLast its last
+	// full answer.
+	mon     monitorReq
+	monLast arrivalMonitor
 	// procSpeed is the speed assigned on the STAR by AbsorbDelay (#391).
 	procSpeed float64
 	// holding is the hold the arrival flies, nil when none (#392).
@@ -524,8 +528,11 @@ func (c *ArrivalController) Start(req ArrivalRequest) error {
 	if client == nil {
 		return ErrNotConnected
 	}
-	c.fleet.redefine(client, c.defBase+arrDefWaypoints, c.defBase+arrDefMonitor, c.defBase+arrDefGear, c.defBase+arrDefLights)
+	c.fleet.redefine(client, c.defBase+arrDefWaypoints, c.defBase+arrDefMonitor, c.defBase+arrDefGear, c.defBase+arrDefLights, c.defBase+arrDefTick)
 	if err := client.AddToDataDefinition(c.defBase+arrDefWaypoints, "AI Waypoint List", "number", types.SIMCONNECT_DATATYPE_WAYPOINT, 0, 0); err != nil {
+		return err
+	}
+	if err := client.AddToDataDefinition(c.defBase+arrDefTick, "SIMULATION TIME", "seconds", types.SIMCONNECT_DATATYPE_FLOAT64, 0, 0); err != nil {
 		return err
 	}
 	for i, v := range []struct{ name, unit string }{
@@ -626,7 +633,13 @@ func (c *ArrivalController) Handle(msg engine.Message) bool {
 		if uint32(m.DwRequestID) != c.reqBase+arrReqMonitor || uint32(m.DwObjectID) != c.objectID {
 			return false
 		}
-		c.onPosition(*engine.CastDataAs[arrivalMonitor](&m.DwData))
+		if uint32(m.DwDefineID) == c.defBase+arrDefTick {
+			c.onPosition(c.tickMonitor(tickTime(m)))
+		} else {
+			c.monLast, c.mon.haveFull = *engine.CastDataAs[arrivalMonitor](&m.DwData), true
+			c.onPosition(c.monLast)
+		}
+		c.syncMonitor()
 		return true
 	}
 	return false
@@ -672,8 +685,7 @@ func (c *ArrivalController) onSpawned(objectID uint32) {
 		return
 	}
 	c.monitorStopped = false
-	if err := client.RequestDataOnSimObject(c.reqBase+arrReqMonitor, c.defBase+arrDefMonitor, objectID,
-		types.SIMCONNECT_PERIOD_SECOND, types.SIMCONNECT_DATA_REQUEST_FLAG_DEFAULT, 0, 0, 0); err != nil {
+	if err := c.requestMonitor(client, types.SIMCONNECT_PERIOD_SECOND, 0); err != nil {
 		c.fail(err)
 		return
 	}
@@ -880,7 +892,7 @@ func (c *ArrivalController) Cancel() error {
 func (c *ArrivalController) stopMonitor() {
 	if client := c.fleet.clientOrNil(); client != nil && c.objectID != 0 && !c.monitorStopped {
 		c.monitorStopped = true // stopped twice, the simulator refuses the second (exception 3)
-		client.RequestDataOnSimObject(c.reqBase+arrReqMonitor, c.defBase+arrDefMonitor, c.objectID,
+		client.RequestDataOnSimObject(c.reqBase+arrReqMonitor, c.mon.def(c.defBase+arrDefMonitor, c.defBase+arrDefTick), c.objectID,
 			types.SIMCONNECT_PERIOD_NEVER, types.SIMCONNECT_DATA_REQUEST_FLAG_DEFAULT, 0, 0, 0)
 	}
 }

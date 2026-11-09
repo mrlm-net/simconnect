@@ -47,10 +47,13 @@ const (
 // groundRate is an object's ground request rate and what it was last
 // placed at.
 type groundRate struct {
-	tier     int8
-	movedAt  time.Time
-	last     types.SIMCONNECT_DATA_INITPOSITION
-	haveLast bool
+	tier int8
+	// fast: the ground alone asked for (injDefGroundFast); asked: a
+	// request since Inject's, which was every frame and full.
+	fast, asked bool
+	movedAt     time.Time
+	last        types.SIMCONNECT_DATA_INITPOSITION
+	haveLast    bool
 }
 
 // Moved within these, a placement is standing still (as Detail's).
@@ -62,18 +65,26 @@ const (
 
 // notePlaced records placement p of o and reports whether it is the same
 // as the last one sent, to the bit. A placement that moves o brings its
-// ground request back to every frame. i.mu held.
-func (i *Injector) notePlaced(o *injected, p types.SIMCONNECT_DATA_INITPOSITION) (same bool) {
+// ground request back to every frame. full: what the full ground answer
+// learns from is wanted on the next frames (slow or stopped, its rest; a
+// landing near the ground, its touchdown); otherwise, moving, only the
+// ground under it is read (injDefGroundFast), once a full answer was had.
+// i.mu held.
+func (i *Injector) notePlaced(o *injected, p types.SIMCONNECT_DATA_INITPOSITION, full bool) (same bool) {
 	now := i.now()
 	i.noteActive(now)
 	r := &o.rate
+	tier := r.tier
 	if !r.haveLast {
 		r.movedAt = now
 	} else if same = p == r.last; !same && placementMoved(r.last, p) {
 		r.movedAt = now
-		i.setGroundTier(o, groundEveryFrame)
+		tier = groundEveryFrame
 	}
 	r.last, r.haveLast = p, true
+	if tier == groundEveryFrame {
+		i.setGroundRequest(o, groundEveryFrame, !full && o.haveGround)
+	}
 	i.groundRates(now)
 	return same
 }
@@ -118,20 +129,26 @@ func (i *Injector) groundRates(now time.Time) {
 		still := now.Sub(o.rate.movedAt)
 		switch {
 		case still >= groundParkedAfter:
-			i.setGroundTier(o, groundParked)
+			i.setGroundRequest(o, groundParked, false)
 		case still >= groundStillAfter && o.rate.tier < groundStill:
-			i.setGroundTier(o, groundStill)
+			i.setGroundRequest(o, groundStill, false)
 		}
 	}
 }
 
-// setGroundTier asks for o's ground height at tier's rate, when it changes.
-// i.mu held.
-func (i *Injector) setGroundTier(o *injected, tier int8) {
-	if o.rate.tier == tier {
+// setGroundRequest asks for o's ground height at tier's rate, the ground
+// alone when fast, when either changes. i.mu held.
+func (i *Injector) setGroundRequest(o *injected, tier int8, fast bool) {
+	r := &o.rate
+	if r.asked && r.tier == tier && r.fast == fast {
 		return
 	}
-	o.rate.tier = tier
+	if !r.asked && tier == groundEveryFrame && !fast {
+		r.asked = true // Inject's own request: every frame, all of it
+		return
+	}
+	r.asked, r.tier, r.fast = true, tier, fast
+	def := i.groundDef(o)
 	period, interval := types.SIMCONNECT_PERIOD_SIM_FRAME, uint32(0)
 	switch tier {
 	case groundStill:
@@ -140,6 +157,23 @@ func (i *Injector) setGroundTier(o *injected, tier int8) {
 		period = types.SIMCONNECT_PERIOD_SECOND
 	}
 	req := i.reqBase + 2*uint32(o.slot) + 1
-	_ = i.track(fmt.Sprintf("ground height object %d at tier %d", o.id, tier),
-		i.client.RequestDataOnSimObject(req, i.defBase+injDefGround, o.id, period, types.SIMCONNECT_DATA_REQUEST_FLAG_CHANGED, 0, interval, 0))
+	_ = i.track(fmt.Sprintf("ground height object %d at tier %d fast %v", o.id, tier, fast),
+		i.client.RequestDataOnSimObject(req, def, o.id, period, types.SIMCONNECT_DATA_REQUEST_FLAG_CHANGED, 0, interval, 0))
+}
+
+// groundDef is the definition o's ground height is asked for with now.
+func (i *Injector) groundDef(o *injected) uint32 {
+	if o.rate.fast {
+		return i.defBase + injDefGroundFast
+	}
+	return i.defBase + injDefGround
+}
+
+// strutsWanted: o rolls on the runway fast enough to learn its struts or
+// their reach (struts.go: the extension off its static pitch, the
+// snap-back while raised on the take-off roll or let down on the rollout):
+// the full ground sample wanted. A take-off or a rollout at a time, a few
+// seconds each. i.mu held.
+func (i *Injector) strutsWanted(o *injected, pose ApproachPose) bool {
+	return strutsKey(o.cgFt) != 0 && pose.OnGround && pose.GroundSpeedKts >= strutsLearnMinKts
 }
