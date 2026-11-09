@@ -87,12 +87,13 @@ func TestGateWithoutJetwayGetsStairs(t *testing.T) {
 		t.Error("stairs after a dock")
 	}
 
-	// A resting gate: no jetway for any type.
+	// A resting gate (docks gone from docking to failed): no jetway for any type.
 	k := gateKey(icao, gate)
 	now := traffic.Now()
 	cc.jw.mu.Lock()
 	for i := 0; i < JetwayGateFails; i++ {
-		cc.jw.gateResting(k, "failed", now.Add(time.Duration(i)*time.Minute), now)
+		cc.jw.gateResting(k, "docking", now)
+		cc.jw.gateResting(k, "failed", now)
 	}
 	cc.jw.mu.Unlock()
 	if s, _, _ := services("B738"); !s {

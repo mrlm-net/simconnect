@@ -108,6 +108,10 @@ func (it *controlled) onRequest(req string) {
 			})
 			return
 		}
+		// Its jetway home as the crew asks for the push, not once ground
+		// answers (jetwayHolds; live, LKPR 2026-11-08: ground's answer
+		// waited for an undock begun only then).
+		it.jetwayHolds()
 	}
 	it.called = req
 	switch req {

@@ -95,23 +95,32 @@ const (
 	EmptyFillTries = 25
 	// RefillEvery: a fill that took no gate is tried again this long after.
 	RefillEvery = 2 * time.Minute
-	// DockSettle: no helper made while another gate docked this recently
-	// (the sim counts it free for a while: its jetway went to the next).
+	// DockSettle: how long a gate docked was once left before the next
+	// helper was made. No longer waited (it held each arrival two minutes,
+	// and the sim counts docked gates free at any age, 13 s to 50 min
+	// live): a helper given a docked gate is undone by docking that gate
+	// again first (redock). Kept for callers.
 	DockSettle = 2 * time.Minute
 	// DockTimeout: a helper's jetway not docked in this long has failed.
 	DockTimeout = 90 * time.Second
 	// FillStrays: placeholders of one fill that land on docked gates
 	// before the fill stops (tried again RefillEvery later): each new
-	// ParkedATC is another chance at a docked gate.
-	FillStrays = 2
+	// ParkedATC is another chance at a docked gate; the first stops it
+	// (live, LKPR 2026-11-08: twelve jetways pulled off parked aircraft by
+	// refills).
+	FillStrays = 1
 	// StrayWaitMax: the longest wait of a fill stopped again and again.
 	StrayWaitMax = 30 * time.Minute
 	// HelperDelay: the helper is created this long after its gate's
 	// placeholder went (created at once, the sim had not freed the gate
 	// yet: live, LKPR C20's helper went to GA stand 56).
 	HelperDelay = 3 * time.Second
-	// pollEvery: the jetway data asked for while anything moves.
+	// pollEvery: the jetway data asked for while a dock is coming (a gate
+	// docking, a helper on its way); pollSlow while only undocking,
+	// retracting or filling. Each read stalls all traffic about 100 ms
+	// (live, LKPR 2026-11-08).
 	pollEvery = 2 * time.Second
+	pollSlow  = 10 * time.Second
 )
 
 // HelperOptions configure Helpers.
@@ -253,6 +262,9 @@ type gate struct {
 	model               string
 	title               string    // the helper's (a variant's), "" the model's type's
 	createAt            time.Time // docking: the helper created then (zero: done)
+	// redockAt: docking again after its jetway was taken (redock): what
+	// sits on the gate now leaves then, its own helper HelperDelay after.
+	redockAt time.Time
 }
 
 // Helpers is the invisible-helper backend (Service).
@@ -260,16 +272,20 @@ type Helpers struct {
 	client Client
 	opt    HelperOptions
 
-	mu         sync.Mutex
-	now        time.Time
-	nextReq    uint32
-	byReq      map[uint32]*pending
-	byObj      map[uint32]*pending
-	gates      map[string]map[int]*gate // icao → stand → gate
-	jetways    map[string]map[int]bool  // icao → stands with a jetway
-	filling    map[string]bool          // icao → placeholders being made
-	emptyTries map[string]int           // icao → fills that found no gate yet
-	refillAt   map[string]time.Time     // icao → when a fill that found no gate is tried again
+	mu      sync.Mutex
+	now     time.Time
+	nextReq uint32
+	byReq   map[uint32]*pending
+	byObj   map[uint32]*pending
+	gates   map[string]map[int]*gate // icao → stand → gate
+	jetways map[string]map[int]bool  // icao → stands with a jetway
+	filling map[string]bool          // icao → placeholders being made
+	// refill: icao → the fill under way only holds the gates emptied again
+	// (emptyGates), done once none is left: no placeholder past them, each
+	// another chance at a docked gate.
+	refill     map[string]bool
+	emptyTries map[string]int       // icao → fills that found no gate yet
+	refillAt   map[string]time.Time // icao → when a fill that found no gate is tried again
 	// lastList is the last jetway list read (logList).
 	lastList []types.SIMCONNECT_JETWAY_DATA
 	// accepted: icao → the gates the sim has given a placeholder (refill first).
@@ -309,7 +325,7 @@ func NewHelpers(client Client, o HelperOptions) *Helpers {
 		o.DefineBase = o.RequestBase
 	}
 	return &Helpers{client: client, opt: o, byReq: map[uint32]*pending{}, byObj: map[uint32]*pending{},
-		gates: map[string]map[int]*gate{}, jetways: map[string]map[int]bool{}, filling: map[string]bool{}, emptyTries: map[string]int{}, refillAt: map[string]time.Time{}, accepted: map[string]map[int]bool{}, placings: map[uint32]*placing{}, retiring: map[uint32]time.Time{},
+		gates: map[string]map[int]*gate{}, jetways: map[string]map[int]bool{}, filling: map[string]bool{}, refill: map[string]bool{}, emptyTries: map[string]int{}, refillAt: map[string]time.Time{}, accepted: map[string]map[int]bool{}, placings: map[uint32]*placing{}, retiring: map[uint32]time.Time{},
 		learned: map[string]*gateLearning{}, strays: map[string]int{}, strayWait: map[string]time.Duration{}, rest: map[string]types.SIMCONNECT_DATA_XYZ{}}
 }
 
@@ -499,6 +515,7 @@ func (h *Helpers) Release(icao string) error {
 	h.mu.Lock()
 	defer h.mu.Unlock()
 	delete(h.filling, icao)
+	delete(h.refill, icao)
 	delete(h.emptyTries, icao) // a new fill tries again
 	delete(h.refillAt, icao)
 	var errs []error
@@ -552,31 +569,31 @@ func (h *Helpers) DockAs(icao string, stand int, model, title string) error {
 		return ErrFilling
 	}
 	for s, g := range h.gates[icao] {
-		if s != stand && g.status == StatusUndocking {
+		if s != stand && g.status == StatusUndocking && g.placeholder == 0 {
 			return ErrFilling // its gate free until a placeholder is back
 		}
-		// One helper on its way at a time, until docked: two at once, each
-		// took the other's gate (live, LKPR 11 and 25; 11 created as 4 docked
-		// took 4).
-		if s != stand && g.status == StatusDocking {
+		// Docks go in batches: those asked before the batch's helpers are
+		// made are made together (live, BATC at LKPR: nine jetways docked
+		// together); a helper landing on another gate of its batch that
+		// waits for the same title docks there (adopt). Once made, the next
+		// batch waits until they are on their gates (live, LKPR 11 created
+		// as 4 docked took 4), and a gate docked again first (redock).
+		if s != stand && g.status == StatusDocking && (g.createAt.IsZero() || !g.redockAt.IsZero()) {
 			return ErrFilling
 		}
-		// A gate docked moments ago counts as free to the sim: the next
-		// helper is given it, its jetway leaves our aircraft there (live,
-		// LKPR C30 docked 30 s before C24's helper was put on it).
-		if s != stand && g.status == StatusDocked && h.now.Sub(g.since) < DockSettle {
-			return ErrFilling
-		}
+	}
+	for s, g := range h.gates[icao] {
 		// A gate the sim gives placeholders, left with nothing on it (its
 		// jetway taken): the sim gives it the next helper too (live, LKPR
 		// A1 took the helpers of B14, C26 and B16 one after another).
 		// Filled again first.
-		if s != stand && h.accepted[icao][s] && g.placeholder == 0 && g.helper == 0 &&
-			g.status != StatusDocking && g.status != StatusDocked && g.status != StatusUndocking {
-			if h.now.Before(h.refillAt[icao]) {
-				return ErrFilling // a fill stopped a while (FillStrays): not again before then
+		if s != stand && h.emptyGate(icao, s, g) {
+			if h.now.Before(h.refillAt[icao]) || h.freeing(icao) {
+				// A fill stopped a while (FillStrays), or helpers on their
+				// way (a placeholder now could take their gates): later.
+				return ErrFilling
 			}
-			h.filling[icao] = true
+			h.filling[icao], h.refill[icao] = true, true
 			return ErrFilling
 		}
 	}
@@ -603,8 +620,15 @@ func (h *Helpers) DockAs(icao string, stand int, model, title string) error {
 		delete(h.byObj, g.placeholder)
 		g.placeholder = 0
 	}
-	// The helper once the gate is free (Update).
-	g.createAt = h.now.Add(HelperDelay)
+	// The helper once the gate is free (Update), with the rest of its batch:
+	// all made together once the last gate freed is.
+	at := h.now.Add(HelperDelay)
+	for _, o := range h.gates[icao] {
+		if o.status == StatusDocking && !o.createAt.IsZero() && o.redockAt.IsZero() {
+			o.createAt, o.since = at, h.now
+		}
+	}
+	g.createAt = at
 	if title == "" {
 		title = h.helperTitle(model)
 	}
@@ -615,6 +639,92 @@ func (h *Helpers) DockAs(icao string, stand int, model, title string) error {
 	g.status, g.since, g.model, g.title = StatusDocking, h.now, model, title
 	h.logf("jetway %s stand %d: docking (%s)", icao, stand, title)
 	return nil
+}
+
+// emptyGate reports that icao's stand g is a gate the sim gives
+// placeholders, left with nothing of ours on it (its jetway taken, its
+// dock failed). h.mu held.
+func (h *Helpers) emptyGate(icao string, stand int, g *gate) bool {
+	return h.accepted[icao][stand] && g.placeholder == 0 && g.helper == 0 &&
+		g.status != StatusDocking && g.status != StatusDocked && g.status != StatusUndocking
+}
+
+// emptyGates counts icao's empty gates (emptyGate). h.mu held.
+func (h *Helpers) emptyGates(icao string) int {
+	n := 0
+	for s, g := range h.gates[icao] {
+		if h.emptyGate(icao, s, g) {
+			n++
+		}
+	}
+	return n
+}
+
+// redock docks stand g, its jetway just taken by another of our objects
+// now on it, again first: whatever sits there leaves (the stray retired,
+// a placeholder taken away) RetractWait later, its own helper HelperDelay
+// after (Update). No refill of the airport, whose placeholders the sim
+// puts on docked gates (live, LKPR 2026-11-08: steals, refills, twelve
+// jetways pulled off parked aircraft); other docks wait meanwhile (one
+// helper on its way at a time). h.mu held.
+func (h *Helpers) redock(icao string, stand int, g *gate) {
+	g.status, g.since, g.createAt = StatusDocking, h.now, time.Time{}
+	g.redockAt = h.now.Add(RetractWait)
+	h.logf("jetway %s stand %d: its jetway taken: docked again first, in %s", icao, stand, RetractWait)
+}
+
+// freeing reports a gate at icao freed for a helper not on it yet (made
+// or still to make, or docked again first): no placeholder is made
+// meanwhile, the sim could give it that gate. h.mu held.
+func (h *Helpers) freeing(icao string) bool {
+	for _, g := range h.gates[icao] {
+		if g.status == StatusDocking && g.helper == 0 {
+			return true
+		}
+	}
+	return false
+}
+
+// gateTitle is the helper g docks with. h.mu held.
+func (h *Helpers) gateTitle(g *gate) string {
+	if g.title != "" {
+		return g.title
+	}
+	return h.helperTitle(g.model)
+}
+
+// adopt docks helper p (made for its gate) at stand, where the sim put
+// it, when stand is a gate of its batch waiting for a helper of the same
+// title: the two gates swap, stand's own helper (made or still to make)
+// going to p's gate. Helpers made together land on the free gates in the
+// sim's order, not ours (live, LKPR 11 and 25 took each other's).
+// Reports whether it did. h.mu held.
+func (h *Helpers) adopt(icao string, p *pending, stand int) bool {
+	g, w := h.gates[icao][stand], h.gates[icao][p.stand]
+	if g == nil || w == nil || g.status != StatusDocking || w.status != StatusDocking || g.helper != 0 || !g.redockAt.IsZero() {
+		return false
+	}
+	if h.gateTitle(g) != h.gateTitle(w) {
+		return false
+	}
+	var q *pending
+	for _, o := range h.byReq {
+		if o.helper && o != p && o.icao == icao && o.stand == stand {
+			q = o
+			break
+		}
+	}
+	switch {
+	case q != nil:
+		q.stand = p.stand
+	case !g.createAt.IsZero():
+		w.createAt, g.createAt = g.createAt, time.Time{}
+	default:
+		return false
+	}
+	h.logf("jetway %s: helper for stand %d put on stand %d, of its batch, same helper: docks there, the gates swapped", icao, p.stand, stand)
+	p.stand = stand
+	return true
 }
 
 // createHelper creates stand's helper. h.mu held.
@@ -684,6 +794,18 @@ func (h *Helpers) retireHelper(icao string, stand int, g *gate) {
 	}
 }
 
+// TitleFor is the helper DockAs makes for model at icao's stand, asked
+// with title ("" model's type's): the gate's learned one when it never
+// takes that (gateTakes).
+func (h *Helpers) TitleFor(icao string, stand int, model, title string) string {
+	h.mu.Lock()
+	defer h.mu.Unlock()
+	if title == "" {
+		title = h.helperTitle(model)
+	}
+	return h.gateTakes(strings.ToUpper(icao), stand, title)
+}
+
 // HelperFor is the title of the helper model docks with.
 func (h *Helpers) HelperFor(model string) string { return h.helperTitle(model) }
 
@@ -743,8 +865,10 @@ func (h *Helpers) Undock(icao string, stand int) error {
 		h.logf("jetway %s stand %d: undocking, its helper kept as the placeholder", icao, stand)
 		return nil
 	}
-	h.dropHelper(icao, stand, g)
-	g.status, g.since = StatusUndocking, h.now
+	// Retired, not removed: its jetway may still be moving to it (removed,
+	// it stayed half way for good: retiring).
+	h.retireHelper(icao, stand, g)
+	g.status, g.since, g.redockAt = StatusUndocking, h.now, time.Time{}
 	h.logf("jetway %s stand %d: undocking", icao, stand)
 	return nil
 }
@@ -910,6 +1034,9 @@ func (h *Helpers) jetway(j types.SIMCONNECT_JETWAY_DATA) {
 	}
 	h.jetways[icao][stand] = true
 	att := uint32(j.AttachedObjectId)
+	if p := h.byObj[att]; att != 0 && p != nil && p.icao == icao && p.helper && p.stand != stand {
+		h.adopt(icao, p, stand)
+	}
 	if p := h.byObj[att]; att != 0 && p != nil && p.icao == icao {
 		g := h.gate(icao, stand)
 		switch {
@@ -922,10 +1049,9 @@ func (h *Helpers) jetway(j types.SIMCONNECT_JETWAY_DATA) {
 				// age: live, LKPR 13 s to 50 min after docking; removing the
 				// placeholder at once did not bring the jetway back, live
 				// LKPR 15): the jetway went with it; ours is dropped and the
-				// gate docked again from this placeholder (Failed: asked
-				// again a minute later). A fill that keeps landing on docked
-				// gates stops a while (FillStrays): no cascade.
-				h.logf("jetway %s stand %d: its jetway taken by a placeholder: docked again", icao, stand)
+				// gate docked again from this placeholder first (redock). The
+				// fill stops a while (FillStrays): no cascade.
+				h.logf("jetway %s stand %d: its jetway taken by a placeholder", icao, stand)
 				h.dropHelper(icao, stand, g)
 				if h.strays[icao]++; h.strays[icao] >= FillStrays && h.filling[icao] {
 					// Each stopped fill waits twice as long (the sim keeps
@@ -946,7 +1072,7 @@ func (h *Helpers) jetway(j types.SIMCONNECT_JETWAY_DATA) {
 				h.measurePlaceholder(icao, stand, att)
 			}
 			if taken {
-				g.status = StatusFailed
+				h.redock(icao, stand, g)
 			}
 			if path, err := h.opt.RetractPlan(icao); err == nil {
 				h.client.AISetAircraftFlightPlan(att, path, h.req())
@@ -974,15 +1100,13 @@ func (h *Helpers) jetway(j types.SIMCONNECT_JETWAY_DATA) {
 			// A docked gate taken (the sim does not always count a docked
 			// helper's gate as taken; live, LKPR B9 1.5 min after it docked):
 			// its jetway follows the new helper off, so that gate is cleared
-			// too and docked again (Failed: asked again a minute later).
+			// too and docked again first, once the stray has gone (redock).
+			// No refill: the next dock asked refills the emptied gates
+			// first (DockAs).
 			if g.status == StatusDocked || g.status == StatusDocking {
-				h.logf("jetway %s stand %d: its jetway taken: docked again", icao, stand)
 				h.dropHelper(icao, stand, g)
-				g.status, g.since = StatusFailed, h.now
+				h.redock(icao, stand, g)
 			}
-			// Gates free again (its own, and maybe others): filled before the
-			// next dock.
-			h.filling[icao] = true
 		case p.helper:
 			g.helper = att
 			if j.Status == 7 {
@@ -1009,6 +1133,7 @@ func (h *Helpers) jetway(j types.SIMCONNECT_JETWAY_DATA) {
 		// Home (the list says so before it is: live, 16 s after the helper
 		// went, still moving; it takes about 24 s): a placeholder holds the
 		// gate again: the helper kept (Undock), else a new one.
+		h.logf("jetway %s stand %d: home, %s after the undock", icao, stand, h.now.Sub(g.since).Round(time.Second))
 		if g.placeholder != 0 {
 			g.status = StatusReserved
 		} else {
@@ -1098,7 +1223,7 @@ func (h *Helpers) Update(now time.Time) {
 	h.mu.Lock()
 	defer h.mu.Unlock()
 	h.now = now
-	busy := false
+	busy, coming := false, false // coming: a dock on its way
 	for r, p := range h.byReq {
 		if p.helper {
 			g := h.gate(p.icao, p.stand)
@@ -1108,11 +1233,12 @@ func (h *Helpers) Update(now time.Time) {
 			case p.object != 0 && now.Sub(p.createdAt) > ClaimTimeout:
 				// No jetway took it: put on a gate without one, or a ramp.
 				h.logf("jetway %s stand %d: helper not on a jetway gate: removed", p.icao, p.stand)
+				// Its gate refilled when the next dock is asked (DockAs), not
+				// at once: each placeholder another chance at a docked gate.
 				h.retireHelper(p.icao, p.stand, g)
 				g.status, g.since = StatusFailed, now
-				h.filling[p.icao] = true
 			default:
-				busy = true
+				busy, coming = true, true
 			}
 			continue
 		}
@@ -1135,6 +1261,7 @@ func (h *Helpers) Update(now time.Time) {
 				break
 			}
 			delete(h.filling, p.icao)
+			delete(h.refill, p.icao)
 			h.strays[p.icao], h.strayWait[p.icao] = 0, 0
 			h.logf("jetway %s: gates filled (%d)", p.icao, len(h.dockable(p.icao)))
 			// None at all: tried again a while later, not left without jetways
@@ -1155,6 +1282,22 @@ func (h *Helpers) Update(now time.Time) {
 	}
 	for icao, m := range h.gates {
 		for stand, g := range m {
+			if g.status == StatusDocking && !g.redockAt.IsZero() && !now.Before(g.redockAt) {
+				// Docked again (redock): what sat on it gone, its own helper
+				// next.
+				g.redockAt = time.Time{}
+				if obj := g.placeholder; obj != 0 {
+					h.client.AIRemoveObject(obj, h.req())
+					delete(h.byObj, obj)
+					for r, p := range h.byReq {
+						if p.object == obj {
+							delete(h.byReq, r)
+						}
+					}
+					g.placeholder = 0
+				}
+				g.createAt, g.since = now.Add(HelperDelay), now
+			}
 			if g.status == StatusDocking && !g.createAt.IsZero() && !now.Before(g.createAt) {
 				h.createHelper(icao, stand, g)
 			}
@@ -1173,13 +1316,16 @@ func (h *Helpers) Update(now time.Time) {
 					// timed out, then 2, 15 and 17 lost their jetways).
 					g.status, g.since = StatusFailed, now
 				default:
+					// Its gate free: refilled when the next dock is asked.
 					h.retireHelper(icao, stand, g)
 					g.status = StatusFailed
-					h.filling[icao] = true // its gate free: a placeholder again
 				}
 			}
 			if g.status == StatusDocking || g.status == StatusUndocking {
 				busy = true
+			}
+			if g.status == StatusDocking {
+				coming = true
 			}
 		}
 	}
@@ -1192,11 +1338,22 @@ func (h *Helpers) Update(now time.Time) {
 	// Filling: one placeholder at a time (its gate known before the next).
 	for icao := range h.filling {
 		busy = true
-		if !h.creating(icao) && len(h.jetways[icao]) > 0 {
-			h.spawnPlaceholder(icao)
+		if h.creating(icao) || len(h.jetways[icao]) == 0 || h.freeing(icao) {
+			continue
 		}
+		if h.refill[icao] && h.emptyGates(icao) == 0 {
+			delete(h.filling, icao)
+			delete(h.refill, icao)
+			h.logf("jetway %s: emptied gates held again (%d)", icao, len(h.dockable(icao)))
+			continue
+		}
+		h.spawnPlaceholder(icao)
 	}
-	if busy && now.Sub(h.lastPoll) >= pollEvery {
+	every := pollSlow
+	if coming {
+		every = pollEvery
+	}
+	if busy && now.Sub(h.lastPoll) >= every {
 		h.lastPoll = now
 		asked := map[string]bool{}
 		for _, p := range h.byReq {

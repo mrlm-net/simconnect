@@ -258,24 +258,33 @@ func TestHelpersUnavailable(t *testing.T) {
 	}
 }
 
-// One helper on its way at a time: the second dock waits for the first's
-// gate (two at once took each other's).
-func TestHelpersOneAtATime(t *testing.T) {
+// Docks asked before their batch's helpers are made go together; once
+// made, the next batch waits until they are on their gates.
+func TestHelpersBatch(t *testing.T) {
 	f := &fakeSim{}
 	h := NewHelpers(f, HelperOptions{Types: []string{"B738"}, RetractPlan: func(string) (string, error) { return "out.pln", nil }})
-	h.see(jw(7, 0, 0), jw(9, 0, 0))
+	now := time.Now()
+	h.Update(now)
+	h.see(jw(5, 0, 0), jw(7, 0, 0), jw(9, 0, 0))
 	h.mu.Lock()
-	h.gate("EDDM", 7).placeholder, h.gate("EDDM", 9).placeholder = 101, 102
+	h.gate("EDDM", 5).placeholder, h.gate("EDDM", 7).placeholder, h.gate("EDDM", 9).placeholder = 100, 101, 102
 	h.mu.Unlock()
 	if err := h.Dock("EDDM", 7, "B738"); err != nil {
 		t.Fatal(err)
 	}
-	if err := h.Dock("EDDM", 9, "B738"); err != ErrFilling {
-		t.Fatalf("second dock: %v, want ErrFilling", err)
+	if err := h.Dock("EDDM", 9, "B738"); err != nil {
+		t.Fatalf("second dock of the batch: %v", err)
+	}
+	h.Update(now.Add(HelperDelay + time.Second))
+	if len(f.created) != 2 {
+		t.Fatalf("created %d helpers, want both together", len(f.created))
+	}
+	if err := h.Dock("EDDM", 5, "B738"); err != ErrFilling {
+		t.Fatalf("dock with the batch's helpers on their way: %v, want ErrFilling", err)
 	}
 }
 
-// A docked gate a new helper or placeholder takes is docked again.
+// A docked gate a new helper or placeholder takes is docked again first.
 func TestHelpersDockedGateTaken(t *testing.T) {
 	f := &fakeSim{}
 	h := NewHelpers(f, HelperOptions{Types: []string{"B738"}, RetractPlan: func(string) (string, error) { return "out.pln", nil }})
@@ -287,7 +296,7 @@ func TestHelpersDockedGateTaken(t *testing.T) {
 	h.byReq[r], h.byObj[600] = p, p
 	h.mu.Unlock()
 	h.see(jw(7, 1, 600)) // a placeholder on the docked gate
-	if h.Status("EDDM", 7) != StatusFailed || !slices.Contains(f.removed, 500) {
+	if h.Status("EDDM", 7) != StatusDocking || !slices.Contains(f.removed, 500) {
 		t.Fatalf("stand 7 %s, removed %v", h.Status("EDDM", 7), f.removed)
 	}
 	if h.Dockable("EDDM")[0] != 7 {
@@ -329,9 +338,10 @@ func TestHelpersRefillAfterEmpty(t *testing.T) {
 	}
 }
 
-// A gate docked moments ago counts as free to the sim: no other helper is
-// made until it has settled (DockSettle).
-func TestHelpersDockSettle(t *testing.T) {
+// A gate docked moments ago no longer holds the next dock back (it held
+// each arrival two minutes); a helper the sim gives it is undone by
+// docking that gate again first (redock).
+func TestHelpersNoDockSettleWait(t *testing.T) {
 	f := &fakeSim{}
 	h := NewHelpers(f, HelperOptions{Types: []string{"B738"}, RetractPlan: func(string) (string, error) { return "out.pln", nil }})
 	now := time.Now()
@@ -342,12 +352,8 @@ func TestHelpersDockSettle(t *testing.T) {
 	g7.helper, g7.status, g7.since = 201, StatusDocked, now
 	h.gate("EDDM", 9).placeholder = 102
 	h.mu.Unlock()
-	if err := h.Dock("EDDM", 9, "B738"); err != ErrFilling {
-		t.Fatalf("dock right after 7 docked: %v, want ErrFilling", err)
-	}
-	h.Update(now.Add(DockSettle + time.Second))
 	if err := h.Dock("EDDM", 9, "B738"); err != nil {
-		t.Fatalf("dock once 7 settled: %v", err)
+		t.Fatalf("dock right after 7 docked: %v", err)
 	}
 }
 
@@ -498,7 +504,7 @@ func TestHelpersStraysOnDockedGates(t *testing.T) {
 	h.byReq[h.req()], h.byObj[700] = stray, stray
 	h.mu.Unlock()
 	h.see(jw(7, 1, 700)) // stand 9's helper on docked 7
-	if !slices.Contains(f.removed, 507) || h.Status("EDDM", 7) != StatusFailed || h.Status("EDDM", 9) != StatusFailed || !slices.Equal(results, []bool{false}) {
+	if !slices.Contains(f.removed, 507) || h.Status("EDDM", 7) != StatusDocking || h.Status("EDDM", 9) != StatusFailed || !slices.Equal(results, []bool{false}) {
 		t.Fatalf("removed %v, stand 7 %s, stand 9 %s, results %v", f.removed, h.Status("EDDM", 7), h.Status("EDDM", 9), results)
 	}
 	// The fill: its placeholders land on docked 4, then 5.
