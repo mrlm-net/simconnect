@@ -2,7 +2,6 @@ package world
 
 import (
 	"testing"
-	"time"
 
 	"github.com/mrlm-net/simconnect/pkg/airport"
 	"github.com/mrlm-net/simconnect/pkg/jetway"
@@ -37,7 +36,8 @@ func TestRestingGateGetsStairs(t *testing.T) {
 	now := traffic.Now()
 	cc.jw.mu.Lock()
 	for i := 0; i < JetwayGateFails; i++ {
-		cc.jw.gateResting(k, jetway.StatusFailed, now.Add(time.Duration(i)*time.Minute), now)
+		cc.jw.gateResting(k, jetway.StatusDocking, now)
+		cc.jw.gateResting(k, jetway.StatusFailed, now)
 	}
 	cc.jw.mu.Unlock()
 	s := cc.stairs(r, g, 0, prof)

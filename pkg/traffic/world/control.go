@@ -85,6 +85,8 @@ type controlled struct {
 	// standLate: given (or tried) once.
 	standServices func() (stairs, gpu traffic.FuelService, buses []traffic.FuelService)
 	standLate     bool
+	// stairsAsked: stairs asked for late with none to be had, said once.
+	stairsAsked bool
 	// tugAfter: its tug comes once the jetway is home (drawn at the spawn);
 	// tugStand: its stand for that. Atomic: read inside the controller's
 	// frame, which must not take it.mu (tugWaitsForJetway).
