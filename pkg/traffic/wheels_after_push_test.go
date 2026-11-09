@@ -8,8 +8,8 @@ import (
 )
 
 // Pushed back and then taxiing on, the same aircraft's wheels spin again:
-// INITPOSITION Airspeed is 0 through the push (wheels.go) and its ground
-// speed from the first half metre of the taxi on, through a tight turn
+// INITPOSITION Airspeed is its ground speed through the push (wheels.go)
+// and from the first half metre of the taxi on, through a tight turn
 // right after the push (user, live LKPR 2026-11-07, TVS469: "wheels are
 // not spinning"). The push and the taxi on one injector and one object, as
 // a departure has them.
@@ -33,8 +33,8 @@ func TestWheelsSpinAfterThePush(t *testing.T) {
 		if err := inj.Place(42, p); err != nil {
 			t.Fatal(err)
 		}
-		if c.speeds[k] != 0 {
-			t.Fatalf("push frame %d (%.1f kt): Airspeed %d, want 0", k, p.GroundSpeedKts, c.speeds[k])
+		if want := uint32(math.Round(p.GroundSpeedKts)); c.speeds[k] != want {
+			t.Fatalf("push frame %d (%.1f kt): Airspeed %d, want %d", k, p.GroundSpeedKts, c.speeds[k], want)
 		}
 	}
 	end := pushed[len(pushed)-1]

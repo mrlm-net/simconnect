@@ -41,11 +41,11 @@ func wheelsRun(t *testing.T, m *GroundMover) ([]GroundPose, []uint32) {
 	return poses, c.speeds
 }
 
-// Pushed back, the wheels must not spin forward: INITPOSITION Airspeed can
-// only be zero or positive, and any speed spins them forward (user report
-// 2026-11-07), so the speed passed is 0 the whole push, through the tug's
-// swing too. Taxiing forward, the speed is passed as before.
-func TestPushbackWheelsDoNotSpinForward(t *testing.T) {
+// Pushed back, the wheels spin: INITPOSITION Airspeed can only be zero or
+// positive, and any speed spins them forward, which looked better than
+// standing still (user, live LKPR 2026-11-09), so the ground speed is passed
+// the whole push, through the tug's swing too, and taxiing forward.
+func TestPushbackWheelsSpin(t *testing.T) {
 	prof := DefaultMotionProfile()
 	push := prof
 	push.CruiseKts, push.MinTurnKts, push.Accel, push.Decel = 3, 1, 0.15, 0.25
@@ -60,8 +60,8 @@ func TestPushbackWheelsDoNotSpinForward(t *testing.T) {
 		if p.GroundSpeedKts >= 0.5 {
 			moving++
 		}
-		if speeds[k] != 0 {
-			t.Fatalf("pushback frame %d (%.1f kt, heading %.0f): Airspeed %d, want 0", k, p.GroundSpeedKts, p.Heading, speeds[k])
+		if want := uint32(math.Round(p.GroundSpeedKts)); speeds[k] != want {
+			t.Fatalf("pushback frame %d (%.1f kt, heading %.0f): Airspeed %d, want %d", k, p.GroundSpeedKts, p.Heading, speeds[k], want)
 		}
 	}
 	if moving < 60 {
