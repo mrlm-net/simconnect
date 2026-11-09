@@ -117,11 +117,25 @@ func newScheduler(st *state, cc *controlCenter) *scheduler {
 		Horizon: t.Horizon, DepartureLead: t.DepartureLead, ArrivalLead: t.ArrivalLead, VFRLead: t.VFRLead,
 		DepartureLate: t.DepartureLate, ArrivalLate: t.ArrivalLate,
 		Picture: cc.world, Overflights: s.overflights, OverflightsReady: s.areaKnown, Conditions: s.conditions, RunwayQueue: cc.runwayQueue,
-		Night: s.night}) // other traffic respected by default
+		Night: s.night, Objects: s.objectsAt}) // other traffic respected by default
 	s.mgr.SetEnabled(false)
 	s.timing = s.mgr.Options().Timing()
 	s.applyTuning(st.tuning.get())
 	return s
+}
+
+// objectsViewMeters: our objects this close to an airport's reference
+// point are in view there (ManagerOptions.MaxObjects): its runways,
+// aprons and the ground vehicles' roads.
+const objectsViewMeters = 6000.0
+
+// objectsAt counts our objects in view at icao (ManagerOptions.Objects).
+func (s *scheduler) objectsAt(icao string) int {
+	l, ok := s.st.cache.Layout(icao)
+	if !ok {
+		return 0
+	}
+	return s.cc.inj.CountNear(airport.LatLon{Lat: l.Latitude, Lon: l.Longitude}, objectsViewMeters)
 }
 
 // config is the timetable's data with the tuning (#1303).
@@ -775,6 +789,9 @@ type scheduleView struct {
 	Airports    []string `json:"airports"`
 	Density     float64  `json:"density"`
 	MaxAircraft int      `json:"maxAircraft"`
+	// MaxObjects: our objects in view at an airport at once, aircraft and
+	// vehicles (0: no limit).
+	MaxObjects int `json:"maxObjects"`
 	// OverflightsPerHour in the peak hour at density 1, MaxOverflights at
 	// once (on top of MaxAircraft).
 	OverflightsPerHour float64                  `json:"overflightsPerHour"`
@@ -819,7 +836,7 @@ func registerSchedule(mux *http.ServeMux, st *state) {
 		}
 		o := s.mgr.Options()
 		v := scheduleView{Enabled: s.mgr.Enabled(), Airports: s.mgr.Airports(), Density: density, Seed: seed, IFR: ifr, VFR: vfr, Generator: gen, OffsetMin: off,
-			MaxAircraft: o.MaxAircraft, OverflightsPerHour: perHour, MaxOverflights: o.MaxOverflights, Others: o.Others, Active: s.mgr.Active(), Flights: s.mgr.Flights(), Now: s.cc.clock.Now()}
+			MaxAircraft: o.MaxAircraft, MaxObjects: o.MaxObjects, OverflightsPerHour: perHour, MaxOverflights: o.MaxOverflights, Others: o.Others, Active: s.mgr.Active(), Flights: s.mgr.Flights(), Now: s.cc.clock.Now()}
 		writeJSON(w, v)
 	})
 	postSchedule := func(w http.ResponseWriter, r *http.Request) {
@@ -833,6 +850,9 @@ func registerSchedule(mux *http.ServeMux, st *state) {
 			Airports    []string `json:"airports"` // several (#371); icao is one
 			Density     float64  `json:"density"`
 			MaxAircraft int      `json:"maxAircraft"`
+			// MaxObjects: our objects in view at an airport at once (absent:
+			// kept; negative: no limit).
+			MaxObjects *int `json:"maxObjects"`
 			// Overflights: in the peak hour at density 1 (from the next hour
 			// planned), and at once.
 			OverflightsPerHour float64  `json:"overflightsPerHour"`
@@ -885,6 +905,9 @@ func registerSchedule(mux *http.ServeMux, st *state) {
 		}
 		if req.MaxAircraft > 0 {
 			s.mgr.SetLimits(req.MaxAircraft, req.MaxAircraft)
+		}
+		if req.MaxObjects != nil {
+			s.mgr.SetMaxObjects(*req.MaxObjects)
 		}
 		s.mgr.SetMaxOverflights(req.MaxOverflights)
 		if req.ICAO != "" {
