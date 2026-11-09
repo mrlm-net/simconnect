@@ -791,6 +791,9 @@ func (i *Injector) PlaceAir(objectID uint32, pose ApproachPose) error {
 	if pose.OnGround {
 		onGround = 1
 	}
+	if pose.OnGround && pose.Landing && i.landsFlat(o) {
+		pose.PitchDeg = 0 // its nose down with its mains (strutsFlatFt)
+	}
 	// On the runway the aircraft rests on its gear as Place puts it (its
 	// rest height and pitch), the take-off or landing pitch on top; the
 	// base fades out over the first restFadeFt in the air. Placed level

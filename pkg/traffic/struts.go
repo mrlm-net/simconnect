@@ -142,6 +142,33 @@ var strutsReachSeed = map[int]float64{
 	485:  0.21, // CJ3
 	1330: 0.60, // E195 (LOT452: 1.04 ft of struts, shown at 0.65, back at static from 0.94)
 	1200: 0.54, // A20N easyJet (EZY1739: 1.13 ft of struts, back at static for a frame at 0.59)
+	850:  0.40, // B739 (THY1718: 0.57 ft of struts, back at static from 0.47, held at 0.42)
+}
+
+// strutsFlatFt: a model whose struts extend more than this lands flat: at
+// its static pitch from the moment its wheels are on the ground, so it is
+// never shown on its extended struts there. Nose up on the runway the
+// simulator showed it that far above its static height and, the nose down,
+// dropped it back in a frame, whatever was sent (live LKPR 24 2026-11-08,
+// OKJZW Asobo passive Praetor 500: 6.48 → 4.10 ft at 102 kt, its struts
+// 2.38 ft). i.mu held.
+const strutsFlatFt = 1.2
+
+// strutsFlatStepFt: a model whose struts reach this much less than they
+// extend lands flat too: let down from its extended struts as the nose came
+// down, what its struts did not reach stepped (live LOT452 E195, 1.04 ft of
+// struts, 0.60 of reach: 0.45 ft in a frame on every rollout).
+const strutsFlatStepFt = 0.2
+
+// landsFlat reports whether o lands flat: its struts extend beyond
+// strutsFlatFt, or beyond their reach by strutsFlatStepFt. i.mu held.
+func (i *Injector) landsFlat(o *injected) bool {
+	s := i.strutsOf(o)
+	if s > strutsFlatFt {
+		return true
+	}
+	r, ok := i.reachOf(o)
+	return ok && s-r > strutsFlatStepFt
 }
 
 const (
