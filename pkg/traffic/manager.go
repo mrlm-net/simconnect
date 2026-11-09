@@ -157,6 +157,14 @@ type ManagerOptions struct {
 	// counted (MaxOverflights), MaxPerAirport at or around one airport
 	// (default 16).
 	MaxAircraft, MaxPerAirport int
+	// MaxObjects: our objects in view at an airport at once, aircraft and
+	// their ground vehicles alike, as Objects counts them (0 or Objects
+	// nil: no limit). No aircraft is spawned there while that many are,
+	// those spawning and not shown yet counted too. Each one drawn costs
+	// the simulator's frame (live LKPR 2026-11-09: about 60 µs an object,
+	// 2.3 ms for 37).
+	MaxObjects int
+	Objects    func(icao string) int
 	// Spacing between spawns at one airport: arrivals (default 3 min, they
 	// share the STAR entries) and departures (default 1 min).
 	ArrivalSpacing, DepartureSpacing time.Duration
@@ -738,9 +746,12 @@ func (m *TrafficManager) unpair(f *ManagedFlight) {
 func (m *TrafficManager) due(now time.Time, spawn *[]ManagedFlight) {
 	o := m.opts
 	m.nightStops(now)
-	total, at := 0, map[string]int{}
+	total, at, spawning, objects := 0, map[string]int{}, map[string]int{}, map[string]int{}
 	var ready []*ManagedFlight
 	for _, f := range m.flights {
+		if f.Status == FlightSpawning && !f.Overflight() {
+			spawning[f.Airport]++
+		}
 		if f.Status.active() && !f.Overflight() {
 			total++
 			if f.Status != FlightDeparted {
@@ -791,6 +802,16 @@ func (m *TrafficManager) due(now time.Time, spawn *[]ManagedFlight) {
 			if total >= o.MaxAircraft || at[f.Airport] >= o.MaxPerAirport {
 				continue
 			}
+			if o.MaxObjects > 0 && o.Objects != nil {
+				n, ok := objects[f.Airport]
+				if !ok {
+					n = o.Objects(f.Airport)
+					objects[f.Airport] = n
+				}
+				if n+spawning[f.Airport] >= o.MaxObjects {
+					continue
+				}
+			}
 			spacing := o.ArrivalSpacing
 			if f.Departure() {
 				spacing = o.DepartureSpacing
@@ -802,6 +823,7 @@ func (m *TrafficManager) due(now time.Time, spawn *[]ManagedFlight) {
 			m.last[f.key()[:1]+f.Airport] = now
 			total++
 			at[f.Airport]++
+			spawning[f.Airport]++
 		}
 		f.Attempts++
 		_, f.Stage = m.start(f, now)
@@ -1063,6 +1085,13 @@ func (m *TrafficManager) SetLimits(maxAircraft, maxPerAirport int) {
 	if maxPerAirport > 0 {
 		m.opts.MaxPerAirport = maxPerAirport
 	}
+}
+
+// SetMaxObjects changes MaxObjects (0: no limit).
+func (m *TrafficManager) SetMaxObjects(n int) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	m.opts.MaxObjects = max(0, n)
 }
 
 // SetMaxOverflights changes MaxOverflights (0 keeps it).
