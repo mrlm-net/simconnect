@@ -95,7 +95,11 @@ func (c *ArrivalController) handleParked(msg engine.Message) bool {
 	if uint32(m.DwRequestID) != c.reqBase+arrReqMonitor || uint32(m.DwObjectID) != c.objectID {
 		return false
 	}
-	c.simNow = engine.CastDataAs[arrivalMonitor](&m.DwData).SimTime
+	if uint32(m.DwDefineID) == c.defBase+arrDefTick {
+		c.simNow = tickTime(m)
+	} else {
+		c.simNow = engine.CastDataAs[arrivalMonitor](&m.DwData).SimTime
+	}
 	now := c.now()
 	dt := c.frameStep(now)
 	var path *GroundPath

@@ -276,8 +276,12 @@ type TaxiController struct {
 	detailS detailState
 	// monitorStopped: the monitor's data request is stopped (stopMonitor).
 	monitorStopped bool
-	mu             sync.Mutex
-	fleet          *Fleet
+	// mon: the monitor as asked for (monitor_tick.go); monLast its last
+	// full answer.
+	mon     monitorReq
+	monLast taxiMonitor
+	mu      sync.Mutex
+	fleet   *Fleet
 	// services: the airport's tugs and fuel trucks (#830), nil unlimited.
 	services ServiceFleet
 	defBase  uint32
@@ -528,8 +532,11 @@ func (c *TaxiController) Start(req TaxiRequest) error {
 
 	// Waypoint list and position monitor definitions (cleared first when
 	// the ID block is reused).
-	c.fleet.redefine(client, c.defBase+defOffWaypoints, c.defBase+defOffMonitor)
+	c.fleet.redefine(client, c.defBase+defOffWaypoints, c.defBase+defOffMonitor, c.defBase+defOffTick)
 	if err := client.AddToDataDefinition(c.defBase+defOffWaypoints, "AI Waypoint List", "number", types.SIMCONNECT_DATATYPE_WAYPOINT, 0, 0); err != nil {
+		return err
+	}
+	if err := client.AddToDataDefinition(c.defBase+defOffTick, "SIMULATION TIME", "seconds", types.SIMCONNECT_DATATYPE_FLOAT64, 0, 0); err != nil {
 		return err
 	}
 	for i, v := range []struct{ name, unit string }{
@@ -647,7 +654,13 @@ func (c *TaxiController) Handle(msg engine.Message) bool {
 		if uint32(m.DwRequestID) != c.reqBase+reqOffMonitor || uint32(m.DwObjectID) != c.objectID {
 			return false
 		}
-		c.onPosition(*engine.CastDataAs[taxiMonitor](&m.DwData))
+		if uint32(m.DwDefineID) == c.defBase+defOffTick {
+			c.onPosition(c.tickMonitor(tickTime(m)))
+		} else {
+			c.monLast, c.mon.haveFull = *engine.CastDataAs[taxiMonitor](&m.DwData), true
+			c.onPosition(c.monLast)
+		}
+		c.syncMonitor()
 		return true
 	}
 	return false
@@ -678,8 +691,7 @@ func (c *TaxiController) onSpawned(objectID uint32) {
 		return
 	}
 	c.monitorStopped = false
-	if err := client.RequestDataOnSimObject(c.reqBase+reqOffMonitor, c.defBase+defOffMonitor, objectID,
-		types.SIMCONNECT_PERIOD_SECOND, types.SIMCONNECT_DATA_REQUEST_FLAG_DEFAULT, 0, 0, 0); err != nil {
+	if err := c.requestMonitor(client, types.SIMCONNECT_PERIOD_SECOND, 0); err != nil {
 		c.fail(err)
 		return
 	}
@@ -792,7 +804,7 @@ func (c *TaxiController) Cancel() error {
 func (c *TaxiController) stopMonitor() {
 	if client := c.fleet.clientOrNil(); client != nil && c.objectID != 0 && !c.monitorStopped {
 		c.monitorStopped = true // stopped twice, the simulator refuses the second (exception 3)
-		client.RequestDataOnSimObject(c.reqBase+reqOffMonitor, c.defBase+defOffMonitor, c.objectID,
+		client.RequestDataOnSimObject(c.reqBase+reqOffMonitor, c.mon.def(c.defBase+defOffMonitor, c.defBase+defOffTick), c.objectID,
 			types.SIMCONNECT_PERIOD_NEVER, types.SIMCONNECT_DATA_REQUEST_FLAG_DEFAULT, 0, 0, 0)
 	}
 }

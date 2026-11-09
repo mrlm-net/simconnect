@@ -186,6 +186,11 @@ const injDefGearDownPartial = injDefThrottle1 + injMaxEngines
 // steering is animated from (steer.go).
 const injDefSteer = injDefGearDownPartial + 1
 
+// injDefGroundFast: the ground under a moving object only (GROUND ALTITUDE,
+// PLANE LATITUDE, PLANE LONGITUDE: injectGroundFast), read on the frames
+// injDefGround's other values are not used (ground_rate.go).
+const injDefGroundFast = injDefSteer + 1
+
 // gearTrackSends: the first HoldGearDown writes of an aircraft watched for
 // an exception (it is written every frame on the take-off roll).
 const gearTrackSends = 3
@@ -219,6 +224,11 @@ type injectGround struct {
 	GroundFt, CGFt, StaticPitch       float64
 	PlaneFt, PlanePitch, OnGround, GS float64
 	Lat, Lon                          float64 // where the ground was sampled
+}
+
+// injectGroundFast is injDefGroundFast's answer: the ground alone.
+type injectGroundFast struct {
+	GroundFt, Lat, Lon float64
 }
 
 // Rest limits: a measured rest further than this from the static values is
@@ -336,6 +346,11 @@ func (i *Injector) register() error {
 	}
 	if err := i.track("define ROTATION VELOCITY BODY Y", c.AddToDataDefinition(i.defBase+injDefSteer, "ROTATION VELOCITY BODY Y", "radians per second", types.SIMCONNECT_DATATYPE_FLOAT64, 0, 0)); err != nil {
 		return err
+	}
+	for k, v := range []struct{ name, unit string }{{"GROUND ALTITUDE", "feet"}, {"PLANE LATITUDE", "degrees"}, {"PLANE LONGITUDE", "degrees"}} {
+		if err := i.track("define fast "+v.name, c.AddToDataDefinition(i.defBase+injDefGroundFast, v.name, v.unit, types.SIMCONNECT_DATATYPE_FLOAT64, 0, uint32(k))); err != nil {
+			return err
+		}
 	}
 	// Flap surfaces directly: MSFS AI objects ignore the flaps handle and
 	// FLAPS_* events (#318).
@@ -508,7 +523,7 @@ func (i *Injector) PlaceRest(objectID uint32, pose GroundPose) error {
 		Heading:   pose.Heading,
 		OnGround:  1,
 	}
-	i.notePlaced(o, p)
+	i.notePlaced(o, p, true)
 	i.mu.Unlock()
 	return i.client.SetDataOnSimObject(i.defBase+injDefPosition, objectID, types.SIMCONNECT_DATA_SET_FLAG_DEFAULT, 0, uint32(unsafe.Sizeof(p)), unsafe.Pointer(&p))
 }
@@ -576,7 +591,7 @@ func (i *Injector) place(objectID uint32, pose GroundPose, moving bool) error {
 		yaw, steer = o.nose.update(pose.Position, pose.Heading, pose.GroundSpeedKts, i.now())
 	}
 	i.traceJump(objectID, o, "ground", pose.Position, pose.Heading, pose.GroundSpeedKts)
-	same := i.notePlaced(o, p)
+	same := i.notePlaced(o, p, pose.GroundSpeedKts <= restMaxKts)
 	i.mu.Unlock()
 	// A vehicle stopped (frozen since Takeover): the same placement again
 	// changes nothing, not sent; aircraft keep theirs (their standing
@@ -639,7 +654,7 @@ func (i *Injector) Release(objectID uint32) error {
 		}
 	}
 	keep(i.track(fmt.Sprintf("stop ground height object %d", objectID),
-		i.client.RequestDataOnSimObject(req+1, i.defBase+injDefGround, objectID, types.SIMCONNECT_PERIOD_NEVER, types.SIMCONNECT_DATA_REQUEST_FLAG_DEFAULT, 0, 0, 0)))
+		i.client.RequestDataOnSimObject(req+1, i.groundDef(o), objectID, types.SIMCONNECT_PERIOD_NEVER, types.SIMCONNECT_DATA_REQUEST_FLAG_DEFAULT, 0, 0, 0)))
 	for _, e := range []int{injEvtFreezeLatLon, injEvtFreezeAlt, injEvtFreezeAtt} {
 		if !o.taken {
 			break // only watched: nothing to unfreeze
@@ -680,6 +695,19 @@ func (i *Injector) Handle(msg engine.Message) (bool, error) {
 			return true, nil // the slot's former aircraft, still answering (#91)
 		}
 		i.groundRates(i.now())
+		if o := i.objects[obj]; o != nil && uint32(d.DwDefineID) == i.defBase+injDefGroundFast {
+			// Moving: the ground alone; its static CG height and pitch kept
+			// from the last full answer, nothing learnt (ground_rate.go).
+			g := engine.CastDataAs[injectGroundFast](&d.DwData)
+			at := airport.LatLon{Lat: g.Lat, Lon: g.Lon}
+			ground := o.groundSample(at, g.GroundFt)
+			o.groundFt = ground
+			if math.Abs(g.GroundFt-ground) < groundSpikeFt {
+				i.noteCellBias(o, at, g.GroundFt)
+				i.ground.putBy(at, g.GroundFt, obj, i.now())
+			}
+			return true, nil
+		}
 		if o := i.objects[obj]; o != nil {
 			g := engine.CastDataAs[injectGround](&d.DwData)
 			at := airport.LatLon{Lat: g.Lat, Lon: g.Lon}
@@ -896,7 +924,7 @@ func (i *Injector) PlaceAir(objectID uint32, pose ApproachPose) error {
 	// never left steering on the roll or in the air (steer.go).
 	straighten := o.nose.handOff()
 	i.traceJump(objectID, o, "air", pose.Position, pose.Heading, pose.GroundSpeedKts)
-	i.notePlaced(o, p)
+	i.notePlaced(o, p, pose.GroundSpeedKts <= restMaxKts || i.strutsWanted(o, pose) || pose.Landing && (pose.OnGround && pose.PitchDeg > 0 || !pose.OnGround && pose.HeightFt < AirBlendFt))
 	i.mu.Unlock()
 	if straighten {
 		var zero float64
@@ -955,7 +983,7 @@ func (i *Injector) PlaceFlown(objectID uint32, pose FlownPose) error {
 	o.placed = true
 	o.placedAt = i.now()
 	i.traceJump(objectID, o, "flown", pose.Position, pose.Heading, pose.GroundSpeedKts)
-	i.notePlaced(o, p)
+	i.notePlaced(o, p, pose.GroundSpeedKts <= restMaxKts)
 	i.mu.Unlock()
 	return i.client.SetDataOnSimObject(i.defBase+injDefPosition, objectID, types.SIMCONNECT_DATA_SET_FLAG_DEFAULT, 0, uint32(unsafe.Sizeof(p)), unsafe.Pointer(&p))
 }

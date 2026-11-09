@@ -39,7 +39,7 @@ func TestRedefineClears(t *testing.T) {
 			t.Fatal(err)
 		}
 	}
-	if n := ec.cleared(); n != 2 {
-		t.Fatalf("%d definitions cleared on the second start, want 2", n)
+	if n := ec.cleared(); n != 3 { // waypoints, monitor, tick
+		t.Fatalf("%d definitions cleared on the second start, want 3", n)
 	}
 }

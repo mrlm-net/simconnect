@@ -1,6 +1,9 @@
 package world
 
-import "github.com/mrlm-net/simconnect/pkg/jetway"
+import (
+	"github.com/mrlm-net/simconnect/pkg/jetway"
+	"github.com/mrlm-net/simconnect/pkg/types"
+)
 
 // The live traffic scan reads, every second, every aircraft within
 // trafficRadius: positions, flight values and the AI state. An aircraft's
@@ -18,10 +21,33 @@ const (
 	reqTrafficNames uint32 = 2031
 )
 
-// trafficNameRaw matches the defTrafficNames data definition.
+// defineTrafficScan defines the live traffic scan: AI state, position and
+// flight values every second (defTraffic, trafficRaw); title, tail and
+// wing span once per aircraft (defTrafficNames, trafficNameRaw).
+func defineTrafficScan(client interface {
+	AddToDataDefinition(definitionID uint32, datumName string, unitsName string, datumType types.SIMCONNECT_DATATYPE, epsilon float32, datumID uint32) error
+}) {
+	client.AddToDataDefinition(defTrafficNames, "TITLE", "", types.SIMCONNECT_DATATYPE_STRING256, 0, 0)
+	client.AddToDataDefinition(defTrafficNames, "ATC ID", "", types.SIMCONNECT_DATATYPE_STRING32, 0, 1)
+	client.AddToDataDefinition(defTrafficNames, "WING SPAN", "feet", types.SIMCONNECT_DATATYPE_FLOAT64, 0, 2)
+	client.AddToDataDefinition(defTraffic, "AI TRAFFIC STATE", "", types.SIMCONNECT_DATATYPE_STRING256, 0, 2)
+	for i, v := range []struct{ name, unit string }{
+		{"PLANE LATITUDE", "degrees"}, {"PLANE LONGITUDE", "degrees"}, {"PLANE ALT ABOVE GROUND", "feet"},
+		{"GROUND VELOCITY", "knots"}, {"PLANE HEADING DEGREES TRUE", "degrees"}, {"VERTICAL SPEED", "feet per minute"},
+		{"SIM ON GROUND", "bool"}, {"GEAR TOTAL PCT EXTENDED", "percent"}, // native 0–1; "percent" returns it unscaled
+		{"LIGHT LANDING", "bool"}, {"LIGHT TAXI", "bool"}, {"LIGHT STROBE", "bool"}, {"LIGHT BEACON", "bool"}, {"LIGHT NAV", "bool"},
+		{"PLANE ALTITUDE", "feet"},
+	} {
+		client.AddToDataDefinition(defTraffic, v.name, v.unit, types.SIMCONNECT_DATATYPE_FLOAT64, 0, uint32(i+3))
+	}
+}
+
+// trafficNameRaw matches the defTrafficNames data definition: what never
+// changes about an aircraft (its wing span too).
 type trafficNameRaw struct {
-	Title [256]byte
-	AtcID [32]byte
+	Title  [256]byte
+	AtcID  [32]byte
+	SpanFt float64
 }
 
 // trafficNames keeps the names of the aircraft scanned, by object ID.
@@ -33,7 +59,10 @@ type trafficNames struct {
 	waiting bool
 }
 
-type trafficName struct{ title, tail string }
+type trafficName struct {
+	title, tail string
+	spanM       float64
+}
 
 func newTrafficNames() *trafficNames { return &trafficNames{names: map[uint32]trafficName{}} }
 
@@ -50,7 +79,7 @@ func (n *trafficNames) fill(scan []Traffic) (out []Traffic, unknown int) {
 		if jetway.IsHelper(nm.title) {
 			continue
 		}
-		t.Title, t.Tail = nm.title, nm.tail
+		t.Title, t.Tail, t.Span = nm.title, nm.tail, nm.spanM
 		out = append(out, t)
 	}
 	return out, unknown
@@ -74,8 +103,8 @@ func (n *trafficNames) complete(scan []Traffic) (feed []Traffic, ask bool) {
 }
 
 // name records one answer of the names scan.
-func (n *trafficNames) name(id uint32, title, tail string) {
-	n.names[id] = trafficName{title, tail}
+func (n *trafficNames) name(id uint32, title, tail string, spanM float64) {
+	n.names[id] = trafficName{title, tail, spanM}
 }
 
 // namesDone ends a names scan: the scan that waited for it, named, if any.

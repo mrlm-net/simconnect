@@ -118,8 +118,19 @@ func a320Profile() AircraftProfile {
 // family figures every default in this package stands for; see
 // GenericProfile for a fallback by size when the span is known.
 func ProfileFor(model string) AircraftProfile {
+	types := knownTypesNow.Load()
+	if p, ok := profileMemo.get(types, model); ok {
+		return p
+	}
+	p := resolveProfile(types, model)
+	profileMemo.put(types, model, p)
+	return p
+}
+
+// resolveProfile is ProfileFor against types, uncached.
+func resolveProfile(types []typeSpec, model string) AircraftProfile {
 	t := strings.ToUpper(model)
-	for _, k := range knownTypesNow.Load() {
+	for _, k := range types {
 		for _, m := range k.match {
 			if strings.Contains(t, m) {
 				return k.profile()

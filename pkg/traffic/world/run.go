@@ -90,7 +90,6 @@ type trafficRaw struct {
 	State                                          [256]byte
 	Lat, Lon, AGL, GS, Heading, VS, OnGround, Gear float64
 	Landing, Taxi, Strobe, Beacon, Nav             float64
-	SpanFt                                         float64
 	AltFt                                          float64 // MSL
 }
 
@@ -220,15 +219,18 @@ type state struct {
 	// camera is the camera operator of the live connection (nil without).
 	camera *cameraMan
 
-	mu        sync.Mutex
-	fetched   map[string]time.Time
-	waiters   map[string][]chan error
-	aircraft  *Aircraft
-	traffic   []Traffic
-	trafficAt time.Time
-	live      bool
-	control   *controlCenter // traffic control while connected (#322)
-	schedule  *scheduler     // scheduled traffic while connected (#368)
+	mu      sync.Mutex
+	fetched map[string]time.Time
+	waiters map[string][]chan error
+	// refreshing: airports asked for with ?refresh, not read from the
+	// disk cache (simcache.go).
+	refreshing map[string]bool
+	aircraft   *Aircraft
+	traffic    []Traffic
+	trafficAt  time.Time
+	live       bool
+	control    *controlCenter // traffic control while connected (#322)
+	schedule   *scheduler     // scheduled traffic while connected (#368)
 	// scheduleSet: the schedule settings posted (POST /api/schedule bodies, in
 	// order), set again on the next connection; scheduleReplay applies one.
 	scheduleSet    [][]byte
@@ -668,20 +670,7 @@ func runOn(ctx context.Context, st *state, client engine.Client, stream <-chan e
 		fmt.Fprintf(stdout, "❌ RequestDataOnSimObject: %v\n", err)
 	}
 
-	// Live traffic: AI state, position and flight parameters every second;
-	// title and tail once per aircraft (trafficNames).
-	client.AddToDataDefinition(defTrafficNames, "TITLE", "", types.SIMCONNECT_DATATYPE_STRING256, 0, 0)
-	client.AddToDataDefinition(defTrafficNames, "ATC ID", "", types.SIMCONNECT_DATATYPE_STRING32, 0, 1)
-	client.AddToDataDefinition(defTraffic, "AI TRAFFIC STATE", "", types.SIMCONNECT_DATATYPE_STRING256, 0, 2)
-	for i, v := range []struct{ name, unit string }{
-		{"PLANE LATITUDE", "degrees"}, {"PLANE LONGITUDE", "degrees"}, {"PLANE ALT ABOVE GROUND", "feet"},
-		{"GROUND VELOCITY", "knots"}, {"PLANE HEADING DEGREES TRUE", "degrees"}, {"VERTICAL SPEED", "feet per minute"},
-		{"SIM ON GROUND", "bool"}, {"GEAR TOTAL PCT EXTENDED", "percent"}, // native 0–1; "percent" returns it unscaled
-		{"LIGHT LANDING", "bool"}, {"LIGHT TAXI", "bool"}, {"LIGHT STROBE", "bool"}, {"LIGHT BEACON", "bool"}, {"LIGHT NAV", "bool"},
-		{"WING SPAN", "feet"}, {"PLANE ALTITUDE", "feet"},
-	} {
-		client.AddToDataDefinition(defTraffic, v.name, v.unit, types.SIMCONNECT_DATATYPE_FLOAT64, 0, uint32(i+3))
-	}
+	defineTrafficScan(client)
 	var (
 		scan   []Traffic
 		userID uint32
@@ -747,14 +736,30 @@ func runOn(ctx context.Context, st *state, client engine.Client, stream <-chan e
 	// loaded in full for it (live: KJFK's taxiways loaded at LKPR for a
 	// Bucharest–New York overflight, the frame loop stood still meanwhile).
 	everywhere := traffic.NewAirportLister(client, ids.airportList+1)
-	if err := everywhere.RequestAll(); err != nil {
+	// Kept on disk while fresh, not asked again (simcache.go); none
+	// without a simulator.
+	var sc *simCache
+	if _, simless := client.(*traffic.SimlessAI); !simless {
+		sc = newSimCache(st.core.hooks.DataDir, packageStamp())
+	}
+	if refs, ok := sc.airports(); ok {
+		st.mu.Lock()
+		st.airportRefs = refs
+		st.mu.Unlock()
+		tlog.printf("airports worldwide: %d, kept (%s)", len(refs), sc.dir)
+	} else if err := everywhere.RequestAll(); err != nil {
 		fmt.Fprintf(stdout, "⚠️  worldwide airport list: %v\n", err)
 	}
-	if err := cc.requestFuelTitles(); err != nil {
-		fmt.Fprintf(stdout, "⚠️  fuel truck list: %v\n", err)
-	}
-	if err := cc.requestModels(); err != nil {
-		fmt.Fprintf(stdout, "❌ model list: %v\n", err)
+	if m, ok := sc.models(); ok {
+		cc.feedModels(m)
+		tlog.printf("models: %d aircraft, %d ground vehicles, kept (%s)", len(m.Aircraft), len(m.Ground), sc.dir)
+	} else {
+		if err := cc.requestFuelTitles(); err != nil {
+			fmt.Fprintf(stdout, "⚠️  fuel truck list: %v\n", err)
+		}
+		if err := cc.requestModels(); err != nil {
+			fmt.Fprintf(stdout, "❌ model list: %v\n", err)
+		}
 	}
 	// The camera on our traffic: cut to the aircraft on the radio as the
 	// call is heard.
@@ -841,7 +846,8 @@ func runOn(ctx context.Context, st *state, client engine.Client, stream <-chan e
 	var excWindow time.Time          // SimConnect exceptions logged since
 	excLogged := 0
 	tick := traffic.NewTicker(time.Second)
-	offlineFed := false // the offline airports given the picture (SimlessAI)
+	offlineFed := false        // the offline airports given the picture (SimlessAI)
+	airportsDue := &listGate{} // the airport list asked again once the user moved
 	defer tick.Stop()
 
 	// Slow work in this loop holds back every injected aircraft (its
@@ -885,7 +891,10 @@ func runOn(ctx context.Context, st *state, client engine.Client, stream <-chan e
 
 		case icao := <-st.procRequests:
 			slowAt, slowWhat = traffic.Now(), "procedures "+icao
-			if err := procLoader.Request(icao); err != nil {
+			if p, ok := sc.procedures(icao); ok {
+				feed.Procedures(p)
+				airways.want(p, traffic.Now())
+			} else if err := procLoader.Request(icao); err != nil {
 				fmt.Fprintf(stdout, "❌ procedures of %s: %v\n", icao, err)
 			}
 
@@ -896,21 +905,36 @@ func runOn(ctx context.Context, st *state, client engine.Client, stream <-chan e
 		case icao := <-requests:
 			slowAt, slowWhat = traffic.Now(), "airport request "+icao
 			fmt.Fprintf(stdout, "🛫 Fetching facility data for %s...\n", icao)
-			droppedAt[strings.ToUpper(icao)] = st.dropped.Load()
-			tlog.printf("%s: loading the airport from the simulator", strings.ToUpper(icao)) // in the log too: a host may not show stdout
-			if err := loader.Request(icao); err != nil {
-				feed.Layout(icao, nil, err)
+			refresh := st.takeRefresh(icao)
+			if l, raw, ok := sc.layout(icao); ok && !refresh {
+				// Kept on disk: as the loader would have it.
+				tlog.printf("%s: airport kept (%s): %d runways, %d stands, %d taxi points", l.ICAO, sc.dir, len(l.Runways), len(l.Parking), len(l.TaxiPoints))
+				st.cache.Put(l)
+				st.dump(l.ICAO, dumpLayout, raw)
+				st.core.requestILS(navLoader, l)
+				feed.Layout(icao, l, nil)
+			} else {
+				droppedAt[strings.ToUpper(icao)] = st.dropped.Load()
+				tlog.printf("%s: loading the airport from the simulator", strings.ToUpper(icao)) // in the log too: a host may not show stdout
+				if err := loader.Request(icao); err != nil {
+					feed.Layout(icao, nil, err)
+				}
 			}
-			if err := procLoader.Request(icao); err != nil {
+			if p, ok := sc.procedures(icao); ok && !refresh {
+				feed.Procedures(p)
+				airways.want(p, traffic.Now())
+			} else if err := procLoader.Request(icao); err != nil {
 				fmt.Fprintf(stdout, "❌ procedures of %s: %v\n", icao, err)
 			}
 
 		case now := <-tick.C:
 			slowAt, slowWhat = traffic.Now(), "second tick"
 			cc.timed("control", cc.tick)
-			// The airports around once a minute (#70: ticks never counted, asked
-			// every second, a multi-part list reset half-way).
-			if cc.ticks%60 == 0 || !offlineFed {
+			// The airports around, looked at once a minute (#70: ticks never
+			// counted, asked every second, a multi-part list reset half-way),
+			// asked again only once the user has moved (listGate).
+			if user := st.core.userAt(); !offlineFed || cc.ticks%60 == 0 && airportsDue.due(now, user) {
+				airportsDue.done(now, user)
 				airports.Request()
 				// No simulator: the offline list around the user stands in
 				// for the facility list (the picture gives aircraft their
@@ -967,6 +991,7 @@ func runOn(ctx context.Context, st *state, client engine.Client, stream <-chan e
 				st.mu.Unlock()
 				tlog.printf("airports worldwide: %d", len(refs))
 				st.dumpAirports(list)
+				sc.writeAirports(list)
 				continue
 			}
 			if list, ok := airports.Handle(msg); ok {
@@ -985,6 +1010,7 @@ func runOn(ctx context.Context, st *state, client engine.Client, stream <-chan e
 				continue
 			}
 			if p, done := procLoader.Handle(msg); done {
+				sc.writeProcedures(p)
 				feed.Procedures(p)
 				airways.want(p, traffic.Now())
 				continue
@@ -1015,6 +1041,7 @@ func runOn(ctx context.Context, st *state, client engine.Client, stream <-chan e
 						writeDump(dumpDir, res.Raw)
 					}
 					st.dump(l.ICAO, dumpLayout, res.Raw)
+					sc.writeLayout(res.Raw)
 					st.core.requestILS(navLoader, l)
 				}
 				feed.Layout(res.ICAO, res.Layout, res.Err)
@@ -1032,7 +1059,9 @@ func runOn(ctx context.Context, st *state, client engine.Client, stream <-chan e
 			if act != nil && act.handle(msg) {
 				continue
 			}
+			sc.noteEnumeration(msg)
 			if cc.handle(msg) {
+				sc.flushModels(cc)
 				continue
 			}
 
@@ -1074,7 +1103,7 @@ func runOn(ctx context.Context, st *state, client engine.Client, stream <-chan e
 				d := msg.AsSimObjectDataBType()
 				if uint32(d.DwRequestID) == reqTrafficNames {
 					nm := engine.CastDataAs[trafficNameRaw](&d.DwData)
-					names.name(uint32(d.DwObjectID), engine.BytesToString(nm.Title[:]), engine.BytesToString(nm.AtcID[:]))
+					names.name(uint32(d.DwObjectID), engine.BytesToString(nm.Title[:]), engine.BytesToString(nm.AtcID[:]), nm.SpanFt*0.3048)
 					if uint32(d.DwEntryNumber) >= uint32(d.DwOutOf) {
 						if named, ok := names.namesDone(); ok {
 							feed.Traffic(named) // the second's scan, waiting for these
@@ -1103,7 +1132,7 @@ func runOn(ctx context.Context, st *state, client engine.Client, stream <-chan e
 				scan = append(scan, Traffic{
 					ObjectID: uint32(d.DwObjectID),
 					State:    engine.BytesToString(t.State[:]), Latitude: t.Lat, Longitude: t.Lon, AGL: t.AGL, GroundKts: t.GS,
-					Heading: t.Heading, VerticalFpm: vs, OnGround: t.OnGround != 0, Gear: t.Gear, Lights: lights(t), Span: t.SpanFt * 0.3048, Alt: t.AltFt, User: uint32(d.DwObjectID) == userID || uint32(d.DwObjectID) == types.SIMCONNECT_OBJECT_ID_USER,
+					Heading: t.Heading, VerticalFpm: vs, OnGround: t.OnGround != 0, Gear: t.Gear, Lights: lights(t), Alt: t.AltFt, User: uint32(d.DwObjectID) == userID || uint32(d.DwObjectID) == types.SIMCONNECT_OBJECT_ID_USER,
 				})
 				if uint32(d.DwEntryNumber) >= uint32(d.DwOutOf) {
 					out, ask := names.complete(scan)
@@ -1148,6 +1177,9 @@ func (s *state) load(ctx context.Context, icao string, refresh bool, requests ch
 	if l, ok := s.cache.Layout(icao); ok && !refresh {
 		s.wantProcedures(l.ICAO) // a layout the host put in the cache: its procedures too
 		return l, nil
+	}
+	if refresh {
+		s.markRefresh(icao) // from the simulator, not the disk cache
 	}
 	s.mu.Lock()
 	if !s.live {
