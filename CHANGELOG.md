@@ -7,20 +7,37 @@ This project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 ---
 
+## [0.169.2] - 2026-11-09
+
+### Fixed
+
+- Lift-off: a take-off rotating with the on-ground flag dropped it the frame its height reached the full struts, rather than the simulator flipping it airborne past them: no frame back at the static pitch and no on-ground flicker (live FKUJS PC-24, LKPR 24) (#1502).
+- Rollout: as the nose comes down the height sent is never below the extended struts, where the simulator shows it anyway; sent the height on the main gear learnt below them, it dropped there the frame the nose was down (CSA1383 A320 12.87 → 12.44 ft, THY948 A321) (#1502).
+
 ## [0.169.1] - 2026-11-09
 
+### Fixed
+- Wheels spin when pushed back and when a tug backs off the nose: the ground speed is passed on INITPOSITION whichever way the object moves (the simulator spins wheels forward only; live LKPR, CSA departures) (#1499).
 
 ## [0.169.0] - 2026-11-09
 
+### Added
+- Cap our objects in view per airport: `ManagerOptions.MaxObjects` / `Objects` (no aircraft spawned while our aircraft and ground vehicles in view there and those spawning reach the cap) and `TrafficManager.SetMaxObjects`; `Injector.CountNear`; World counts within 6 km of the airport, `maxObjects` on `/api/schedule` (negative: no limit) and `ScheduleSettings.MaxObjects` (live LKPR: drawing our objects about 60 µs each per frame) (#1496).
 
 ## [0.168.5] - 2026-11-09
 
+### Fixed
+- GSX stick tugs fitted to the aircraft they push: the towbar hooked on the nose wheel, the tug turning on its bar (WAGON BACK LINK ORIENTATION written, eased back in line once off the nose) instead of standing across it; tug picked per type (narrow jets the narrow tug, turboprops and business jets the low tug); vehicles turn along the ease to their lane instead of crabbing (live LKPR, OE-LWG E195) (#1494).
 
 ## [0.168.4] - 2026-11-09
 
+### Fixed
+- Helper jetways dock reliably: undocked as the crew asks for the push, gates taken by another of our objects docked again first, helpers that landed on each other's gates swapped, jetway data polled every 2 s only while a dock is coming and 10 s while undocking or filling (live LKPR: docks in 26–38 s, doors within 5 cm) (#1493).
 
 ## [0.168.3] - 2026-11-09
 
+### Changed
+- Less per-frame SimConnect work on the sim's main thread: ground height requests slowed for standing objects; moving objects read the ground alone; the controller monitor ticks on one value; the live scan reads title, ATC ID and span once per aircraft; the reality-bubble airport list asked again only after moving, airport list and model enumeration cached on disk; profiles memoised by title (#1492).
 
 ## [0.168.2] - 2026-11-08
 

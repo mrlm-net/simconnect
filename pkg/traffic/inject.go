@@ -863,6 +863,14 @@ func (i *Injector) PlaceAir(objectID uint32, pose ApproachPose) error {
 		// Touched down, the nose still up: on its main gear at the height it
 		// came down at, the flag at once; the simulator rests it there too.
 		o.touchdown, o.mainArm = true, pose.MainGearBehindM
+		// Never below its extended struts: with the flag, off its static
+		// pitch, the simulator shows it there whatever is sent, and takes
+		// ours the frame the nose is down. Sent its height on the main gear
+		// as learnt below them, it dropped there (live LKPR 24 2026-11-09,
+		// CSA1383 A320 12.87 → 12.44 ft, THY948 A321 at 135 kt).
+		if s := i.strutsOf(o); s > 0 {
+			cg = math.Max(cg, o.cgFt+s)
+		}
 	case pose.OnGround:
 		cg = o.cgFt
 		// Landed, the nose wheel coming down with the flag set: at its static
@@ -910,10 +918,14 @@ func (i *Injector) PlaceAir(objectID uint32, pose ApproachPose) error {
 	// and the rotation lifts the nose from it smoothly. Never its rest pitch
 	// on the way (offRest).
 	rolling := w * movingPitch(pose.GroundSpeedKts) * math.Max(0, 1-math.Max(0, pose.PitchDeg)/rollingFadeDeg)
+	above := i.smoothCG(o, o.cgFt+w*(cg-o.cgFt), onGround, false) + mainGearLift(pose)
+	if i.liftsOff(o, pose, onGround, above) {
+		onGround, o.sentGround = 0, 0
+	}
 	p := types.SIMCONNECT_DATA_INITPOSITION{
 		Latitude:  pose.Position.Lat,
 		Longitude: pose.Position.Lon,
-		Altitude:  airAltitude(pose, i.groundUnder(o, pose.Position)) + i.smoothCG(o, o.cgFt+w*(cg-o.cgFt), onGround, false) + mainGearLift(pose),
+		Altitude:  airAltitude(pose, i.groundUnder(o, pose.Position)) + above,
 		Pitch:     offRest(w*base+rolling-pose.PitchDeg, base, o.staticPitch), // SimConnect: negative is nose up
 		Bank:      -pose.BankDeg,                                              // assumed like the pitch (negative right wing down); check live
 		Heading:   pose.Heading,
