@@ -7,6 +7,12 @@ This project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 ---
 
+## [0.169.4] - 2026-11-10
+
+### Fixed
+
+- Schedule: whether a flight has a model is looked up once per airline and type for the installed titles, not for every flight of every extension; ranking all 7,072 titles for each of 30 flights under the manager's lock held every aircraft of ours still for 400 ms (live LKPR) (#1506).
+
 ## [0.169.3] - 2026-11-10
 
 ### Fixed
