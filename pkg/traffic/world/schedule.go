@@ -86,7 +86,11 @@ type scheduler struct {
 	noStand map[string]bool
 	// models: the aircraft titles as of the last tick (withModels).
 	models []string
-	real   map[string]*realID
+	// haveModel: by "airline|type", whether models has one for it
+	// (withModels), for the list haveFor (its first title and length).
+	haveModel map[string]bool
+	haveFor   modelsKey
+	real      map[string]*realID
 }
 
 // ScheduleTiming times the scheduled traffic (Options.Schedule, #741);
@@ -306,20 +310,39 @@ func (s *scheduler) source(from, to time.Time, focus []string) []traffic.Flight 
 // (offline LKPR: three light aircraft, 16 minutes without a landing).
 // Before the models are known, all are kept. Under the manager's lock: the
 // models as of the last tick, no cc.mu.
+//
+// Whether there is a model is kept by airline and type for the list: each
+// look ranks every title (live LKPR 2026-11-10: 7,072, for each of 30
+// flights at 09:00 under the manager's lock, every aircraft of ours held
+// still 400 ms).
 func (s *scheduler) withModels(flights []traffic.Flight) []traffic.Flight {
 	s.mu.Lock()
 	list := s.models
+	if k := keyOf(list); s.haveModel == nil || s.haveFor != k {
+		s.haveModel, s.haveFor = map[string]bool{}, k
+	}
+	have := s.haveModel
 	s.mu.Unlock()
 	if len(list) == 0 {
 		return flights
 	}
 	kept := flights[:0]
 	for _, f := range flights {
-		if len(traffic.ModelsForFlight(list, f.Airline, s.airlines[f.Airline].Name, f.Type, f.Callsign, 1)) > 0 {
+		k := f.Airline + "|" + f.Type
+		s.mu.Lock()
+		ok, known := have[k]
+		s.mu.Unlock()
+		if !known {
+			ok = len(traffic.ModelsForFlight(list, f.Airline, s.airlines[f.Airline].Name, f.Type, f.Callsign, 1)) > 0
+			s.mu.Lock()
+			have[k] = ok
+			s.mu.Unlock()
+		}
+		if ok {
 			kept = append(kept, f)
 			continue
 		}
-		k := "model " + f.Type
+		k = "model " + f.Type
 		s.mu.Lock()
 		said := s.noStand[k]
 		if s.noStand == nil {
@@ -332,6 +355,20 @@ func (s *scheduler) withModels(flights []traffic.Flight) []traffic.Flight {
 		}
 	}
 	return kept
+}
+
+// modelsKey tells one titles list from another: its first title and
+// length (withModels).
+type modelsKey struct {
+	first string
+	n     int
+}
+
+func keyOf(list []string) modelsKey {
+	if len(list) == 0 {
+		return modelsKey{}
+	}
+	return modelsKey{list[0], len(list)}
 }
 
 // visual reports whether the weather at an airport allows VFR flights in
