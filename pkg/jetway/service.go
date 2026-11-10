@@ -644,9 +644,27 @@ func (h *Helpers) DockAs(icao string, stand int, model, title string) error {
 // emptyGate reports that icao's stand g is a gate the sim gives
 // placeholders, left with nothing of ours on it (its jetway taken, its
 // dock failed). h.mu held.
+//
+// Not a failed gate whose helpers go elsewhere more than they dock
+// (GateUnfitMin): the sim does not give it the next helper, and filled
+// again its placeholder went to a docked gate, the fill stopped and
+// tried again, every dock at the airport held up meanwhile (live LKPR
+// 2026-11-09: stand 19, 11 misses and 3 docks, no jetway for over ten
+// minutes).
 func (h *Helpers) emptyGate(icao string, stand int, g *gate) bool {
+	if g.status == StatusFailed && h.unfitKnown(icao, stand) {
+		return false
+	}
 	return h.accepted[icao][stand] && g.placeholder == 0 && g.helper == 0 &&
 		g.status != StatusDocking && g.status != StatusDocked && g.status != StatusUndocking
+}
+
+// unfitKnown reports a gate whose helpers went elsewhere more than they
+// docked, GateUnfitMin times or more (gateUnfit, without its retest).
+// h.mu held.
+func (h *Helpers) unfitKnown(icao string, stand int) bool {
+	l := h.learned[fmt.Sprint(icao, " ", stand)]
+	return l != nil && l.aways >= GateUnfitMin && l.aways > l.docks
 }
 
 // emptyGates counts icao's empty gates (emptyGate). h.mu held.

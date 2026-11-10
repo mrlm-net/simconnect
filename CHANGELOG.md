@@ -7,6 +7,12 @@ This project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 ---
 
+## [0.169.3] - 2026-11-10
+
+### Fixed
+
+- Jetways: a failed gate whose helpers went elsewhere more often than they docked is no longer filled again; its placeholder went to an already docked gate, the fill stopped and retried, and every dock at the airport waited meanwhile (live LKPR stand 19: 11 misses, 3 docks, no jetway for over ten minutes) (#1504).
+
 ## [0.169.2] - 2026-11-09
 
 ### Fixed
