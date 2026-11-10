@@ -7,6 +7,12 @@ This project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 ---
 
+## [0.169.5] - 2026-11-10
+
+### Fixed
+
+- Jetways: a helper's AI control is released once its jetway docks, as a placeholder's is, so the simulator keeps its gate taken; left with the AI, the gate counted free and the next helper went there instead (live LKPR: C23 and B15 docked 4 and 1 times in four days, their helpers on docked gates). The jetway stays docked and still goes home by the retract plan (#1510).
+
 ## [0.169.4] - 2026-11-10
 
 ### Fixed

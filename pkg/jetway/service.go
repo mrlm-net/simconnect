@@ -1131,6 +1131,14 @@ func (h *Helpers) jetway(j types.SIMCONNECT_JETWAY_DATA) {
 				if g.status != StatusDocked {
 					h.logf("jetway %s stand %d: docked", icao, stand)
 					h.logHandle(icao, stand, j)
+					// Its AI control released, as a placeholder's: the sim
+					// keeps its gate in the parking table. Left with the AI,
+					// the gate counted free and the next helper or
+					// placeholder was put on it (live, LKPR C23 and B15:
+					// their helpers on docked gates, 4 and 1 docks in 4
+					// days). Its jetway stays; the retract plan still takes
+					// it home (live, LKPR B13 2026-11-10: 7, 4, 6, 0 in 26 s).
+					h.client.AIReleaseControl(att, h.req())
 					g.since = h.now
 					h.gateResult(icao, stand, true)
 					if h.opt.OnDock != nil {
