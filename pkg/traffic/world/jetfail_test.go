@@ -55,7 +55,12 @@ func TestGateWithoutJetwayGetsStairs(t *testing.T) {
 		t.Fatalf("at a gate before any failure: stairs %v, GPU %v, %d buses", s, u, b)
 	}
 
-	// Its dock times out (jetway.HelperOptions.OnDock).
+	// Its dock times out (jetway.HelperOptions.OnDock): once is not enough
+	// (a sim session failing every jetway a while), twice is.
+	cc.dockResult(icao, gate, "A321", false)
+	if s, _, _ := services("A321"); s {
+		t.Fatal("stairs after one timed-out dock")
+	}
 	cc.dockResult(icao, gate, "A321", false)
 	if s, u, b := services("A321"); !s || !u || b == 0 {
 		t.Fatalf("A321 after a timed-out dock: stairs %v, GPU %v, %d buses; want all", s, u, b)

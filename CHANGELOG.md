@@ -7,6 +7,12 @@ This project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 ---
 
+## [0.169.5] - 2026-11-11
+
+### Fixed
+
+- Jetways: a gate has no jetway for an aircraft type only after two timed-out docks of that type in a row, not one; a sim session whose jetways all failed for a while left seven LKPR gates without a jetway for the B738, A320 and BCS3 for six hours, over restarts. A lesson saved before counts as one (#1511).
+
 ## [0.169.4] - 2026-11-10
 
 ### Fixed

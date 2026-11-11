@@ -244,6 +244,14 @@ func (s *jetwayState) restingNow(k string, now time.Time) bool {
 // an A321, a BCS3 and an A20N each waited for a jetway that never came).
 const JetwayTypeRetest = 6 * time.Hour
 
+// JetwayTypeTimeouts: timed-out docks of one type at a gate, each within
+// JetwayTypeRetest of the last, before the gate has no jetway for that
+// type. One taught it before: a sim session whose jetways all failed for
+// a while left seven gates without a jetway for the B738, the A320 and
+// the BCS3 for six hours, over restarts (live, LKPR 2026-11-10 16:26 to
+// 17:03; at 19:49 TVS682 got stairs at C22).
+const JetwayTypeTimeouts = 2
+
 // jetwayType is the type a gate's jetway lessons are kept by: model's
 // ICAO type when known, else model as given.
 func jetwayType(model string) string {
@@ -263,7 +271,11 @@ func (cc *controlCenter) dockResult(icao string, stand int, model string, docked
 	if typ == "" {
 		return
 	}
-	if gateLessons.setNoJetway(icao, stand, typ, traffic.Now(), !docked) && cc.core != nil {
+	counts := gateLessons.setNoJetway(icao, stand, typ, traffic.Now(), !docked)
+	if !counts && !docked && cc.core != nil {
+		cc.core.log.printf("jetway %s stand %d: no jetway came for %s (one of %d before none for that type here)", icao, stand, typ, JetwayTypeTimeouts)
+	}
+	if counts && cc.core != nil {
 		if docked {
 			cc.core.log.printf("jetway %s stand %d: docked for %s again: its jetway counts for that type", icao, stand, typ)
 		} else {
@@ -1268,6 +1280,18 @@ type gateLesson struct {
 	// without was saved by a gate's rest, from refused docks counted as
 	// failed (live, LKPR 2026-11-08: ten false lessons): dropped at load.
 	Why string `json:"why,omitempty"`
+	// Timeouts: the type's docks timed out there in a row, each within
+	// JetwayTypeRetest of the last; the lesson counts from
+	// JetwayTypeTimeouts (one saved without it counts as one).
+	Timeouts int `json:"timeouts,omitempty"`
+}
+
+// timeouts is l's timed-out docks in a row (one without the count).
+func (l gateLesson) timeouts() int {
+	if l.Timeouts == 0 && l.NoJetwayAt != 0 {
+		return 1
+	}
+	return l.Timeouts
 }
 
 // gateLessonStore keeps the gates' lessons in a local file
@@ -1361,9 +1385,10 @@ func (s *gateLessonStore) teach(svc *jetway.Helpers) {
 	}
 }
 
-// setNoJetway notes (on) or clears that icao's stand gave typ no jetway,
-// at at; saved in the background (called under the jetway backend's
-// lock). Reports whether anything changed: a lesson new or cleared.
+// setNoJetway notes (on) a timed-out dock of typ at icao's stand, at at,
+// or clears the gate's lesson for typ (one docked); saved in the
+// background (called under the jetway backend's lock). Reports whether
+// the lesson began to count (JetwayTypeTimeouts reached) or was cleared.
 func (s *gateLessonStore) setNoJetway(icao string, stand int, typ string, at time.Time, on bool) bool {
 	icao, typ = strings.ToUpper(icao), strings.ToUpper(typ)
 	s.mu.Lock()
@@ -1373,29 +1398,38 @@ func (s *gateLessonStore) setNoJetway(icao string, stand int, typ string, at tim
 	})
 	switch {
 	case on && i >= 0:
-		s.items[i].NoJetwayAt, s.items[i].Why = at.Unix(), "timeout"
+		l := &s.items[i]
+		n := l.timeouts()
+		if at.Sub(time.Unix(l.NoJetwayAt, 0)) >= JetwayTypeRetest {
+			n = 0 // the last too long ago: counted afresh
+		}
+		l.NoJetwayAt, l.Why, l.Timeouts = at.Unix(), "timeout", n+1
 		s.saveLater()
-		return false
+		return l.Timeouts == JetwayTypeTimeouts
 	case on:
-		s.items = append(s.items, gateLesson{ICAO: icao, Stand: stand, Type: typ, NoJetwayAt: at.Unix(), Why: "timeout"})
+		s.items = append(s.items, gateLesson{ICAO: icao, Stand: stand, Type: typ, NoJetwayAt: at.Unix(), Why: "timeout", Timeouts: 1})
+		s.saveLater()
+		return JetwayTypeTimeouts <= 1
 	case i >= 0:
+		counted := s.items[i].timeouts() >= JetwayTypeTimeouts
 		s.items = slices.Delete(s.items, i, i+1)
+		s.saveLater()
+		return counted
 	default:
 		return false
 	}
-	s.saveLater()
-	return true
 }
 
-// noJetway reports that icao's stand gives typ no jetway now: it gave
-// none last time, less than JetwayTypeRetest ago.
+// noJetway reports that icao's stand gives typ no jetway now: its docks
+// timed out there JetwayTypeTimeouts times in a row, the last less than
+// JetwayTypeRetest ago.
 func (s *gateLessonStore) noJetway(icao string, stand int, typ string, now time.Time) bool {
 	icao, typ = strings.ToUpper(icao), strings.ToUpper(typ)
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	for _, l := range s.items {
 		if l.ICAO == icao && l.Stand == stand && l.Type == typ && typ != "" {
-			return now.Sub(time.Unix(l.NoJetwayAt, 0)) < JetwayTypeRetest
+			return l.timeouts() >= JetwayTypeTimeouts && now.Sub(time.Unix(l.NoJetwayAt, 0)) < JetwayTypeRetest
 		}
 	}
 	return false
