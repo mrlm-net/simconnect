@@ -551,7 +551,7 @@ func TestJetflowFalseLessonsDropped(t *testing.T) {
 	dir := t.TempDir()
 	file := filepath.Join(dir, "jetway-gates.json")
 	now := traffic.Now().Unix()
-	body := fmt.Sprintf(`[{"icao":"LKPR","stand":20,"type":"B738","noJetwayAt":%d},{"icao":"LKPR","stand":21,"type":"A321","noJetwayAt":%d,"why":"timeout"},{"icao":"LKPR","stand":11,"helper":"MyCrew Jetway Helper BCS3"}]`, now, now)
+	body := fmt.Sprintf(`[{"icao":"LKPR","stand":20,"type":"B738","noJetwayAt":%d},{"icao":"LKPR","stand":21,"type":"A321","noJetwayAt":%d,"why":"timeout","timeouts":2},{"icao":"LKPR","stand":22,"type":"A320","noJetwayAt":%d,"why":"timeout"},{"icao":"LKPR","stand":11,"helper":"MyCrew Jetway Helper BCS3"}]`, now, now, now)
 	if err := os.WriteFile(file, []byte(body), 0o644); err != nil {
 		t.Fatal(err)
 	}
@@ -561,14 +561,17 @@ func TestJetflowFalseLessonsDropped(t *testing.T) {
 		t.Error("a rest's lesson kept")
 	}
 	if !gateLessons.noJetway("LKPR", 21, "A321", traffic.Now()) {
-		t.Error("a timed-out dock's lesson dropped")
+		t.Error("a twice timed-out dock's lesson dropped")
+	}
+	if gateLessons.noJetway("LKPR", 22, "A320", traffic.Now()) {
+		t.Error("one timed-out dock (saved before the count) counts")
 	}
 	gateLessons.saving.Wait()
 	gateLessons.load(file)
 	gateLessons.mu.Lock()
 	n := len(gateLessons.items)
 	gateLessons.mu.Unlock()
-	if n != 2 {
-		t.Errorf("%d lessons after a restart, want 2", n)
+	if n != 3 {
+		t.Errorf("%d lessons after a restart, want 3", n)
 	}
 }
