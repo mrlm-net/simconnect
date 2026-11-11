@@ -200,7 +200,20 @@ func DoorsByTitle(airplanes ...string) map[string]ModelDoor {
 			d := doorOf(dir)
 			if d == nil {
 				if b := strings.Trim(cfgSection(cfg, "VARIATION")["base_container"], `"`); b != "" {
-					d = doorOf(filepath.Join(dir, filepath.FromSlash(strings.ReplaceAll(b, `\`, "/"))))
+					rel := filepath.FromSlash(strings.ReplaceAll(b, `\`, "/"))
+					d = doorOf(filepath.Join(dir, rel))
+					// The base in another package: the simulator resolves
+					// "..\FSLTL_A20N" across all packages' SimObjects/Airplanes,
+					// so a livery package of its own had no door (live, LKPR
+					// C30: "FSLTL_WANTED_A20N_Sweep", the jetway off its door).
+					for _, other := range airplanes {
+						if d != nil {
+							break
+						}
+						if other != root {
+							d = doorOf(filepath.Join(other, filepath.Base(rel)))
+						}
+					}
 				}
 			}
 			if d == nil {

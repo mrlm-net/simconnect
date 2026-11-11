@@ -77,6 +77,10 @@ type placing struct {
 	oursAt, helAt *placePos
 	// placeholder: only its position is read, for OnPlaceholder.
 	placeholder bool
+	// unclaimed: a placeholder no jetway took, its position only logged:
+	// where the sim put it when a fill takes no gate (live, LKPR
+	// 2026-11-10 and 11: fills of 0 for hours, the cause not seen).
+	unclaimed bool
 }
 
 // Timings of the helper backend, as measured live at EDDM (2026-10-10).
@@ -111,6 +115,15 @@ const (
 	FillStrays = 1
 	// StrayWaitMax: the longest wait of a fill stopped again and again.
 	StrayWaitMax = 30 * time.Minute
+	// NoRefillFor: a gate a refill could not fill is not refilled again
+	// for this long (its aircraft gone by then, mostly).
+	NoRefillFor = 10 * time.Minute
+	// CreateTimeout: a helper or placeholder the sim has not created in
+	// this long is dropped (abandon): refused, or its answer lost.
+	CreateTimeout = 30 * time.Second
+	// AbandonedKeep: how long a dropped request is remembered, its object
+	// removed should the sim create it after all.
+	AbandonedKeep = 10 * time.Minute
 	// HelperDelay: the helper is created this long after its gate's
 	// placeholder went (created at once, the sim had not freed the gate
 	// yet: live, LKPR C20's helper went to GA stand 56).
@@ -265,6 +278,14 @@ type gate struct {
 	// redockAt: docking again after its jetway was taken (redock): what
 	// sits on the gate now leaves then, its own helper HelperDelay after.
 	redockAt time.Time
+	// yielded: its placeholder taken away for a crowded neighbour's dock
+	// (SetCrowded); filled again only while no gate is docked.
+	yielded bool
+	// noRefillUntil: a refill for it left a placeholder no jetway took (the
+	// gate held by our aircraft without a jetway, or its jetway gone): not
+	// filled again before then (NoRefillFor), or a placeholder or a dock
+	// comes to it.
+	noRefillUntil time.Time
 }
 
 // Helpers is the invisible-helper backend (Service).
@@ -311,6 +332,68 @@ type Helpers struct {
 	// "docked" whose jetway never moved, live LKPR C21 2026-11-08: the
 	// data to tell it by, once seen).
 	rest map[string]types.SIMCONNECT_DATA_XYZ
+	// abandoned: requests dropped before the sim gave their object (abandon)
+	// → when; an object it gives one later is removed (Handle).
+	abandoned map[uint32]time.Time
+	// crowded: icao → stand → the gates too close to it (SetCrowded).
+	crowded map[string]map[int][]int
+	// trace: "ICAO stand" → a docking gate's jetway status and attached
+	// object last logged (a dock timing out: what its jetway did).
+	trace map[string][2]uint32
+}
+
+// CrowdGapM: two gates closer than this edge to edge (centre distance less
+// both radii) are crowded: the sim ranks a free gate with a held one that
+// close below every docked gate, so a helper made for it takes a docked
+// gate's jetway instead (live, LKPR 2026-11-03 to 11: C23 at 9.6 m from
+// C24 and B15 at 9.8 m from B14 lost 26 of 26 with any gate docked; C22
+// at 10.2 m from C23 did not block it, crowded too for the thin margin).
+const CrowdGapM = 10.5
+
+// SetCrowded gives icao's crowded gates: stand → the gates closer than
+// CrowdGapM to it. A dock at a crowded gate first takes away the
+// placeholders of those next to it, so the sim gives the helper that gate.
+func (h *Helpers) SetCrowded(icao string, near map[int][]int) {
+	h.mu.Lock()
+	defer h.mu.Unlock()
+	h.crowded[strings.ToUpper(icao)] = near
+}
+
+// clearCrowd takes away the placeholders of the gates crowding icao's
+// stand, held by nothing else of ours; each left empty while any gate is
+// docked (emptyGate). h.mu held.
+func (h *Helpers) clearCrowd(icao string, stand int) {
+	for _, q := range h.crowded[icao][stand] {
+		n := h.gates[icao][q]
+		if n == nil || n.placeholder == 0 || n.helper != 0 || n.status == StatusDocking || n.status == StatusDocked || n.status == StatusUndocking {
+			continue
+		}
+		h.client.AIRemoveObject(n.placeholder, h.req())
+		delete(h.byObj, n.placeholder)
+		n.placeholder, n.status, n.since, n.yielded = 0, StatusNone, h.now, true
+		h.logf("jetway %s stand %d: placeholder taken away for crowded stand %d's dock", icao, q, stand)
+	}
+}
+
+// crowdHeld reports a gate crowding icao's stand (SetCrowded) held by
+// something of ours. h.mu held.
+func (h *Helpers) crowdHeld(icao string, stand int) bool {
+	for _, q := range h.crowded[icao][stand] {
+		if n := h.gates[icao][q]; n != nil && (n.placeholder != 0 || n.helper != 0 || n.status == StatusDocking || n.status == StatusDocked) {
+			return true
+		}
+	}
+	return false
+}
+
+// anyDocked reports a gate at icao docked or docking. h.mu held.
+func (h *Helpers) anyDocked(icao string) bool {
+	for _, g := range h.gates[icao] {
+		if g.status == StatusDocked || g.status == StatusDocking {
+			return true
+		}
+	}
+	return false
 }
 
 // NewHelpers makes the helper backend on client.
@@ -326,12 +409,19 @@ func NewHelpers(client Client, o HelperOptions) *Helpers {
 	}
 	return &Helpers{client: client, opt: o, byReq: map[uint32]*pending{}, byObj: map[uint32]*pending{},
 		gates: map[string]map[int]*gate{}, jetways: map[string]map[int]bool{}, filling: map[string]bool{}, refill: map[string]bool{}, emptyTries: map[string]int{}, refillAt: map[string]time.Time{}, accepted: map[string]map[int]bool{}, placings: map[uint32]*placing{}, retiring: map[uint32]time.Time{},
-		learned: map[string]*gateLearning{}, strays: map[string]int{}, strayWait: map[string]time.Duration{}, rest: map[string]types.SIMCONNECT_DATA_XYZ{}}
+		learned: map[string]*gateLearning{}, strays: map[string]int{}, strayWait: map[string]time.Duration{}, rest: map[string]types.SIMCONNECT_DATA_XYZ{}, abandoned: map[uint32]time.Time{}, crowded: map[string]map[int][]int{}, trace: map[string][2]uint32{}}
 }
 
 // Learn gives back what a gate taught (OnLearn): helper docked there, or
 // was put on another gate instead.
+//
+// A refusal given back is dropped: each was a helper the sim put on a
+// docked gate, its ranking, not the type (live, LKPR 2026-11-11: B15 and
+// C23 refused five types, B16 the A321).
 func (h *Helpers) Learn(icao string, stand int, helper string, docked bool) {
+	if !docked {
+		return
+	}
 	h.mu.Lock()
 	defer h.mu.Unlock()
 	h.learn(strings.ToUpper(icao), stand, helper, docked, false)
@@ -532,8 +622,10 @@ func (h *Helpers) Release(icao string) error {
 			if p.object != 0 {
 				errs = append(errs, h.client.AIRemoveObject(p.object, h.req()))
 				delete(h.byObj, p.object)
+				delete(h.byReq, r)
+			} else {
+				h.abandon(r)
 			}
-			delete(h.byReq, r)
 		}
 	}
 	delete(h.gates, icao)
@@ -614,6 +706,7 @@ func (h *Helpers) DockAs(icao string, stand int, model, title string) error {
 			return ErrNoGate
 		}
 	} else {
+		h.clearCrowd(icao, stand)
 		if err := h.client.AIRemoveObject(g.placeholder, h.req()); err != nil {
 			return err
 		}
@@ -636,7 +729,8 @@ func (h *Helpers) DockAs(icao string, stand int, model, title string) error {
 		h.logf("jetway %s stand %d: %s never taken here, its helper %s", icao, stand, title, takes)
 		title = takes
 	}
-	g.status, g.since, g.model, g.title = StatusDocking, h.now, model, title
+	g.status, g.since, g.model, g.title, g.noRefillUntil = StatusDocking, h.now, model, title, time.Time{}
+	delete(h.trace, fmt.Sprint(icao, " ", stand)) // traced afresh
 	h.logf("jetway %s stand %d: docking (%s)", icao, stand, title)
 	return nil
 }
@@ -653,6 +747,16 @@ func (h *Helpers) DockAs(icao string, stand int, model, title string) error {
 // minutes).
 func (h *Helpers) emptyGate(icao string, stand int, g *gate) bool {
 	if g.status == StatusFailed && h.unfitKnown(icao, stand) {
+		return false
+	}
+	if h.now.Before(g.noRefillUntil) {
+		return false // its last refill took no gate: each try another placeholder, every dock held
+	}
+	if (g.yielded || h.crowdHeld(icao, stand)) && h.anyDocked(icao) {
+		// A placeholder now would take a docked gate: the sim ranks a free
+		// gate with a held one this close below every docked gate (live,
+		// LKPR 2026-11-11: C23 emptied, C22 and C24 held, every refill on
+		// docked A1 for an hour, each stopping the fill and every dock).
 		return false
 	}
 	return h.accepted[icao][stand] && g.placeholder == 0 && g.helper == 0 &&
@@ -767,10 +871,12 @@ func (h *Helpers) dropHelper(icao string, stand int, g *gate) {
 	}
 	for r, p := range h.byReq {
 		if p.helper && p.icao == icao && p.stand == stand {
-			if p.object != 0 {
-				h.client.AIRemoveObject(p.object, h.req())
-				delete(h.byObj, p.object)
+			if p.object == 0 {
+				h.abandon(r)
+				continue
 			}
+			h.client.AIRemoveObject(p.object, h.req())
+			delete(h.byObj, p.object)
 			delete(h.byReq, r)
 		}
 	}
@@ -804,9 +910,11 @@ func (h *Helpers) retireHelper(icao string, stand int, g *gate) {
 	}
 	for r, p := range h.byReq {
 		if p.helper && p.icao == icao && p.stand == stand {
-			if p.object != 0 {
-				h.retire(icao, p.object)
+			if p.object == 0 {
+				h.abandon(r)
+				continue
 			}
+			h.retire(icao, p.object)
 			delete(h.byReq, r)
 		}
 	}
@@ -969,6 +1077,15 @@ func (h *Helpers) Handle(msg engine.Message) bool {
 		h.mu.Lock()
 		p, ok := h.byReq[uint32(m.DwRequestID)]
 		if !ok {
+			if _, gone := h.abandoned[uint32(m.DwRequestID)]; gone {
+				// Dropped before it came: removed, not left to hold a gate
+				// (or take a jetway) until the connection closes.
+				delete(h.abandoned, uint32(m.DwRequestID))
+				h.client.AIRemoveObject(uint32(m.DwObjectID), h.req())
+				h.logf("jetway: object %d created after it was dropped: removed", m.DwObjectID)
+				h.mu.Unlock()
+				return true
+			}
 			h.mu.Unlock()
 			return false
 		}
@@ -1003,6 +1120,11 @@ func (h *Helpers) Handle(msg engine.Message) bool {
 		}
 		delete(h.placings, uint32(d.DwRequestID))
 		at := *engine.CastDataAs[placePos](&d.DwData)
+		if pl.unclaimed {
+			h.logf("jetway %s: placeholder %d no jetway took is at %.6f,%.6f hdg %.0f", pl.icao, pl.helper, at.Lat, at.Lon, at.Hdg)
+			h.mu.Unlock()
+			return true
+		}
 		if pl.placeholder {
 			h.mu.Unlock()
 			if h.opt.OnPlaceholder != nil {
@@ -1018,10 +1140,11 @@ func (h *Helpers) Handle(msg engine.Message) bool {
 		if pl.oursAt != nil && pl.helAt != nil {
 			h.place(pl)
 		}
-		// The model's type's title as before, not the gate's (placingTitle):
-		// the host's gate measure takes that title's nose gear, and the
-		// gate's would change where ours parks (to be decided).
-		title := h.helperTitle(pl.model)
+		// The helper made (placingTitle), not the model's type's: the
+		// host's gate measure takes that body's nose gear (live, LKPR C24
+		// 2026-11-11: the A332 helper's place taken as a B738's, our B738
+		// stood 8.3 m behind its door).
+		title := h.placingTitle(pl)
 		h.mu.Unlock()
 		if uint32(d.DwObjectID) != pl.ours && h.opt.OnPlaceholder != nil {
 			// The helper parked the sim's way too: that gate's measure
@@ -1052,6 +1175,13 @@ func (h *Helpers) jetway(j types.SIMCONNECT_JETWAY_DATA) {
 	}
 	h.jetways[icao][stand] = true
 	att := uint32(j.AttachedObjectId)
+	if g := h.gates[icao][stand]; g != nil && g.status == StatusDocking {
+		k, cur := fmt.Sprint(icao, " ", stand), [2]uint32{j.Status, att}
+		if h.trace[k] != cur {
+			h.trace[k] = cur
+			h.logf("jetway %s stand %d: docking, its jetway status %d, attached %d (helper %d)", icao, stand, j.Status, att, g.helper)
+		}
+	}
 	if p := h.byObj[att]; att != 0 && p != nil && p.icao == icao && p.helper && p.stand != stand {
 		h.adopt(icao, p, stand)
 	}
@@ -1081,7 +1211,7 @@ func (h *Helpers) jetway(j types.SIMCONNECT_JETWAY_DATA) {
 					h.strays[icao] = 0
 				}
 			}
-			g.placeholder, g.status, g.since = att, StatusReserved, h.now
+			g.placeholder, g.status, g.since, g.yielded, g.noRefillUntil = att, StatusReserved, h.now, false, time.Time{}
 			if h.accepted[icao] == nil {
 				h.accepted[icao] = map[int]bool{}
 			}
@@ -1092,9 +1222,16 @@ func (h *Helpers) jetway(j types.SIMCONNECT_JETWAY_DATA) {
 			if taken {
 				h.redock(icao, stand, g)
 			}
-			if path, err := h.opt.RetractPlan(icao); err == nil {
+			if h.opt.RetractPlan == nil {
+				h.forget(p) // holds its gate, nothing to retract with
+			} else if path, err := h.opt.RetractPlan(icao); err == nil {
 				h.client.AISetAircraftFlightPlan(att, path, h.req())
 				p.retractAt, p.retracting = h.now.Add(RetractWait), true
+			} else {
+				// No plan: it holds its gate as it is; left pending, the
+				// fill and every dock waited for it for good.
+				h.logf("jetway %s stand %d: no retract plan: %v", icao, stand, err)
+				h.forget(p)
 			}
 		case p.helper && p.stand != stand:
 			// The sim put the helper on another gate: not ours.
@@ -1109,11 +1246,12 @@ func (h *Helpers) jetway(j types.SIMCONNECT_JETWAY_DATA) {
 			h.gateResult(icao, p.stand, false)
 			if w := h.gate(icao, p.stand); w.status == StatusDocking {
 				w.status, w.since = StatusFailed, h.now
-				// A type never docked there: the gate does not take it (a
-				// type docked there before went elsewhere by chance, kept).
-				if l := h.learned[fmt.Sprint(icao, " ", p.stand)]; w.title != "" && (l == nil || l.docked != w.title) {
-					h.learn(icao, p.stand, w.title, false, true)
-				}
+				// No lesson that the gate refuses this type: the sim ranks
+				// docked gates above a free gate with a held neighbour, so a
+				// helper on another gate's jetway says nothing of its type
+				// (live, LKPR 2026-11-11: B16 learned A321 refused after a
+				// helper took A6, its A321s docked with the A320 helper, the
+				// bridge too high).
 			}
 			// A docked gate taken (the sim does not always count a docked
 			// helper's gate as taken; live, LKPR B9 1.5 min after it docked):
@@ -1242,7 +1380,24 @@ func (h *Helpers) Update(now time.Time) {
 	defer h.mu.Unlock()
 	h.now = now
 	busy, coming := false, false // coming: a dock on its way
+	for r, at := range h.abandoned {
+		if now.Sub(at) > AbandonedKeep {
+			delete(h.abandoned, r)
+		}
+	}
 	for r, p := range h.byReq {
+		if p.object == 0 && now.Sub(p.createdAt) > CreateTimeout {
+			// Never created (refused, or its answer lost): dropped, not
+			// waited for for good (every dock "still filling").
+			h.logf("jetway %s stand %d: no object created in %s: dropped", p.icao, p.stand, CreateTimeout)
+			h.abandon(r)
+			if p.helper {
+				if g := h.gate(p.icao, p.stand); g.status == StatusDocking {
+					g.createAt, g.status, g.since = time.Time{}, StatusFailed, now
+				}
+			}
+			continue
+		}
 		if p.helper {
 			g := h.gate(p.icao, p.stand)
 			switch {
@@ -1268,7 +1423,9 @@ func (h *Helpers) Update(now time.Time) {
 		case p.retracting:
 			busy = true
 		case p.object != 0 && !p.helper && h.placeholderGate(p) < 0 && now.Sub(p.createdAt) > ClaimTimeout:
-			// No jetway took it: no free jetway gate left for it.
+			// No jetway took it: no free jetway gate left for it. Where
+			// the sim put it logged first (asked before the removal).
+			h.measure(&placing{icao: p.icao, stand: -1, helper: p.object, unclaimed: true})
 			h.client.AIRemoveObject(p.object, h.req())
 			delete(h.byObj, p.object)
 			delete(h.byReq, r)
@@ -1277,6 +1434,18 @@ func (h *Helpers) Update(now time.Time) {
 			if len(h.dockable(p.icao)) == 0 && h.emptyTries[p.icao] < EmptyFillTries {
 				h.emptyTries[p.icao]++
 				break
+			}
+			if h.refill[p.icao] {
+				// A refill no gate took: the gates it was for are not
+				// refilled again (live, LKPR 2026-11-11: C26 with our
+				// aircraft on stairs, a placeholder made and removed every
+				// 13 s, every dock held "still filling").
+				for s, g := range h.gates[p.icao] {
+					if h.emptyGate(p.icao, s, g) {
+						g.noRefillUntil = now.Add(NoRefillFor)
+						h.logf("jetway %s stand %d: refilled with no gate taken: not refilled again for %s", p.icao, s, NoRefillFor)
+					}
+				}
 			}
 			delete(h.filling, p.icao)
 			delete(h.refill, p.icao)
@@ -1391,6 +1560,23 @@ func (h *Helpers) Update(now time.Time) {
 			h.client.RequestJetwayData(icao, 0, nil)
 		}
 	}
+}
+
+// forget takes p off the requests under way. h.mu held.
+func (h *Helpers) forget(p *pending) {
+	for r, q := range h.byReq {
+		if q == p {
+			delete(h.byReq, r)
+		}
+	}
+}
+
+// abandon drops request r, its object not created yet: one the sim creates
+// later is removed as it comes (Handle), not left on a gate until the
+// connection closes. h.mu held.
+func (h *Helpers) abandon(r uint32) {
+	delete(h.byReq, r)
+	h.abandoned[r] = h.now
 }
 
 // creating reports a placeholder at icao on its way to a gate. h.mu held.

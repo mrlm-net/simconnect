@@ -300,7 +300,7 @@ func TestJetflowRefusedTicksNoFalseFailures(t *testing.T) {
 // (live, LKPR: gates never asked again after a refill).
 func TestJetflowAskAgainAfterRefill(t *testing.T) {
 	b := newJWBed(t)
-	x, s, u := b.stand("B15"), b.stand("B14"), b.stand("C24")
+	x, s, u := b.stand("C30"), b.stand("B14"), b.stand("C24")
 	b.fill([]int{x, s, u}, x, s, u)
 	b.park(1, "SWR662", jwA320, x, 7001, true)
 	b.tick(time.Second)
@@ -324,7 +324,7 @@ func TestJetflowAskAgainAfterRefill(t *testing.T) {
 // asked mark and tries kept by gate, the departure inherited them).
 func TestJetflowTurnaroundAsksAgain(t *testing.T) {
 	b := newJWBed(t)
-	x, s, u := b.stand("B15"), b.stand("B14"), b.stand("C24")
+	x, s, u := b.stand("C30"), b.stand("B14"), b.stand("C24")
 	b.fill([]int{x, s, u}, x, s, u)
 	b.park(1, "SWR662", jwA320, x, 7001, true)
 	tries := 0
@@ -375,7 +375,14 @@ func TestJetflowRefusedMinuteGetsStairs(t *testing.T) {
 	x, s, u := b.stand("B15"), b.stand("B14"), b.stand("C24")
 	b.fill([]int{x, s, u}, x, s, u)
 	b.park(2, "CSA871", jwA320, u, 7002, true)
-	b.ticks(5) // C24 docking, its helper made and never placed (on its way 90 s)
+	// C24 docking: its helper on the gate, the jetway moving and never
+	// docking (DockTimeout, 90 s). A helper never created at all is dropped
+	// after jetway.CreateTimeout.
+	h := b.ticks(5)
+	if len(h) != 1 {
+		t.Fatalf("helpers %v", h)
+	}
+	b.list(jwState{u, 1, b.assign(h[0])})
 	it := b.park(1, "SWR662", jwA320, x, 7001, false)
 	b.ticks(30)
 	d := it.dep.(*jwDep)
@@ -460,11 +467,13 @@ func TestJetflowWideHelperWaitsForDockedGate(t *testing.T) {
 	if b.svc.Status("LKPR", c22) != jetway.StatusDocked {
 		t.Fatalf("C22 %s", b.svc.Status("LKPR", c22))
 	}
-	b.ticks(int(jetway.DockSettle/time.Second) + 5)
-	b.park(2, "RYR1", "FSLTL_FAIB_B738_RYR", c24, 7002, true)
-	b.ticks(3)
-	if st := b.svc.Status("LKPR", c24); st == jetway.StatusDocking {
-		t.Error("C24's A332 helper made with C22 docked")
+	if q, blocked := wideHelperBlocked(b.svc, b.g, c24, "FSLTL_FAIB_B738_RYR", jetway.HelperTitle("A332", false)); !blocked || q != c22 {
+		t.Errorf("C24's A332 helper for a B738 with C22 docked: blocked %v by %d", blocked, q)
+	}
+	// The old B738 refusal given back is dropped (a helper on a docked
+	// gate is the sim's ranking, not the type): C24 docks with the B738's.
+	if got := b.svc.TitleFor("LKPR", c24, "FSLTL_FAIB_B738_RYR", ""); got != jetway.HelperTitle("B738", false) {
+		t.Errorf("C24 for a B738: %q", got)
 	}
 }
 
