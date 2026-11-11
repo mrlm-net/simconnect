@@ -146,6 +146,9 @@ type controlled struct {
 	handoffGiven bool
 	// pushHeldWho: whom its push was last logged held for (logPushHeld).
 	pushHeldWho string
+	// pushPassFrom: since when its push is held for traffic passing
+	// behind (holdPushForPassing).
+	pushPassFrom time.Time
 	// clearedFt: the initial climb of its departure clearance (feet), the
 	// level a staffed departure climbs to and no further until the player
 	// clears it (climbCapped once set); cruiseFt its flight plan's level,

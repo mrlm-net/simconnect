@@ -202,6 +202,11 @@ func (it *controlled) askGround(req string) {
 // answer is the ground controller's clearance for request req, if the
 // crew still asks for it; the aircraft acts once it has read it back.
 func (it *controlled) answer(req string) {
+	// Traffic taxiing through what the push will sweep: held on the stand
+	// till it is by (pushpass.go).
+	if req == "pushback" && it.holdPushForPassing(req) {
+		return
+	}
 	it.mu.Lock()
 	if it.request != req {
 		it.mu.Unlock()

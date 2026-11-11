@@ -7,6 +7,13 @@ This project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 ---
 
+## [0.169.7] - 2026-11-11
+
+### Fixed
+
+- Traffic: wheels turn backwards on a pushback (and a tug backing off the nose): INITPOSITION Airspeed cannot be negative and spun them forward, so moving backwards it is 0 and VELOCITY BODY Z, which the models turn the wheels from, is written minus the ground speed (#1521).
+- Ground: a pushback is held on the stand while one of ours taxies through what it will sweep (within 400 m ahead, "standby, traffic passing behind", at most 3 minutes): pushed first, the departure stood on the taxiway facing the traffic and neither could pass (LKPR C26 onto H1 nose to nose with an arrival to C27) (#1522).
+
 ## [0.169.6] - 2026-11-11
 
 ### Fixed
