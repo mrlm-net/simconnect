@@ -13,6 +13,7 @@ import (
 // simulator side, where a remote actuator's proxy can stand in (#710).
 type departureCtl interface {
 	Occupies() (airport.Occupied, bool)
+	PushArea() (airport.Occupied, bool)
 	AvoidOccupied(occ []airport.Occupied) bool
 	ClimbTo(pos airport.LatLon, altFt, ft float64) error
 	ClimbExpedited(pos airport.LatLon, altFt, ft, throughFt float64) error

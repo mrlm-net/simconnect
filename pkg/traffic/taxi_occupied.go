@@ -105,3 +105,23 @@ func (c *TaxiController) PlanAvoidOccupied(occ []airport.Occupied) func() bool {
 		return true
 	}
 }
+
+// PushArea is what an injected departure's pushback will sweep, waiting on
+// its stand for it (cleared or not): the main gear's path and the tail
+// beyond, the tug's tow on. Ground holds the push while traffic taxies
+// through it, so it does not push onto a taxiway facing traffic coming
+// along it (live, LKPR 2026-11-11: CSA1889 pushed from C26 onto H1 nose to
+// nose with TVS1832 taxiing in to C27, both stopped for good).
+func (c *TaxiController) PushArea() (airport.Occupied, bool) {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	if c.state != TaxiAwaitingPushback || c.faceOut || c.inj == nil {
+		return airport.Occupied{}, false
+	}
+	path, err := c.pushPath()
+	if err != nil {
+		return airport.Occupied{}, false
+	}
+	pts := append(pushCorridor(path, 0, c.profile()), c.towPts...)
+	return airport.Occupied{Points: thin(pts, occupiedStepMeters), HalfSpan: c.req.Options.HalfSpan}, true
+}

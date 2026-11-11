@@ -26,6 +26,13 @@ func (r *remoteDep) Occupies() (airport.Occupied, bool) {
 	return o0, o1
 }
 
+func (r *remoteDep) PushArea() (airport.Occupied, bool) {
+	var o0 airport.Occupied
+	var o1 bool
+	r.c.dropped(r.c.call(r.t, "PushArea", []any{}, &o0, &o1))
+	return o0, o1
+}
+
 func (r *remoteDep) AvoidOccupied(occ []airport.Occupied) bool {
 	var o0 bool
 	r.c.dropped(r.c.call(r.t, "AvoidOccupied", []any{occ}, &o0))

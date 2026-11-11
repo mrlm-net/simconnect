@@ -8,8 +8,9 @@ import (
 )
 
 // Pushed back and then taxiing on, the same aircraft's wheels spin again:
-// INITPOSITION Airspeed is its ground speed through the push (wheels.go)
-// and from the first half metre of the taxi on, through a tight turn
+// backwards through the push (VELOCITY BODY Z, wheels.go), set back to 0
+// once it rolls forward, INITPOSITION Airspeed its ground speed from the
+// first half metre of the taxi on, through a tight turn
 // right after the push (user, live LKPR 2026-11-07, TVS469: "wheels are
 // not spinning"). The push and the taxi on one injector and one object, as
 // a departure has them.
@@ -29,14 +30,12 @@ func TestWheelsSpinAfterThePush(t *testing.T) {
 		t.Fatal(err)
 	}
 	pushed := drive(NewPushbackMover(path, push, 0), 600)
-	for k, p := range pushed {
+	for _, p := range pushed {
 		if err := inj.Place(42, p); err != nil {
 			t.Fatal(err)
 		}
-		if want := uint32(math.Round(p.GroundSpeedKts)); c.speeds[k] != want {
-			t.Fatalf("push frame %d (%.1f kt): Airspeed %d, want %d", k, p.GroundSpeedKts, c.speeds[k], want)
-		}
 	}
+	checkPushWheels(t, pushed, c.speeds, c.vz)
 	end := pushed[len(pushed)-1]
 
 	// Taxiing on from where the push ended, the path from its nose gear as
@@ -61,6 +60,9 @@ func TestWheelsSpinAfterThePush(t *testing.T) {
 			continue
 		}
 		got, want := c.speeds[n+k], uint32(math.Round(p.GroundSpeedKts))
+		if v := c.vz[n+k]; !math.IsNaN(v) && v != 0 {
+			t.Fatalf("taxi frame %d: VELOCITY BODY Z %.3f written rolling forward", k, v)
+		}
 		if got != want {
 			t.Fatalf("taxi frame %d, %.1f m on (%.1f kt, heading %.0f): Airspeed %d, want %d",
 				k, localDist(end.Position, p.Position), p.GroundSpeedKts, p.Heading, got, want)

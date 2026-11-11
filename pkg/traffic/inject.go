@@ -196,6 +196,10 @@ const injDefGroundFast = injDefSteer + 1
 // follow-me signals.
 const injDefTowbar = injDefSteer + 3
 
+// injDefWheels: VELOCITY BODY Z, the speed the models turn their wheels
+// from, written backwards on a push (wheels.go).
+const injDefWheels = injDefTowbar + 1
+
 // gearTrackSends: the first HoldGearDown writes of an aircraft watched for
 // an exception (it is written every frame on the take-off roll).
 const gearTrackSends = 3
@@ -350,6 +354,9 @@ func (i *Injector) register() error {
 		return err
 	}
 	if err := i.track("define ROTATION VELOCITY BODY Y", c.AddToDataDefinition(i.defBase+injDefSteer, "ROTATION VELOCITY BODY Y", "radians per second", types.SIMCONNECT_DATATYPE_FLOAT64, 0, 0)); err != nil {
+		return err
+	}
+	if err := i.track("define VELOCITY BODY Z", c.AddToDataDefinition(i.defBase+injDefWheels, "VELOCITY BODY Z", "meters per second", types.SIMCONNECT_DATATYPE_FLOAT64, 0, 0)); err != nil {
 		return err
 	}
 	if err := i.track("define WAGON BACK LINK ORIENTATION", c.AddToDataDefinition(i.defBase+injDefTowbar, "WAGON BACK LINK ORIENTATION", "number", types.SIMCONNECT_DATATYPE_FLOAT64, 0, 0)); err != nil {
@@ -591,7 +598,9 @@ func (i *Injector) place(objectID uint32, pose GroundPose, moving bool) error {
 	}
 	// The speed passed on, so the wheels turn (vehicles and aircraft alike);
 	// 0 pushed back, or they spin forward (wheels.go).
-	p.Airspeed = o.wheels.airspeed(pose.Position, pose.Heading, pose.GroundSpeedKts)
+	var vz float64
+	var spinBack bool
+	p.Airspeed, vz, spinBack = o.wheels.spin(pose.Position, pose.Heading, pose.GroundSpeedKts)
 	// An aircraft's nose wheel steers into its turn (steer.go): from how it
 	// moved.
 	yaw, steer := 0.0, false
@@ -604,14 +613,18 @@ func (i *Injector) place(objectID uint32, pose GroundPose, moving bool) error {
 	// A vehicle stopped (frozen since Takeover): the same placement again
 	// changes nothing, not sent; aircraft keep theirs (their standing
 	// rate holds them at their rest).
-	if moving && same && !steer {
+	if moving && same && !steer && !spinBack {
 		return nil
 	}
 	if steer {
 		i.client.SetDataOnSimObject(i.defBase+injDefSteer, objectID, types.SIMCONNECT_DATA_SET_FLAG_DEFAULT, 0, 8, unsafe.Pointer(&yaw))
 	}
 	// Not tracked: at 60 Hz the send-ID map would grow without bound.
-	return i.client.SetDataOnSimObject(i.defBase+injDefPosition, objectID, types.SIMCONNECT_DATA_SET_FLAG_DEFAULT, 0, uint32(unsafe.Sizeof(p)), unsafe.Pointer(&p))
+	err := i.client.SetDataOnSimObject(i.defBase+injDefPosition, objectID, types.SIMCONNECT_DATA_SET_FLAG_DEFAULT, 0, uint32(unsafe.Sizeof(p)), unsafe.Pointer(&p))
+	if spinBack { // after the placement, which sets the speed from Airspeed
+		i.client.SetDataOnSimObject(i.defBase+injDefWheels, objectID, types.SIMCONNECT_DATA_SET_FLAG_DEFAULT, 0, 8, unsafe.Pointer(&vz))
+	}
+	return err
 }
 
 // SetLights switches the lights of objectID to l, sending only the lights
@@ -943,6 +956,7 @@ func (i *Injector) PlaceAir(objectID uint32, pose ApproachPose) error {
 	// line-up turn) with the nose wheel still steering: straight at once,
 	// never left steering on the roll or in the air (steer.go).
 	straighten := o.nose.handOff()
+	o.wheels.end()
 	i.traceJump(objectID, o, "air", pose.Position, pose.Heading, pose.GroundSpeedKts)
 	i.notePlaced(o, p, pose.GroundSpeedKts <= restMaxKts || i.strutsWanted(o, pose) || pose.Landing && (pose.OnGround && pose.PitchDeg > 0 || !pose.OnGround && pose.HeightFt < AirBlendFt))
 	i.mu.Unlock()
@@ -998,7 +1012,7 @@ func (i *Injector) PlaceFlown(objectID uint32, pose FlownPose) error {
 		Bank:      -pose.BankDeg,  // as PlaceAir takes it
 		Heading:   pose.Heading,
 		OnGround:  onGround,
-		Airspeed:  o.wheels.airspeed(pose.Position, pose.Heading, pose.GroundSpeedKts),
+		Airspeed:  types.SIMCONNECT_DATA_INITPOSITION_AIRSPEED(math.Round(math.Max(0, pose.GroundSpeedKts))),
 	}
 	o.placed = true
 	o.placedAt = i.now()

@@ -9,23 +9,33 @@ import (
 	"github.com/mrlm-net/simconnect/pkg/types"
 )
 
-// wheelsClient records the INITPOSITION Airspeed of every placement.
+// wheelsClient records the INITPOSITION Airspeed of every placement and
+// the VELOCITY BODY Z written after it (NaN: none).
 type wheelsClient struct {
 	eventClient
 	speeds []uint32
+	vz     []float64
 }
 
 func (c *wheelsClient) SetDataOnSimObject(def, obj uint32, f types.SIMCONNECT_DATA_SET_FLAG, n, size uint32, p unsafe.Pointer) error {
-	if def == DefaultInjectDefinitionBase+injDefPosition {
+	switch def {
+	case DefaultInjectDefinitionBase + injDefPosition:
 		c.speeds = append(c.speeds, uint32((*types.SIMCONNECT_DATA_INITPOSITION)(p).Airspeed))
+		c.vz = append(c.vz, math.NaN())
+		return nil
+	case DefaultInjectDefinitionBase + injDefWheels:
+		if len(c.vz) == 0 || !math.IsNaN(c.vz[len(c.vz)-1]) {
+			panic("VELOCITY BODY Z written before its placement, or twice")
+		}
+		c.vz[len(c.vz)-1] = *(*float64)(p)
 		return nil
 	}
 	return c.eventClient.SetDataOnSimObject(def, obj, f, n, size, p)
 }
 
-// wheelsRun places an A320 at every frame of m and returns the poses and the
-// Airspeed passed with each.
-func wheelsRun(t *testing.T, m *GroundMover) ([]GroundPose, []uint32) {
+// wheelsRun places an A320 at every frame of m and returns the poses, the
+// Airspeed passed with each and the VELOCITY BODY Z written after it.
+func wheelsRun(t *testing.T, m *GroundMover) ([]GroundPose, []uint32, []float64) {
 	t.Helper()
 	c := &wheelsClient{}
 	inj := NewInjector(c)
@@ -38,13 +48,35 @@ func wheelsRun(t *testing.T, m *GroundMover) ([]GroundPose, []uint32) {
 			t.Fatal(err)
 		}
 	}
-	return poses, c.speeds
+	return poses, c.speeds, c.vz
 }
 
-// Pushed back, the wheels spin: INITPOSITION Airspeed can only be zero or
-// positive, and any speed spins them forward, which looked better than
-// standing still (user, live LKPR 2026-11-09), so the ground speed is passed
-// the whole push, through the tug's swing too, and taxiing forward.
+// checkPushWheels fails unless every pushed frame of poses moving at
+// restMaxKts or more, from the first wheelMinMoveM on, passes Airspeed 0
+// and writes VELOCITY BODY Z minus its speed: the wheels turn backwards.
+func checkPushWheels(t *testing.T, poses []GroundPose, speeds []uint32, vz []float64) {
+	t.Helper()
+	moving := 0
+	for k, p := range poses {
+		if p.GroundSpeedKts < restMaxKts || localDist(poses[0].Position, p.Position) < 2*wheelMinMoveM {
+			continue
+		}
+		moving++
+		if want := -p.GroundSpeedKts * 0.514444; speeds[k] != 0 || math.IsNaN(vz[k]) || math.Abs(vz[k]-want) > 1e-6 {
+			t.Fatalf("pushback frame %d (%.1f kt, heading %.0f): Airspeed %d, VELOCITY BODY Z %.3f, want 0 and %.3f", k, p.GroundSpeedKts, p.Heading, speeds[k], vz[k], want)
+		}
+	}
+	if moving < 60 {
+		t.Fatalf("the push barely moved: %d frames at %.1f kt or more", moving, restMaxKts)
+	}
+}
+
+// Pushed back, the wheels turn backwards: INITPOSITION Airspeed can only be
+// zero or positive and spins them forward (user, live LKPR 2026-11-11:
+// "wheels are not spinning properly on plane during pushback"), so it is 0
+// and VELOCITY BODY Z, which the models turn them from, is written minus
+// the ground speed the whole push, through the tug's swing too. Taxiing
+// forward, the ground speed is passed and nothing written.
 func TestPushbackWheelsSpin(t *testing.T) {
 	prof := DefaultMotionProfile()
 	push := prof
@@ -54,28 +86,20 @@ func TestPushbackWheelsSpin(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	poses, speeds := wheelsRun(t, NewPushbackMover(path, push, 0))
-	moving := 0
-	for k, p := range poses {
-		if p.GroundSpeedKts >= 0.5 {
-			moving++
-		}
-		if want := uint32(math.Round(p.GroundSpeedKts)); speeds[k] != want {
-			t.Fatalf("pushback frame %d (%.1f kt, heading %.0f): Airspeed %d, want %d", k, p.GroundSpeedKts, p.Heading, speeds[k], want)
-		}
-	}
-	if moving < 60 {
-		t.Fatalf("the push barely moved: %d frames at 0.5 kt or more", moving)
+	poses, speeds, vz := wheelsRun(t, NewPushbackMover(path, push, 0))
+	checkPushWheels(t, poses, speeds, vz)
+	if last := len(vz) - 1; poses[last].GroundSpeedKts < restMaxKts && !math.IsNaN(vz[last]) && vz[last] != 0 {
+		t.Errorf("stopped after the push: VELOCITY BODY Z %.3f left", vz[last])
 	}
 
 	fwd, err := NewGroundPath([]airport.LatLon{lkpr, offset(lkpr, 0, 300), offset(lkpr, 200, 300)}, prof)
 	if err != nil {
 		t.Fatal(err)
 	}
-	poses, speeds = wheelsRun(t, NewGroundMover(fwd, prof))
+	poses, speeds, vz = wheelsRun(t, NewGroundMover(fwd, prof))
 	for k, p := range poses {
-		if want := uint32(math.Round(p.GroundSpeedKts)); speeds[k] != want {
-			t.Fatalf("taxi frame %d (%.1f kt): Airspeed %d, want %d", k, p.GroundSpeedKts, speeds[k], want)
+		if want := uint32(math.Round(p.GroundSpeedKts)); speeds[k] != want || !math.IsNaN(vz[k]) {
+			t.Fatalf("taxi frame %d (%.1f kt): Airspeed %d, VELOCITY BODY Z %.3f, want %d and none", k, p.GroundSpeedKts, speeds[k], vz[k], want)
 		}
 	}
 }
