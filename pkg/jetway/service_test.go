@@ -394,11 +394,10 @@ func TestHelpersDockTimeoutKeepsHelper(t *testing.T) {
 	}
 }
 
-// A gate that never takes a helper type (the sim puts it on another gate,
-// taking that one's jetway) is docked next time with one it does take: the
-// last docked there, else the placeholders' type; the host hears both and
-// gives them back at the next start (live, LKPR 2026-10-20 to 22: stand 11
-// refused BCS3 five times of five).
+// A helper the sim puts on another gate teaches nothing of its type: the
+// sim ranks docked gates above a free gate next to a held one (live, LKPR
+// 2026-11-11: B16's A321s docked with the A320 helper after one such
+// "refusal", the bridge too high). Old refusals given back are dropped.
 func TestHelpersGateRefusesType(t *testing.T) {
 	f := &fakeSim{}
 	var heard []string
@@ -452,32 +451,22 @@ func TestHelpersGateRefusesType(t *testing.T) {
 	if got := dock("FSLTL_SBAI_BCS3_CSA-Lines", 301, 9); got != HelperTitle("BCS3", false) {
 		t.Fatalf("first helper %q", got)
 	}
-	// Refused: the placeholders' type instead.
-	if got := dock("FSLTL_SBAI_BCS3_CSA-Lines", 302, 7); got != HelperTitle("A320", false) {
-		t.Fatalf("after a refusal %q, want the placeholders' type", got)
+	// Put on another gate: no refusal learned, the type's own helper again.
+	if got := dock("FSLTL_SBAI_BCS3_CSA-Lines", 302, 7); got != HelperTitle("BCS3", false) {
+		t.Fatalf("after a helper on another gate %q, want its own type", got)
 	}
-	// A B738 docked there: the gate's helper from then on for a refused type.
-	h.mu.Lock()
-	h.gate("EDDM", 7).status = StatusReserved
-	h.mu.Unlock()
-	if got := dock("FSLTL_FAIB_B738_RYR-Ryanair", 303, 7); got != HelperTitle("B738", false) {
-		t.Fatalf("B738 at 7: %q", got)
-	}
-	if got := dock("FSLTL_SBAI_BCS3_CSA-Lines", 304, 7); got != HelperTitle("B738", false) {
-		t.Fatalf("a refused type at 7: %q, want the B738 that docked", got)
-	}
-	want := []string{"EDDM7" + HelperTitle("BCS3", false) + "false", "EDDM7" + HelperTitle("A320", false) + "true", "EDDM7" + HelperTitle("B738", false) + "true"}
+	want := []string{"EDDM7" + HelperTitle("BCS3", false) + "true"}
 	if !slices.Equal(heard, want) {
 		t.Errorf("heard %v, want %v", heard, want)
 	}
-	// Given back at the next start.
+	// A refusal given back at the next start (an older lesson): dropped.
 	h2 := NewHelpers(f, HelperOptions{Types: []string{"A320", "BCS3"}})
 	h2.Learn("eddm", 7, HelperTitle("BCS3", false), false)
 	h2.mu.Lock()
 	got := h2.gateTakes("EDDM", 7, HelperTitle("BCS3", false))
 	h2.mu.Unlock()
-	if got != HelperTitle("A320", false) {
-		t.Errorf("learned refusal not kept: %q", got)
+	if got != HelperTitle("BCS3", false) {
+		t.Errorf("an old refusal kept: %q", got)
 	}
 }
 

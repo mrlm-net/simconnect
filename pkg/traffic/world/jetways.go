@@ -105,6 +105,8 @@ type jetwayState struct {
 	mu       sync.Mutex
 	svc      *jetway.Helpers
 	prepared map[string]bool
+	// crowdSet: airports whose crowded gates the backend has (SetCrowded).
+	crowdSet map[string]bool
 	docked   map[string]bool // "ICAO stand" asked to dock
 	askedAt  map[string]time.Time
 	// refused: why a gate's last dock was refused, logged once each reason
@@ -558,6 +560,18 @@ func (cc *controlCenter) jetwayTick(now time.Time) {
 		// its arrival's, a lesson, a rest) asks for none.
 		stairs := it.dep != nil && it.standServices == nil
 		it.mu.Unlock()
+		if g != nil && icao != "" {
+			cc.jw.mu.Lock()
+			if cc.jw.crowdSet == nil {
+				cc.jw.crowdSet = map[string]bool{}
+			}
+			set := cc.jw.crowdSet[icao]
+			cc.jw.crowdSet[icao] = true
+			cc.jw.mu.Unlock()
+			if !set {
+				svc.SetCrowded(icao, crowdedGates(g))
+			}
+		}
 		if stand < 0 || gone || !cc.jetwayParked(it) || traffic.NoJetway(model) || g == nil || stand >= len(g.Layout.Parking) || !svc.HasJetway(icao, stand) {
 			continue
 		}
@@ -698,11 +712,12 @@ func (cc *controlCenter) placeholderParked(icao string, stand int, title string,
 	}
 	k := gateKey(icao, stand)
 	l := append(cc.jw.placed[k], parkedAt{title, lat, lon, hdg})
-	if len(l) > 4 {
-		l = l[len(l)-4:]
+	if len(l) > 8 { // a few bodies' (gatePlaceFor)
+		l = l[len(l)-8:]
 	}
 	cc.jw.placed[k] = l
 	cc.jw.mu.Unlock()
+	go gatePlaces.put(icao, stand, title, lat, lon, hdg)
 }
 
 // gatePlace is how the simulator parks on g's stand: its nose gear inset
@@ -710,10 +725,34 @@ func (cc *controlCenter) placeholderParked(icao string, stand int, title string,
 // Measured on the gate's placeholder (live, LKPR: inset 5.2 to 6.1 m, side
 // up to ±0.55 m, each the gate's own), else SimNoseGearInsetM on the line.
 func (cc *controlCenter) gatePlace(g *airport.Graph, stand int) (inset, side float64) {
+	return cc.gatePlaceFor(g, stand, "")
+}
+
+// gatePlaceFor is gatePlace for the helper titled helper: measured on a
+// helper of its body (helperType) first, the sim parking each body its
+// own way (live, LKPR C24: the A320 placeholders' nose gear 13.7 m in, the
+// A332 helper's 5.4 m), else as gatePlace.
+func (cc *controlCenter) gatePlaceFor(g *airport.Graph, stand int, helper string) (inset, side float64) {
 	p := g.Layout.Parking[stand]
 	cc.jw.mu.Lock()
 	l := slices.Clone(cc.jw.placed[gateKey(g.Layout.ICAO, stand)])
 	cc.jw.mu.Unlock()
+	if body := helperType(helper); body != "" {
+		var same []parkedAt
+		for _, at := range l {
+			if strings.EqualFold(helperType(at.title), body) {
+				same = append(same, at)
+			}
+		}
+		if len(same) == 0 {
+			if at, ok := gatePlaces.get(g.Layout.ICAO, stand, helper); ok {
+				same = []parkedAt{at} // measured before this start
+			}
+		}
+		if len(same) > 0 {
+			l = same
+		}
+	}
 	h := p.Heading * math.Pi / 180
 	for i := len(l) - 1; i >= 0; i-- { // the latest that is this gate's
 		at := l[i]
@@ -1222,6 +1261,27 @@ func helperType(title string) string {
 	return f[0]
 }
 
+// crowdedGates are g's gates closer than jetway.CrowdGapM edge to edge
+// (centre distance less both radii): stand → those next to it.
+func crowdedGates(g *airport.Graph) map[int][]int {
+	out := map[int][]int{}
+	ps := g.Layout.Parking
+	for i, a := range ps {
+		if !a.IsGate() {
+			continue
+		}
+		for j, b := range ps {
+			if j == i || !b.IsGate() {
+				continue
+			}
+			if math.Hypot(a.BiasX-b.BiasX, a.BiasZ-b.BiasZ)-a.Radius-b.Radius < jetway.CrowdGapM {
+				out[i] = append(out[i], j)
+			}
+		}
+	}
+	return out
+}
+
 // wideHelperBlocked reports another gate of g, docked, that helper (the
 // title the dock would make for model at stand, jetway.Helpers.TitleFor)
 // fits when it is a wider type than model's own helper: the simulator
@@ -1422,11 +1482,19 @@ func (s *gateLessonStore) setNoJetway(icao string, stand int, typ string, at tim
 
 // noJetway reports that icao's stand gives typ no jetway now: its docks
 // timed out there JetwayTypeTimeouts times in a row, the last less than
-// JetwayTypeRetest ago.
+// JetwayTypeRetest ago. Never for a type whose helper has docked there:
+// its timeouts were the sim's, not the gate's (live, LKPR 2026-11-11: C17
+// gave B738s no jetway after two timeouts in a morning no gate docked,
+// 49 docks before).
 func (s *gateLessonStore) noJetway(icao string, stand int, typ string, now time.Time) bool {
 	icao, typ = strings.ToUpper(icao), strings.ToUpper(typ)
 	s.mu.Lock()
 	defer s.mu.Unlock()
+	for _, l := range s.items {
+		if l.ICAO == icao && l.Stand == stand && l.Docked && typ != "" && strings.EqualFold(helperType(l.Helper), typ) {
+			return false
+		}
+	}
 	for _, l := range s.items {
 		if l.ICAO == icao && l.Stand == stand && l.Type == typ && typ != "" {
 			return l.timeouts() >= JetwayTypeTimeouts && now.Sub(time.Unix(l.NoJetwayAt, 0)) < JetwayTypeRetest

@@ -7,6 +7,21 @@ This project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 ---
 
+## [0.169.6] - 2026-11-11
+
+### Fixed
+
+- Jetways: a helper the simulator puts on another gate no longer teaches that the gate refuses its type (the sim's gate ranking, not the type: LKPR B16's A321s docked with the A320 helper, the bridge too high); refusals saved before are dropped. A type that has docked at a gate is never "no jetway" there from timeouts (LKPR C17 after two timeouts in a broken-fill morning) (#1514).
+- Jetways: a helper or placeholder the simulator creates after it was dropped is removed as it comes, not left until the connection closes; a create never answered is dropped after 30 s and a retract plan error no longer leaves the placeholder pending, either of which held every dock as "gates still filling" (#1515).
+- Jetways: a gate closer than 10.5 m edge to edge to a held gate (LKPR C23 to C24 and C22, B15 to B14) docks: the placeholders next to it are taken away first, the simulator ranking a free gate with a held one that close below every docked gate (26 of 26 helpers took a docked gate's jetway). Such a gate left empty is not refilled while a gate is docked: each refill went to a docked gate, stopping the fill and refusing every dock for an hour (#1516).
+- Jetways: a gate a refill could not fill (our aircraft on it without a jetway) is not refilled again for 10 minutes; a placeholder was made and removed every 13 s, every dock held meanwhile (#1517).
+- Jetways: a narrowbody at a wide gate stops at its wide helper's door: where the simulator parks each helper body on a gate is measured on that body and kept across starts (jetway-places.json); taken from the placeholders, an LKPR C24 B738 stood 8.3 m behind the A332 helper's door (#1518).
+- Doors: a livery package of its own whose base_container is in another package has its base's door (the WANTED A20N at LKPR C30, the jetway off it) (#1519).
+
+### Added
+
+- Jetways: where the simulator put a placeholder no jetway took, and each step of a docking gate's jetway (status, attached object), are logged: the cause of fills of 0 and of docks timing out.
+
 ## [0.169.5] - 2026-11-11
 
 ### Fixed
