@@ -7,6 +7,12 @@ This project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 ---
 
+## [0.170.3] - 2026-11-12
+
+### Added
+
+- World: `ControlView.ObjectID` (`objectId`) is the aircraft's simulator object, the id `/api/traffic` and an actuator's poses are keyed by; omitted until the object exists. A host showing poses at frame rate matched them to `/api/control` by tail (#1534).
+
 ## [0.170.2] - 2026-11-12
 
 ### Fixed
