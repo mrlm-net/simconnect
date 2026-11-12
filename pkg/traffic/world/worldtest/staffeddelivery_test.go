@@ -259,7 +259,9 @@ func TestApproachDescend(t *testing.T) {
 	if !h.Until(time.Minute, func() bool { err = h.World.ApproachDescend("LKPR", arr.Tail, ft); return err == nil }) {
 		t.Fatalf("%s at %.0f ft, descend to %.0f: %v", arr.Tail, arr.AltFt, ft, err)
 	}
-	if err := h.World.ApproachDescend("LKPR", arr.Tail, 20000); err == nil {
+	// Above where it is: an arrival on its way in from the start may be at
+	// FL254, where 20000 ft is a descent (#1529).
+	if err := h.World.ApproachDescend("LKPR", arr.Tail, float64((int(arr.AltFt)/1000+3)*1000)); err == nil {
 		t.Error("a climb accepted as a descent")
 	}
 	if !h.Until(time.Minute, func() bool {

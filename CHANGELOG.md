@@ -7,6 +7,13 @@ This project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 ---
 
+## [0.170.2] - 2026-11-12
+
+### Fixed
+
+- Traffic: an arrival on its way in from the start joins its own STAR at the plan's next point, not the cheapest join from where it appeared, the last before the initial approach fix of another STAR: it was cleared for the ILS at once, 57 NM out at FL254, and could not be vectored (#1529).
+- Traffic: departures due now count in the start's limit of half the aircraft cap for departures on their stands: at the morning peak 7 more stood on top of 5 due, 12 departures of a cap of 15 (#1529).
+
 ## [0.170.1] - 2026-11-12
 
 ### Fixed
