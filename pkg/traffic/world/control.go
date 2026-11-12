@@ -365,6 +365,9 @@ func vehicleView(kind string, id uint32, title string, state traffic.VehicleStat
 
 type ControlView struct {
 	ID int `json:"id"`
+	// ObjectID is its simulator object, the ID /api/traffic and the
+	// actuator's poses key it by; 0 (omitted) until the object exists.
+	ObjectID uint32 `json:"objectId,omitempty"`
 	// ATC and Frequency: the position working it and its frequency (#416).
 	ATC       string `json:"atc,omitempty"`
 	Frequency string `json:"frequency,omitempty"`
@@ -2250,6 +2253,7 @@ func (cc *controlCenter) views() []ControlView {
 		it.mu.Lock()
 		v, id, fixes, o := it.view, it.objectID, it.fixes, it.observed
 		it.mu.Unlock()
+		v.ObjectID = id
 		v.ActionParams = actionParams(v.Actions)
 		if cc.tcasView != nil && id != 0 {
 			v.TCAS = cc.tcasView(id)
