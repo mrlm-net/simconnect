@@ -985,6 +985,14 @@ func (m *TrafficManager) startStands(now time.Time) {
 			have[f.Airport]++
 			continue
 		}
+		// Due now (within DepartureLead): on its stand anyway, counted in
+		// the limit (#1529: at the morning peak 7 more on top of 5 due, 12
+		// departures of a cap of 15).
+		if f.Status != FlightDone && f.Status != FlightCancelled && f.TurnFrom == "" && f.Rules != "VFR" &&
+			!f.STD.After(now.Add(o.DepartureLead)) {
+			have[f.Airport]++
+			continue
+		}
 		if f.Status == FlightScheduled && f.TurnFrom == "" && f.Observed == nil && f.Rules != "VFR" &&
 			f.STD.After(now.Add(o.DepartureLead)) && !f.STD.After(now.Add(StartOvernightWindow)) {
 			cands = append(cands, f)

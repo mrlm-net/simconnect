@@ -91,6 +91,14 @@ func (s *scheduler) spawnMidway(f traffic.ManagedFlight) error {
 	if kts < 200 {
 		kts = 420
 	}
-	cc.log.printf("%-6s schedule: on its way in from the start: %.0f NM out on %s, %.0f ft, due %s", f.Callsign, fp.DistanceNM-d, fp.STAR, alt, due.Format("15:04"))
-	return s.spawnArrivalAlong(f, pos, alt, kts, nil)
+	// It joins its STAR at the plan's next point of it (#1529).
+	pick := starPick{star: fp.STAR}
+	for _, w := range fp.Waypoints {
+		if w.DistanceNM > d+0.1 && (w.Phase == nav.PhaseSTAR || w.Phase == nav.PhaseApproach) && w.Ident != "" {
+			pick.ident = w.Ident
+			break
+		}
+	}
+	cc.log.printf("%-6s schedule: on its way in from the start: %.0f NM out on %s, %.0f ft, due %s, joins at %s", f.Callsign, fp.DistanceNM-d, fp.STAR, alt, due.Format("15:04"), pick.ident)
+	return s.spawnArrivalAlong(f, pos, alt, kts, nil, pick)
 }

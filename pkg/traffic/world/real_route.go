@@ -298,5 +298,5 @@ func (s *scheduler) spawnRecorded(f traffic.ManagedFlight) error {
 		}
 		return s.spawnOverflightAlong(f, pos, alt, track, kts, rest)
 	}
-	return s.spawnArrivalAlong(f, pos, alt, kts, rest)
+	return s.spawnArrivalAlong(f, pos, alt, kts, rest, starPick{})
 }

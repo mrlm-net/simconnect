@@ -455,14 +455,47 @@ func (s *scheduler) spawnObserved(f traffic.ManagedFlight) error {
 		return s.spawnRealOverflight(f)
 	}
 	pos, alt := f.Observed.At(time.Now()) // the feed's clock, not the simulator's
-	return s.spawnArrivalAlong(f, pos, alt, math.Max(f.Observed.GroundKts, realMinKts), f.Observed.Route)
+	return s.spawnArrivalAlong(f, pos, alt, math.Max(f.Observed.GroundKts, realMinKts), f.Observed.Route, starPick{})
+}
+
+// starPick is the STAR point an arrival joins at, when known: an arrival
+// on its way in from the start, at the next point of its plan's STAR.
+type starPick struct {
+	star, ident string
+}
+
+// pickedJoin is the join of joins at pick's point, of pick's STAR if it
+// has one there, else of any STAR.
+func pickedJoin(joins []starJoin, pick starPick) (starJoin, bool) {
+	if pick.ident == "" {
+		return starJoin{}, false
+	}
+	var any *starJoin
+	for i, j := range joins {
+		if j.pts[0].Ident != pick.ident {
+			continue
+		}
+		if j.name == pick.star {
+			return j, true
+		}
+		if any == nil {
+			any = &joins[i]
+		}
+	}
+	if any != nil {
+		return *any, true
+	}
+	return starJoin{}, false
 }
 
 // spawnArrivalAlong puts arrival f in the air at pos (altFt), flown by
 // MSFS AI at kts along given (#845; none: direct) to where it meets a
 // STAR of the runway in use, else the cheapest join: a real aircraft, or
-// a recorded flight replayed.
-func (s *scheduler) spawnArrivalAlong(f traffic.ManagedFlight, pos airport.LatLon, alt, kts float64, given []traffic.PathPoint) error {
+// a recorded flight replayed; or at pick, where given (#1529: an arrival
+// on its way in from the start joined the cheapest point from where it
+// appeared, the last before the initial approach fix of another STAR,
+// and was cleared for the ILS at once, 57 NM out at FL254).
+func (s *scheduler) spawnArrivalAlong(f traffic.ManagedFlight, pos airport.LatLon, alt, kts float64, given []traffic.PathPoint, pick starPick) error {
 	cc := s.cc
 	g, err := s.st.cache.Graph(f.Airport)
 	if err != nil {
@@ -474,7 +507,11 @@ func (s *scheduler) spawnArrivalAlong(f traffic.ManagedFlight, pos airport.LatLo
 	// Its route given (#845): along it to where it meets a STAR.
 	var flown []traffic.PathPoint
 	pts, name, expect, err := []airport.NavPoint(nil), "", "", error(nil)
-	if joins, jerr := s.starJoins(g, rwy); jerr == nil && len(given) > 0 {
+	if joins, jerr := s.starJoins(g, rwy); jerr == nil && pick.ident != "" {
+		if j, ok := pickedJoin(joins, pick); ok {
+			pts, name, expect = j.pts, j.name, j.expect
+		}
+	} else if jerr == nil && len(given) > 0 {
 		if rj, ok := joinAlong(pos, given, joins); ok {
 			flown, pts, name, expect = rj.flown, rj.join.pts, rj.join.name, rj.join.expect
 		} else {
