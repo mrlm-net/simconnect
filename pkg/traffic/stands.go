@@ -9,6 +9,7 @@ import (
 	"runtime"
 	"slices"
 	"sort"
+	"strings"
 	"sync"
 	"time"
 
@@ -344,14 +345,31 @@ func (a *StandAllocator) Assign(req StandRequirements) (int, error) {
 	// before stands in none; another flight's area only once nothing else
 	// is free (a non-Schengen flight at a Schengen pier).
 	fit := func(i int) int { return standAreaFit(l.ICAO, l.Parking[i].Label(), req.Airline, req.Other) }
+	// The flight's own area and the other side of the border's together
+	// (areaAway at StandAreaAwayMeters more), each pier the fuller the
+	// further (pierLoad), stands in no area after them.
+	order := func(i int) int {
+		if f := fit(i); f != areaNone {
+			return 0
+		}
+		return 1
+	}
+	load := a.pierLoad()
+	extra := func(i int) float64 {
+		m := load(i) * StandPierLoadMeters
+		if fit(i) == areaAway {
+			m += StandAreaAwayMeters
+		}
+		return m
+	}
 	for _, other := range []bool{false, true} {
 		for _, group := range groups {
 			group = slices.DeleteFunc(slices.Clone(group), func(i int) bool { return (fit(i) == areaOther) != other })
 			if len(group) == 0 {
 				continue
 			}
-			ranked := a.rank(group, req.Runway, req.OffBlock)
-			slices.SortStableFunc(ranked, func(i, j int) int { return fit(i) - fit(j) })
+			ranked := a.rank(group, req.Runway, req.OffBlock, extra)
+			slices.SortStableFunc(ranked, func(i, j int) int { return order(i) - order(j) })
 			for _, i := range ranked {
 				if err := a.Occupy(i, req.Owner, half); err == nil {
 					a.SetOffBlock(req.Owner, req.OffBlock)
@@ -417,19 +435,53 @@ func (a *StandAllocator) AssignNear(req StandRequirements, pos airport.LatLon, m
 	return best, nil
 }
 
+// pierLoad is how full each stand's pier is (0–1): the share of the
+// stands with its label's letters ("C" for C17) that we hold.
+func (a *StandAllocator) pierLoad() func(int) float64 {
+	l := a.g.Layout
+	pier := func(i int) string {
+		s := strings.ToUpper(l.Parking[i].Label())
+		return strings.TrimRightFunc(s, func(r rune) bool { return r >= '0' && r <= '9' })
+	}
+	total, held := map[string]int{}, map[string]int{}
+	for i := range l.Parking {
+		total[pier(i)]++
+	}
+	a.mu.Lock()
+	for i := range a.reserved {
+		if a.valid(i) {
+			held[pier(i)]++
+		}
+	}
+	a.mu.Unlock()
+	return func(i int) float64 {
+		p := pier(i)
+		if total[p] == 0 {
+			return 0
+		}
+		return float64(held[p]) / float64(total[p])
+	}
+}
+
 // rank orders stands by taxi-in length from the runway's best exit. Only
 // the standRankCandidates nearest the runway are routed; the rest follow by
-// distance. Without a runway the order is random (by index without the
-// spread). Either way a stand next to one whose aircraft is due off near
-// offBlock pays pushConflict.
-func (a *StandAllocator) rank(stands []int, runwayEnd string, offBlock time.Time) []int {
+// an estimate from their distance. Without a runway the order is random
+// (by index without the spread). Either way a stand next to one whose
+// aircraft is due off near offBlock pays pushConflict, and extra (nil:
+// none) is added in meters.
+func (a *StandAllocator) rank(stands []int, runwayEnd string, offBlock time.Time, extra func(int) float64) []int {
 	out := slices.Clone(stands)
 	pen := map[int]float64{}
 	a.mu.Lock()
 	for _, i := range out {
-		pen[i] = a.pushConflict(i, offBlock)
+		pen[i] = a.pushConflict(i, offBlock) + a.neighbourPenalty(i)
 	}
 	a.mu.Unlock()
+	if extra != nil {
+		for _, i := range out {
+			pen[i] += extra(i)
+		}
+	}
 	if runwayEnd == "" {
 		// No runway to rank by: any suitable stand (the first by index was
 		// always LKPR A1).
@@ -449,12 +501,20 @@ func (a *StandAllocator) rank(stands []int, runwayEnd string, offBlock time.Time
 	mid := airport.LatLon{Lat: (rwy.Primary.Threshold.Lat + rwy.Secondary.Threshold.Lat) / 2, Lon: (rwy.Primary.Threshold.Lon + rwy.Secondary.Threshold.Lon) / 2}
 	cost := map[int]float64{}
 	for _, i := range out {
-		cost[i] = 1e7 + localDist(mid, l.Parking[i].Position)
+		cost[i] = standTaxiEstimate * localDist(mid, l.Parking[i].Position)
 	}
 	sort.SliceStable(out, func(x, y int) bool { return cost[out[x]] < cost[out[y]] })
+	routed, longest := map[int]bool{}, 0.0
 	for _, i := range out[:min(len(out), standRankCandidates)] {
 		if l, ok := a.taxiInNow(runwayEnd, i); ok && l >= 0 {
-			cost[i] = l
+			cost[i], routed[i] = l, true
+			longest = math.Max(longest, l)
+		}
+	}
+	// A stand not routed is no nearer than the longest routed taxi-in.
+	for _, i := range out {
+		if !routed[i] {
+			cost[i] = math.Max(cost[i], longest)
 		}
 	}
 	for _, i := range out {
@@ -463,7 +523,7 @@ func (a *StandAllocator) rank(stands []int, runwayEnd string, offBlock time.Time
 	sort.SliceStable(out, func(x, y int) bool { return cost[out[x]] < cost[out[y]] })
 	// Not always the very best: the stands nearly as close (as a stand
 	// controller allocates, or a schedule's gates) in random order first.
-	if a.spread > 0 && len(out) > 1 && cost[out[0]] < 1e7 {
+	if a.spread > 0 && len(out) > 1 {
 		limit := cost[out[0]]*(1+a.spread) + StandSpreadMeters
 		n := 0
 		for n < len(out) && cost[out[n]] <= limit {
@@ -639,6 +699,24 @@ func (a *StandAllocator) TakenFrom(stand int, owner string, object uint32) strin
 // reserved stand within StandPushNeighbourMeters whose aircraft is due off
 // at the same time, less as the times are further apart, nothing from
 // StandPushConflictWindow. a.mu is held.
+// neighbourPenalty is StandNeighbourMeters for a stand next to one of
+// ours (reserved), 0 otherwise (a.mu held). Aircraft detected are left
+// out: the jetway placeholders stand on every gate.
+func (a *StandAllocator) neighbourPenalty(stand int) float64 {
+	l := a.g.Layout
+	p := l.Parking[stand]
+	for j := range a.reserved {
+		if j == stand || !a.valid(j) {
+			continue
+		}
+		q := l.Parking[j]
+		if localDist(p.Position, q.Position)-p.Radius-q.Radius < StandNeighbourGapMeters {
+			return StandNeighbourMeters
+		}
+	}
+	return 0
+}
+
 func (a *StandAllocator) pushConflict(stand int, offBlock time.Time) float64 {
 	if offBlock.IsZero() {
 		return 0

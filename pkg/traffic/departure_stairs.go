@@ -20,6 +20,13 @@ const (
 	StandServiceStartDelay   = 10 * time.Second
 	StandServiceClearMargin  = 2 * time.Minute
 	StandServiceClearTimeout = 2 * time.Minute
+	// StandServiceLead: on an aircraft parked long before its flight (a
+	// start stand, a night stop) with no passengers to bring off, the
+	// stairs, the GPU and the buses come no earlier than this before its
+	// push: until then it is one object, not four, under the airport's
+	// object limit (live LKPR 2026-11-11: eleven parked at the start with
+	// their vehicles took all 30, no gate filled).
+	StandServiceLead = 40 * time.Minute
 )
 
 // Deprecated names, kept for v0.20 callers: the stairs' timings.
@@ -128,6 +135,9 @@ func (c *TaxiController) updateStandService(v FuelService, st *standService, dt 
 	leaveBy := c.gateAt.Add(-TugLeadTime - margin - st.leaveEarly)
 	if !st.attached {
 		if c.state != TaxiAwaitingPushback || c.pushCleared || !c.pushAt.IsZero() || !now.Before(leaveBy) {
+			return
+		}
+		if len(c.req.Deboard) == 0 && now.Before(c.gateAt.Add(-StandServiceLead)) {
 			return
 		}
 		if st.waitFrom.IsZero() {

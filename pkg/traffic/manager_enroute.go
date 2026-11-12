@@ -23,6 +23,10 @@ func (m *TrafficManager) start(f *ManagedFlight, now time.Time) (time.Time, stri
 	switch {
 	case f.Departure() && f.NightStop:
 		return now, "" // on its stand through the night (#1294)
+	case f.Arrival() && f.StartAirborne:
+		return now, "midway" // on its STAR from the start
+	case f.Departure() && f.StartStand:
+		return now, "" // on its stand from the start
 	case f.Departure():
 		return f.STD.Add(-o.DepartureLead), ""
 	case f.Overflight():

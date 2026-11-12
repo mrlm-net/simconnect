@@ -141,12 +141,13 @@ func TestStickTugBarStraight(t *testing.T) {
 	}
 }
 
-// The E195 (OE-LWG at LKPR) and the other jets that get a stick tug: with
+// The jets that get a stick tug (the 737s, the Superjet, the Q400; the E195
+// OE-LWG at LKPR before it got a towbarless one): with
 // the bar straight its hook end goes on the nose wheel, the tug a bar's
 // length ahead. At -1.8 m (tuned live against the tug standing across the
 // bar) the hook sat under the fuselage and the tug under the nose.
 func TestStickTugHookOnTheNoseWheel(t *testing.T) {
-	for _, model := range []string{"FSLTL_E190_AUA", "E195", "FSLTL_FAIB_A320_SmartWings", "FSLTL_A321_DLH", "FSLTL_FAIB_B738_TVS-Smartwings_NC", "FSLTL_B789_BAW"} {
+	for _, model := range []string{"FSLTL_FAIB_B738_TVS-Smartwings_NC", "FSLTL_B737_RYR", "FSLTL_SU95_AFL", "DH8D"} {
 		prof := MotionProfileFor(model)
 		title := TugTitleForModel("", model, ProfileFor(model).WingspanM)
 		if _, ok := stickTugAxle[title]; !ok {
@@ -196,7 +197,7 @@ func TestStickTugDrivesWithoutSliding(t *testing.T) {
 		if err != nil {
 			t.Fatal(err)
 		}
-		model := "FSLTL_E190_AUA"
+		model := "FSLTL_FAIB_B738_TVS-Smartwings_NC"
 		prof := MotionProfileFor(model)
 		title := TugTitleForModel("", model, ProfileFor(model).WingspanM)
 		c := &stickClient{}

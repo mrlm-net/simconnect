@@ -353,6 +353,12 @@ const (
 	StandPushNeighbourMeters = 90.0
 	StandPushConflictWindow  = 8 * time.Minute
 	StandPushConflictMeters  = 600.0
+	// A free stand within StandNeighbourGapMeters edge to edge of a held
+	// one ranks as if StandNeighbourMeters further: aircraft spread over
+	// the apron, not packed side by side with the rest blank (user, LKPR
+	// 2026-11-11). Packed once nothing else is free.
+	StandNeighbourGapMeters = 12.0
+	StandNeighbourMeters    = 250.0
 )
 
 // Pushback tug (SimObjectTug). The tug's reference point sits TugAheadMeters
@@ -510,3 +516,17 @@ func TugAheadFor(title string) (float64, bool) {
 	}
 	return 0, false
 }
+
+// Spreading stands over the piers (StandAllocator.Assign): a stand ranks
+// StandPierLoadMeters further for a full pier (in proportion, by the
+// share of its pier's stands we hold), StandAreaAwayMeters further on the
+// other side of the Schengen border's area; a stand not routed for taxi-in
+// counts standTaxiEstimate times its straight distance from the runway.
+// With a hard Schengen split and every unrouted stand behind every routed
+// one, LKPR filled pier C and left A and B empty (the user, live
+// 2026-11-12).
+const (
+	StandPierLoadMeters = 3000.0
+	StandAreaAwayMeters = 400.0
+	standTaxiEstimate   = 1.5
+)

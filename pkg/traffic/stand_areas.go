@@ -87,9 +87,15 @@ func StandAreas() []StandAreaItem {
 // "" unknown): areaFor the flight's (its airline, or its side of the
 // Schengen border), areaNone no area or nothing known against it,
 // areaOther another flight's.
+// areaAway: the other side of the Schengen border's area, taken alongside
+// the flight's own at StandAreaAwayMeters more (StandAllocator.Assign):
+// with nearly every LKPR flight Schengen, a hard split filled pier C and
+// left A and B empty (the user, live 2026-11-12: "most on C, B and A
+// empty").
 const (
 	areaFor = iota
 	areaNone
+	areaAway
 	areaOther
 )
 
@@ -111,6 +117,11 @@ func standAreaFit(icao, label, airline, other string) int {
 			side = FlightsSchengen
 		}
 		if side != a.Flights {
+			// A Schengen flight may use a non-Schengen pier; a flight
+			// from outside never a Schengen one (no passport control).
+			if side == FlightsSchengen {
+				return areaAway
+			}
 			return areaOther
 		}
 		fit = areaFor

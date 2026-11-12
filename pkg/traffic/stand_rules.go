@@ -35,6 +35,7 @@ const narrowbodySpanM = 36.5
 var shippedStandRules = []StandRuleItem{
 	{Stand: "LKPR B14", ForwardM: -9, MaxSpanM: narrowbodySpanM, Reason: "35 m circle: narrowbodies stop 9 m back from the widebody stop (the user, live: CSA278 on C22, on the stop marks)"},
 	{Stand: "LKPR C22", ForwardM: -9, MaxSpanM: narrowbodySpanM, Reason: "35 m circle: narrowbodies stop 9 m back from the widebody stop (the user, live: CSA278 on C22, on the stop marks)"},
+	{Stand: "LKPR C24", ForwardM: 7, MaxSpanM: narrowbodySpanM, Reason: "28 m circle: narrowbodies stopped 6-7 m short of the stop bar, the tail over the stand's red line (the user, live 2026-11-11: TVS799 B738 on C24)"},
 }
 
 var standRulesNow dict.Value[map[string]StandRuleItem]

@@ -7,6 +7,28 @@ This project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 ---
 
+## [0.170.0] - 2026-11-12
+
+### Added
+
+- Traffic: when traffic begins at an airport, up to half its aircraft limit of the departures due in the next 2 h that no arrival of ours brings stand on their stands from the start, 10 s apart (ManagerOptions.StartStands, StartWindow, StartSpacing): the ground is busy at once, then arrivals turn into departures and keep it level (offline, LKPR 4 h: 18 on the ground at 15 min instead of 3, 12 to 29 after) (#1524).
+- Traffic: arrivals due between 5 minutes and ArrivalLead after traffic begins appear on their STAR where they would be by now (ManagerOptions.StartAirborneMin, ManagedFlight.StartAirborne, stage "midway"), as the landing flow spaces them, instead of being dropped: the first landings come minutes after the start (#1524).
+- Follow-me car: its roof light flashes while it is out and its sign says FOLLOW ME while it waits and leads (GSX WAGON FRONT/BACK LINK ORIENTATION, Injector.SetFollowMeSignals) (#1524).
+- Traffic: where fewer departures are due within StartWindow than the start may place (an evening, the last wave gone), the next ones up to StartOvernightWindow (18 h) stand on their stands overnight (NightStop): the apron holds aircraft parked for the night (#1524).
+
+### Changed
+
+- Traffic: an aircraft parked more than 40 minutes before its push with no one to bring off stays dark (no nav lights) and gets its stairs, GPU and buses only from then (StandServiceLead): one object, not four, under the airport's object limit (#1524).
+- Stands: a free stand next to one of ours ranks behind one with none (StandNeighbourMeters): aircraft spread over the apron, packed only once nothing else is free (#1524).
+- Schedule: a flight held by the object or aircraft limit says so on the board (#1524).
+- Tugs: the towbarless FSDT_TPX_200 (TugTowbarlessTitle) pushes the A320 family, the 787-8/-9, the E-jets and the CRJ700/900/1000, the A220 the default towbarless tug; stick tugs only where no towbarless one clears (737s, Superjet, Q400, turboprops): the simulator's nose wheel does not turn with a stick tug's bar (#1524).
+- Stands: LKPR C24 narrowbodies stop 7 m further forward (their tail was over the stand's red line) (#1524).
+- Stands: gates spread over the piers: a pier holding more of ours ranks behind (StandPierLoadMeters), and a Schengen flight takes a non-Schengen pier (LKPR A, B) at StandAreaAwayMeters more instead of only once its own is full; stands not routed rank by an estimate, not last: LKPR traffic no longer fills pier C and leaves A and B empty (#1524).
+
+### Fixed
+
+- Jetways: a gate departure is not spawned while a jetway at its airport is docking or the gates are filling, and a dock held in our own queue (gates refilling, another gate docking) gets stairs only after JetwayFillWaitMax (3 min), not the minute of a refusal: the start's burst of gate departures docks one by one instead of getting stairs (#1524).
+
 ## [0.169.7] - 2026-11-11
 
 ### Fixed

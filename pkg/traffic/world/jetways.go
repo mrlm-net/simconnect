@@ -195,6 +195,11 @@ const (
 // and buses instead.
 const JetwayRefusedMax = time.Minute
 
+// JetwayFillWaitMax: a dock held this long in the queue (gates refilling,
+// another gate docking: jetway.ErrFilling) leaves the aircraft without a
+// jetway; a dock that never docks times out within it.
+const JetwayFillWaitMax = 3 * time.Minute
+
 // gateResting reports whether gate k rests after failed docks, counting a
 // dock that went from docking (the last tick) to failed (now) once; a
 // refused dock, which never docked, never counts (live, LKPR 2026-11-08:
@@ -652,7 +657,15 @@ func (cc *controlCenter) jetwayTick(now time.Time) {
 			cc.jw.refusedSince[k] = now
 		}
 		refused := now.Sub(cc.jw.refusedSince[k])
-		none := (errors.Is(err, jetway.ErrNoGate) || refused >= JetwayRefusedMax) && cc.jw.markNoJetway(k, obj)
+		// Held in our own queue (the gates refilling, another gate
+		// docking): stairs only after JetwayFillWaitMax, not the minute
+		// of a refusal (live, LKPR 2026-11-11: five docks held behind
+		// refills given stairs after a minute).
+		limit := JetwayRefusedMax
+		if errors.Is(err, jetway.ErrFilling) {
+			limit = JetwayFillWaitMax
+		}
+		none := (errors.Is(err, jetway.ErrNoGate) || refused >= limit) && cc.jw.markNoJetway(k, obj)
 		cc.jw.mu.Unlock()
 		if !said {
 			cc.core.log.printf("jetway %s %s: no dock for %s yet: %v", icao, label, tail, err)
@@ -1143,6 +1156,27 @@ const jetwaysWaitMax = 6 * time.Minute
 // placeholders, or jetwaysWaitMax gone since the jetways were switched on
 // for this connection (live: counted from the traffic's start, the cap
 // had run out before the jetways were on; TVS1779 spawned unwaited).
+// jetwayBusy reports whether a jetway at icao is docking or its gates are
+// refilling: no other aircraft is placed on a gate meanwhile.
+func (cc *controlCenter) jetwayBusy(icao string) bool {
+	if !jetwaysEnabled() {
+		return false
+	}
+	svc := cc.jetwayBuilt()
+	if svc == nil {
+		return false
+	}
+	if svc.Filling(icao) {
+		return true
+	}
+	for _, s := range svc.Jetways(icao) {
+		if svc.Status(icao, s) == jetway.StatusDocking {
+			return true
+		}
+	}
+	return false
+}
+
 func (cc *controlCenter) jetwaysReady(icao string) bool {
 	jetwaysOn.mu.Lock()
 	on, since := jetwaysOn.on, jetwaysOn.since

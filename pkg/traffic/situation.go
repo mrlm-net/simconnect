@@ -110,7 +110,7 @@ func CheckStuck(after map[FlightStatus]time.Duration) SituationCheck {
 				max *= 2 // in the runway queue: the tower's, it goes
 			}
 			since := f.Since
-			if f.NightStop && f.Status == FlightBoarding && f.STD.After(since) {
+			if (f.NightStop || f.StartStand) && f.Status == FlightBoarding && f.STD.After(since) {
 				since = f.STD // on its stand through the night: boarding counts from its STD (#1294)
 			}
 			if ok && s.Now.Sub(since) > max {

@@ -427,6 +427,8 @@ func (s *scheduler) Spawn(f traffic.ManagedFlight) {
 		switch f.Stage {
 		case "enroute":
 			spawn = func() error { return s.spawnEnroute(f) }
+		case "midway":
+			spawn = func() error { return s.spawnMidway(f) } // on its STAR from the start
 		case "observed":
 			spawn = func() error { return s.spawnObserved(f) } // a real aircraft in the air (#841)
 		}
@@ -500,6 +502,10 @@ func (s *scheduler) spawnWith(f traffic.ManagedFlight, pre *planned, model strin
 		if f.NightStop {
 			// On its stand through the night: it calls when the others do (#1294).
 			req.parked, req.callAt, req.overnight = true, f.STD.Add(-s.mgr.Options().DepartureLead), s.overnight(true)
+		}
+		if f.StartStand {
+			// On its stand from the start: it calls when it is due to.
+			req.parked, req.callAt = true, f.STD.Add(-s.mgr.Options().DepartureLead)
 		}
 	} else if f.TurnTo != "" {
 		// Its stand away from neighbours due off when its turnaround is.

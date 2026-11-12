@@ -121,3 +121,35 @@ func TestJetflowRefillNoGateNotRepeated(t *testing.T) {
 		t.Fatal("C24's dock held by refills")
 	}
 }
+
+// One gate at a time: while a jetway docks (or the gates refill after
+// one), no departure is placed on another gate. Placed 10 s apart at the
+// start, three helpers took each other's gates and five docks ran out of
+// time behind the refills: stairs (live, LKPR 2026-11-11).
+func TestJetwayBusyWhileDocking(t *testing.T) {
+	b := newJWBed(t)
+	x, s, u := b.stand("B15"), b.stand("B14"), b.stand("C24")
+	b.fill([]int{x, s, u}, x, s, u)
+	if b.cc.jetwayBusy("LKPR") {
+		t.Fatal("busy with nothing docking")
+	}
+	b.park(2, "CSA871", jwA320, u, 7002, true)
+	b.tick(time.Second)
+	h := b.tick(jetway.HelperDelay)
+	if len(h) != 1 {
+		t.Fatalf("C24 helpers %v", h)
+	}
+	if !b.cc.jetwayBusy("LKPR") {
+		t.Errorf("not busy with C24 docking (%s)", b.svc.Status("LKPR", u))
+	}
+	obj := b.assign(h[0])
+	b.list(jwState{u, 1, obj})
+	b.list(jwState{u, 7, obj})
+	if st := b.svc.Status("LKPR", u); st != jetway.StatusDocked {
+		t.Fatalf("C24 %s", st)
+	}
+	b.ticks(5)
+	if b.cc.jetwayBusy("LKPR") && !b.svc.Filling("LKPR") {
+		t.Error("busy once C24 docked")
+	}
+}
