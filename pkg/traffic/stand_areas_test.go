@@ -25,8 +25,8 @@ func TestStandAreasSchengen(t *testing.T) {
 	if !Schengen("LKPR") || !Schengen("GCLP") || Schengen("EGLL") || Schengen("LCLK") || Schengen("EKVG") {
 		t.Error("Schengen prefixes")
 	}
-	// Every C gate taken: a Paris flight then goes to another stand, a
-	// Terminal 1 gate only once nothing outside an area is free.
+	// Every C gate taken: a Paris flight then takes a Terminal 1 gate
+	// before a remote stand (the user, live 2026-11-12: A and B left empty).
 	b := NewStandAllocator(&eventClient{}, g)
 	for i, p := range g.Layout.Parking {
 		if p.Label()[:1] == "C" {
@@ -37,7 +37,7 @@ func TestStandAreasSchengen(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if strings.Contains("AB", pier(s)) {
-		t.Errorf("C full: %s, want a stand outside Terminal 1 first", g.Layout.Parking[s].Label())
+	if !strings.Contains("AB", pier(s)) {
+		t.Errorf("C full: %s, want a Terminal 1 gate", g.Layout.Parking[s].Label())
 	}
 }

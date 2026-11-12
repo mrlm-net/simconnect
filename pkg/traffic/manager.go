@@ -2,6 +2,7 @@ package traffic
 
 import (
 	"errors"
+	"fmt"
 	"sort"
 	"sync"
 	"time"
@@ -84,6 +85,14 @@ type ManagedFlight struct {
 	// spawned in the night parked; its crew calls DepartureLead before its
 	// STD, as any other's does (#1294).
 	NightStop bool `json:"nightStop,omitempty"`
+	// StartStand: a departure on its stand from the start (no arrival of
+	// ours brought it), so the airport is not empty when traffic begins;
+	// its crew calls DepartureLead before its STD (startStands).
+	StartStand bool `json:"startStand,omitempty"`
+	// StartAirborne: an arrival already on its way in when traffic began
+	// at its airport: it appears on its STAR where it would be by its STA
+	// (stage "midway"), not missed (startAirborne).
+	StartAirborne bool `json:"startAirborne,omitempty"`
 	// Stage "enroute": the spawn is the enroute part of an arrival (MSFS AI
 	// on its flight plan, handed to the arrival controller at the STAR
 	// entry) or an overflight (#369).
@@ -191,6 +200,20 @@ type ManagerOptions struct {
 	Night       func(icao string, t time.Time) (morning time.Time, ok bool)
 	MorningWave time.Duration
 	NightStops  int
+	// When traffic begins at an airport (enabled, or the airport added),
+	// up to StartStands (default half MaxPerAirport; negative none) of the
+	// departures due within StartWindow (default 2 h) that no arrival of
+	// ours brings stand on their stands from the start, StartSpacing apart
+	// (default 10 s): the ground is busy at once, not half an hour after,
+	// one departure a minute 10 minutes before its STD (StartStand).
+	StartStands               int
+	StartWindow, StartSpacing time.Duration
+	// StartAirborneMin: when traffic begins at an airport, its arrivals
+	// due sooner than ArrivalLead, but not within StartAirborneMin
+	// (default 5 min; negative: none), appear on their STAR where they
+	// would be by now (StartAirborne), StartSpacing apart: the first
+	// landings minutes after the start, not ArrivalLead after.
+	StartAirborneMin time.Duration
 	// Keep: done and cancelled flights stay on the boards this long
 	// (default 1 h).
 	Keep time.Duration
@@ -257,6 +280,9 @@ func (o *ManagerOptions) defaults() {
 	def(&o.MinTurn, 40*time.Minute)
 	def(&o.MaxTurn, 3*time.Hour)
 	def(&o.MorningWave, 2*time.Hour)
+	def(&o.StartWindow, 2*time.Hour)
+	def(&o.StartSpacing, 10*time.Second)
+	def(&o.StartAirborneMin, 5*time.Minute)
 	def(&o.Keep, time.Hour)
 	if o.MaxAircraft == 0 {
 		o.MaxAircraft = 24
@@ -356,6 +382,11 @@ type TrafficManager struct {
 	overUntil time.Time            // the Overflights source too
 	last      map[string]time.Time // last spawn by kind and airport
 	enabled   bool
+	// stood: the airports whose start stands were picked (startStands).
+	stood map[string]bool
+	// flying: the airports whose arrivals on their way in were picked
+	// (startAirborne).
+	flying map[string]bool
 
 	// Lifecycle events (#368): collected under mu, delivered after it.
 	pending []ManagerEvent
@@ -425,6 +456,9 @@ func (m *TrafficManager) SetEnabled(on bool) {
 			k = EventEnabled
 		}
 		m.pending = append(m.pending, ManagerEvent{Kind: k, Time: Now()})
+		if on {
+			m.stood, m.flying = nil, nil // traffic begins again: its stands filled again, arrivals on their way
+		}
 	}
 	m.enabled = on
 	m.unlock()
@@ -471,7 +505,8 @@ func (m *TrafficManager) addAt(flights []Flight, now time.Time) {
 	var keep []Flight
 	for _, f := range flights {
 		depLate := m.airports[f.Origin] && now.After(f.STD.Add(o.DepartureLate))
-		arrLate := m.airports[f.Destination] && now.After(f.STA.Add(-m.arrivalLead(&f)).Add(o.ArrivalLate))
+		arrLate := m.airports[f.Destination] && now.After(f.STA.Add(-m.arrivalLead(&f)).Add(o.ArrivalLate)) &&
+			!m.startsAirborne(&f, now)
 		if (depLate || !m.airports[f.Origin]) && (arrLate || !m.airports[f.Destination]) {
 			continue
 		}
@@ -517,7 +552,7 @@ func (m *TrafficManager) pair() {
 			// rotation as the rotation has it, not by airline and type.
 		case f.Kind == "arrival" && f.TurnTo == "" && f.Status <= FlightParked:
 			arrs = append(arrs, f)
-		case f.Kind == "departure" && f.TurnFrom == "" && f.Status == FlightScheduled && !f.NightStop:
+		case f.Kind == "departure" && f.TurnFrom == "" && f.Status == FlightScheduled && !f.NightStop && !f.StartStand:
 			deps = append(deps, f)
 		}
 	}
@@ -561,7 +596,7 @@ func (m *TrafficManager) pairNight(arrs, deps []*ManagedFlight) {
 			continue
 		}
 		for _, d := range deps {
-			if d.TurnFrom != "" || d.NightStop || d.Airport != a.Airport || d.Airline != a.Airline || d.Type != a.Type ||
+			if d.TurnFrom != "" || d.NightStop || d.StartStand || d.Airport != a.Airport || d.Airline != a.Airline || d.Type != a.Type ||
 				d.STD.Before(morning) || !d.STD.Before(morning.Add(m.opts.MorningWave)) {
 				continue
 			}
@@ -602,6 +637,9 @@ func (m *TrafficManager) Tick(now time.Time) {
 	m.mu.Lock()
 	var spawn, remove []ManagedFlight
 	m.extend(now)
+	if m.enabled {
+		m.startAirborne(now) // before expire: on their way, not too late
+	}
 	m.expire(now, &remove)
 	holds := m.check(now, &remove)
 	if m.enabled {
@@ -684,7 +722,8 @@ func (m *TrafficManager) expire(now time.Time, remove *[]ManagedFlight) {
 				break // a real aircraft goes when the feed drops it (#841)
 			}
 			if f.Departure() && now.After(later(f.STD, f.Estimated).Add(o.DepartureLate)) && !m.waitsForTurn(f) ||
-				f.Arrival() && now.After(later(f.STA, f.Estimated).Add(-m.arrivalLead(&f.Flight)).Add(o.ArrivalLate)) ||
+				f.Arrival() && now.After(later(f.STA, f.Estimated).Add(-m.arrivalLead(&f.Flight)).Add(o.ArrivalLate)) &&
+					(!f.StartAirborne || now.After(f.STA.Add(-o.StartAirborneMin))) ||
 				f.Overflight() && now.After(f.Exit.Add(-5*time.Minute)) {
 				f.Err = "too late"
 				m.set(f, FlightCancelled, now)
@@ -746,6 +785,7 @@ func (m *TrafficManager) unpair(f *ManagedFlight) {
 func (m *TrafficManager) due(now time.Time, spawn *[]ManagedFlight) {
 	o := m.opts
 	m.nightStops(now)
+	m.startStands(now)
 	total, at, spawning, objects := 0, map[string]int{}, map[string]int{}, map[string]int{}
 	var ready []*ManagedFlight
 	for _, f := range m.flights {
@@ -799,7 +839,11 @@ func (m *TrafficManager) due(now time.Time, spawn *[]ManagedFlight) {
 		}
 		// The adopted aircraft is already counted, and on its stand.
 		if !adopt {
+			// Held by a limit: the board says which, not why it waited
+			// before (live, "the jetways are not ready" long after they
+			// were, held by the object limit).
 			if total >= o.MaxAircraft || at[f.Airport] >= o.MaxPerAirport {
+				f.Note = fmt.Sprintf("aircraft limit (%d at %s, %d in all)", o.MaxPerAirport, f.Airport, o.MaxAircraft)
 				continue
 			}
 			if o.MaxObjects > 0 && o.Objects != nil {
@@ -809,11 +853,15 @@ func (m *TrafficManager) due(now time.Time, spawn *[]ManagedFlight) {
 					objects[f.Airport] = n
 				}
 				if n+spawning[f.Airport] >= o.MaxObjects {
+					f.Note = fmt.Sprintf("object limit %d at %s", o.MaxObjects, f.Airport)
 					continue
 				}
 			}
 			spacing := o.ArrivalSpacing
-			if f.Departure() {
+			switch {
+			case f.Departure() && (f.StartStand || f.NightStop), f.Arrival() && f.StartAirborne:
+				spacing = o.StartSpacing
+			case f.Departure():
 				spacing = o.DepartureSpacing
 			}
 			// A real aircraft is where it is: no spacing (#841).
@@ -827,6 +875,7 @@ func (m *TrafficManager) due(now time.Time, spawn *[]ManagedFlight) {
 		}
 		f.Attempts++
 		_, f.Stage = m.start(f, now)
+		f.Note = "" // no longer held
 		m.set(f, FlightSpawning, now)
 		*spawn = append(*spawn, *f)
 	}
@@ -868,6 +917,104 @@ func (m *TrafficManager) nightStops(now time.Time) {
 		}
 		f.NightStop = true
 		have[f.Airport]++
+	}
+}
+
+// StartOvernightWindow: where traffic begins with fewer departures due
+// within StartWindow than StartStands, those due up to this far ahead
+// stand on their stands overnight (startStands).
+const StartOvernightWindow = 18 * time.Hour
+
+// startsAirborne reports whether arrival f, due too soon at now for its
+// STAR entry, is one already on its way in where traffic begins at its
+// airport (StartAirborne).
+func (m *TrafficManager) startsAirborne(f *Flight, now time.Time) bool {
+	o := m.opts
+	return o.StartAirborneMin >= 0 && m.airports[f.Destination] && !m.flying[f.Destination] && f.Rules != "VFR" &&
+		f.STA.After(now.Add(o.StartAirborneMin))
+}
+
+// startAirborne picks, where traffic begins, the arrivals already on
+// their way in (StartAirborne): too late for their STAR entry, due after
+// StartAirborneMin. An airport is picked once.
+func (m *TrafficManager) startAirborne(now time.Time) {
+	if m.flying == nil {
+		m.flying = map[string]bool{}
+	}
+	known := map[string]bool{}
+	for _, f := range m.flights {
+		if !f.Arrival() || m.flying[f.Airport] {
+			continue
+		}
+		known[f.Airport] = true
+		if f.Status == FlightScheduled && f.Observed == nil && len(f.Path) == 0 && m.startsAirborne(&f.Flight, now) &&
+			now.After(f.STA.Add(-m.arrivalLead(&f.Flight)).Add(time.Minute)) {
+			f.StartAirborne = true
+		}
+	}
+	for a := range known {
+		m.flying[a] = true
+	}
+}
+
+// startStands picks, where traffic begins, the departures on their
+// stands from the start (StartStand): due within StartWindow, after
+// DepartureLead, that no arrival of ours brings, earliest first, up to
+// StartStands an airport, night stops counted. An airport is picked once
+// its schedule has departures.
+func (m *TrafficManager) startStands(now time.Time) {
+	o := m.opts
+	if o.StartStands < 0 {
+		return
+	}
+	if m.stood == nil {
+		m.stood = map[string]bool{}
+	}
+	limit := o.StartStands
+	if limit == 0 {
+		limit = o.MaxPerAirport / 2
+	}
+	have, known := map[string]int{}, map[string]bool{}
+	var cands []*ManagedFlight
+	for _, f := range m.flights {
+		if !f.Departure() || m.stood[f.Airport] {
+			continue
+		}
+		known[f.Airport] = true
+		if (f.NightStop || f.StartStand) && f.Status != FlightDone && f.Status != FlightCancelled {
+			have[f.Airport]++
+			continue
+		}
+		if f.Status == FlightScheduled && f.TurnFrom == "" && f.Observed == nil && f.Rules != "VFR" &&
+			f.STD.After(now.Add(o.DepartureLead)) && !f.STD.After(now.Add(StartOvernightWindow)) {
+			cands = append(cands, f)
+		}
+	}
+	sort.Slice(cands, func(i, j int) bool {
+		return lessFlight(cands[i].STD, cands[i].Callsign, cands[j].STD, cands[j].Callsign)
+	})
+	// Due within StartWindow: on their stands for their flight. Fewer
+	// than the limit (an evening, the last wave gone): the next ones after,
+	// up to StartOvernightWindow, stand there overnight (NightStop): an
+	// apron always holds aircraft parked for the night, low-cost bases and
+	// the morning wave (the user, live LKPR 22:15: "no planes on the
+	// parkings outside gates").
+	for _, f := range cands {
+		if have[f.Airport] >= limit {
+			continue
+		}
+		if f.STD.After(now.Add(o.StartWindow)) {
+			if o.NightStops < 0 {
+				continue
+			}
+			f.NightStop = true
+		} else {
+			f.StartStand = true
+		}
+		have[f.Airport]++
+	}
+	for a := range known {
+		m.stood[a] = true
 	}
 }
 
@@ -979,6 +1126,12 @@ func (m *TrafficManager) Failed(callsign string, err error, now time.Time) {
 func (m *TrafficManager) failed(f *ManagedFlight, err error, now time.Time, remove *[]ManagedFlight) {
 	f.Err = err.Error()
 	switch {
+	case f.Status == FlightSpawning && f.Arrival() && f.Stage == "midway" && !errors.Is(err, ErrSpawnBlocked):
+		// Not put on its STAR: too late for the STAR entry, it is missed.
+		m.set(f, FlightScheduled, now)
+		f.StartAirborne, f.Stage, f.Attempts = false, "", f.Attempts-1
+		f.retryAt = now.Add(m.opts.RetryAfter)
+		m.emit(EventRetry, f, now, "midway: "+err.Error())
 	case f.Status == FlightSpawning && f.Arrival() && f.Stage == "enroute":
 		// No enroute part: the arrival appears at its STAR entry instead,
 		// no attempt lost.

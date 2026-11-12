@@ -279,10 +279,21 @@ func (c *TaxiController) onDepartureFrame(m taxiMonitor) {
 		c.picture.Forget(c.objectID) // on the take-off roll or airborne
 	}
 	if !c.lightsSet {
-		// Parked: nav lights, logo and wing as the aircraft has them.
+		// Parked: nav lights, logo and wing as the aircraft has them. Parked
+		// long before its flight with no one to bring off (a start stand, a
+		// night stop): dark until the crew is on board (user, 2026-11-11).
 		c.lightsSet = true
 		c.lights = m.currentLights()
-		c.setInjectedLights(LightsParked, "lights parked")
+		if c.state == TaxiAwaitingPushback && len(c.req.Deboard) == 0 && now.Before(c.gateAt.Add(-StandServiceLead)) {
+			c.dark = true
+			c.setInjectedLights(Lights{}, "lights off: no crew yet")
+		} else {
+			c.setInjectedLights(LightsParked, "lights parked")
+		}
+	}
+	if c.dark && (c.state != TaxiAwaitingPushback || !now.Before(c.gateAt.Add(-StandServiceLead))) {
+		c.dark = false
+		c.setInjectedLights(LightsParked, "lights parked: crew on board")
 	}
 	c.last.Lights = m.currentLights()
 	// Flaps move on every frame, whatever the phase.

@@ -4,9 +4,11 @@ import (
 	"math"
 	"testing"
 	"time"
+	"unsafe"
 
 	"github.com/mrlm-net/simconnect/pkg/airport"
 	"github.com/mrlm-net/simconnect/pkg/calc"
+	"github.com/mrlm-net/simconnect/pkg/types"
 )
 
 // A follow-me car (#890) at LKPR: sent once the CRJ is down, it waits past
@@ -15,7 +17,7 @@ import (
 // on the parked aircraft's frames; the fleet gets it back.
 func TestArrivalFollowMe(t *testing.T) {
 	g := lkprGraph(t)
-	ec := &tugClient{}
+	ec := &signalClient{}
 	inj := NewInjector(ec)
 	fleet := NewVehicleFleet(map[VehicleKind]int{VehicleFollowMe: 1})
 	prof := ProfileFor("CRJ7").Motion
@@ -143,6 +145,38 @@ func TestArrivalFollowMe(t *testing.T) {
 		t.Errorf("car not given back: %d out", out)
 	}
 	t.Logf("closest along the way %.1f m; leaving: %.1f m off the graph, %.1f m from the lead-in", closest, offGraph, onLeadIn)
+	// Its roof light flashes, lamp 1 and 2 by turns, all the time it is
+	// out, its sign says FOLLOW ME while it leads, written only on a change.
+	lamps, signed := map[float64]int{}, false
+	for _, s := range ec.signals[88] {
+		lamps[s[0]]++
+		signed = signed || s[1] == followMeSignFollowMe
+	}
+	if lamps[1] < 10 || lamps[2] < 10 || len(lamps) != 2 {
+		t.Errorf("roof light written %v, want lamps 1 and 2 by turns", lamps)
+	}
+	if !signed {
+		t.Error("its sign never said FOLLOW ME")
+	}
+	if n := len(ec.signals[88]); float64(n) > fm.sig.t/followMeFlashSeconds+10 {
+		t.Errorf("signals written %d times in %.0f s: more than on each change", n, fm.sig.t)
+	}
+}
+
+// signalClient records the follow-me signals written, by object.
+type signalClient struct {
+	tugClient
+	signals map[uint32][][2]float64
+}
+
+func (c *signalClient) SetDataOnSimObject(def, obj uint32, f types.SIMCONNECT_DATA_SET_FLAG, n, size uint32, p unsafe.Pointer) error {
+	if def == DefaultInjectDefinitionBase+injDefSignals {
+		if c.signals == nil {
+			c.signals = map[uint32][][2]float64{}
+		}
+		c.signals[obj] = append(c.signals[obj], *(*[2]float64)(p))
+	}
+	return c.tugClient.SetDataOnSimObject(def, obj, f, n, size, p)
 }
 
 // Without a car free in the fleet the arrival taxis in on its own.

@@ -191,6 +191,11 @@ const injDefSteer = injDefGearDownPartial + 1
 // injDefGround's other values are not used (ground_rate.go).
 const injDefGroundFast = injDefSteer + 1
 
+// injDefSignals: WAGON FRONT LINK ORIENTATION and WAGON BACK LINK
+// ORIENTATION together, a GSX follow-me car's roof light and sign
+// (SetFollowMeSignals, followme_signals.go).
+const injDefSignals = injDefSteer + 2
+
 // injDefTowbar: WAGON BACK LINK ORIENTATION, the angle of a GSX stick
 // tug's towbar (SetTowbarAngle, tug_bar.go). Clear of injDefSteer + 2, the
 // follow-me signals.
@@ -361,6 +366,11 @@ func (i *Injector) register() error {
 	}
 	if err := i.track("define WAGON BACK LINK ORIENTATION", c.AddToDataDefinition(i.defBase+injDefTowbar, "WAGON BACK LINK ORIENTATION", "number", types.SIMCONNECT_DATATYPE_FLOAT64, 0, 0)); err != nil {
 		return err
+	}
+	for k, name := range []string{"WAGON FRONT LINK ORIENTATION", "WAGON BACK LINK ORIENTATION"} {
+		if err := i.track("define signals "+name, c.AddToDataDefinition(i.defBase+injDefSignals, name, "number", types.SIMCONNECT_DATATYPE_FLOAT64, 0, uint32(k))); err != nil {
+			return err
+		}
 	}
 	for k, v := range []struct{ name, unit string }{{"GROUND ALTITUDE", "feet"}, {"PLANE LATITUDE", "degrees"}, {"PLANE LONGITUDE", "degrees"}} {
 		if err := i.track("define fast "+v.name, c.AddToDataDefinition(i.defBase+injDefGroundFast, v.name, v.unit, types.SIMCONNECT_DATATYPE_FLOAT64, 0, uint32(k))); err != nil {

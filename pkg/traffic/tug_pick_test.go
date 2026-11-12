@@ -60,6 +60,17 @@ var tugClearance = map[string][3]float64{
 	"SU95": {-0.18, 0.74, 0.73},
 }
 
+// towbarlessClearance: TugTowbarlessTitle's worst clearance (m) at its
+// TugAheadFor, ahead of the nose wheel and behind it, measured as
+// tugClearance (scratchpad tugclip/batch.sh, TPX_200 at -3.0 m,
+// 2026-11-11).
+var towbarlessClearance = map[string]float64{
+	"A20N": 0.40, "A21N": 0.45, "A319": 0.37, "A320": 0.41, "A321": 0.40,
+	"B733": 0.10, "B734": -0.09, "B737": 0.13, "B738": 0.15, "B739": 0.05, "B73X": 0.15,
+	"B788": 0.39, "B789": 0.33, "BCS1": 0.73, "BCS3": 0.72, "CRJ7": 0.44,
+	"E170": 0.20, "E190": 0.23, "SU95": 0.05, "DH8D": -0.15, "SF34": -0.02,
+}
+
 // tugClearanceAlias: table types not measured, by the measured type their
 // fuselage and nose gear share.
 var tugClearanceAlias = map[string]string{
@@ -85,14 +96,20 @@ func TestTugClearsEveryType(t *testing.T) {
 	}
 	idx := map[string]int{DefaultTugTitle: 0, TugNarrowTitle: 1, TugLowTitle: 2}
 	for typ, title := range tugForType {
+		m := typ
+		if a, ok := tugClearanceAlias[typ]; ok {
+			m = a
+		}
+		if title == TugTowbarlessTitle {
+			if c, ok := towbarlessClearance[m]; !ok || c < 0.15 {
+				t.Errorf("%s: %s clears it by %.2f m (measured %v)", typ, title, c, ok)
+			}
+			continue
+		}
 		i, ok := idx[title]
 		if !ok {
 			t.Errorf("%s: tug %q not measured", typ, title)
 			continue
-		}
-		m := typ
-		if a, ok := tugClearanceAlias[typ]; ok {
-			m = a
 		}
 		c, ok := tugClearance[m]
 		if !ok {
@@ -131,10 +148,11 @@ func TestTugTitleForModel(t *testing.T) {
 		{"", "FSLTL_FAIB_B738_TVS-Smartwings_NC", 35.8, TugNarrowTitle},
 		{"", "Asobo PassiveAircraft Citation XLS :: CITATION_XLS_0", 17.17, TugLowTitle},
 		{"", "FSLTL_A332F_MAS", 60.3, DefaultTugTitle},
-		{"", "FSLTL_B789_BAW", 60.1, TugNarrowTitle},
+		{"", "FSLTL_B789_BAW", 60.1, TugTowbarlessTitle},
 		{"", "FSLTL_AT76_CSA", 27.1, TugLowTitle},
 		{"", "FSLTL_B734_TVS", 28.9, TugLowTitle},
-		{"", "FSLTL_FAIB_A320_SmartWings", 35.8, TugNarrowTitle},
+		{"", "FSLTL_FAIB_A320_SmartWings", 35.8, TugTowbarlessTitle},
+		{"", "FSLTL_SBAI_BCS3_CSA-Lines", 34.9, DefaultTugTitle},
 		{"", "Some Unknown Widebody", 64, DefaultTugTitle},
 		{"", "Some Unknown Jet", 30, TugNarrowTitle},
 		{"", "Some Unknown Jet", 0, TugNarrowTitle},

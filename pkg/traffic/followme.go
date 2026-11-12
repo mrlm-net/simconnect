@@ -106,6 +106,9 @@ type SimObjectFollowMe struct {
 	// FollowMeLeaveMeters before it).
 	join float64
 	ease followMeEase
+	// sig: the roof light and sign (followme_signals.go): time on, the
+	// values last written.
+	sig followMeSignals
 }
 
 // followMeEase is how far the car stood off the aircraft's path when it
@@ -246,6 +249,7 @@ func (f *SimObjectFollowMe) Update(path *GroundPath, s float64, dt float64) erro
 		f.err = nil
 		return err
 	}
+	f.sig.t += dt
 	if path != nil && path != f.path && f.phase != followMeLeaving {
 		// A new way for the aircraft (a re-route): the car's place on it.
 		f.meet = nearestAlong(path, f.pathPoint(), s)
@@ -351,7 +355,10 @@ func (f *SimObjectFollowMe) place() error {
 	if errors.Is(err, ErrGroundUnknown) {
 		return nil
 	}
-	return err
+	if err != nil {
+		return err
+	}
+	return f.signal()
 }
 
 func (f *SimObjectFollowMe) finish() error {

@@ -315,6 +315,9 @@ type TaxiController struct {
 	end          airport.RunwayEnd
 	runwayLength float64
 	lightsSet    bool
+	// dark: parked long before its flight, its lights off until the crew
+	// is on board (StandServiceLead before the push).
+	dark bool
 	// extended: placed on the stand once on its extended struts
 	// (MovingPitchDeg) as it appears, not at the first push frame.
 	extended                                                bool

@@ -16,6 +16,13 @@ import (
 const (
 	TugNarrowTitle = "FSDT_Pushback_Trepel_700"
 	TugLowTitle    = "FSDT_Pushback_M1A"
+	// TugTowbarlessTitle: a towbarless tug, the nose wheel in its cradle,
+	// TugAheadFor behind it, for the narrowbodies and regional jets it
+	// clears. A stick tug's bar turns while the nose wheel it is hooked to
+	// stays straight (the simulator's nose wheel cannot be steered: the
+	// user, live LKPR 2026-11-11, "fixed on the plane nose wheel not
+	// rotating"): stick tugs only where no towbarless one clears.
+	TugTowbarlessTitle = "FSDT_TPX_200"
 	// TugWideMinSpanM: an unknown jet wider than this gets DefaultTugTitle.
 	TugWideMinSpanM = 45.0
 )
@@ -35,15 +42,16 @@ var tugForType = map[string]string{
 	"B772": DefaultTugTitle, "B77L": DefaultTugTitle, "B77F": DefaultTugTitle, "B77W": DefaultTugTitle, "B773": DefaultTugTitle,
 	"B78X": DefaultTugTitle,
 	// The 787-8 and -9: the default tug's cab touches their nose.
-	"B788": TugNarrowTitle, "B789": TugNarrowTitle,
-	// Narrowbodies and regional jets.
-	"A319": TugNarrowTitle, "A19N": TugNarrowTitle, "A320": TugNarrowTitle, "A20N": TugNarrowTitle,
-	"A321": TugNarrowTitle, "A21N": TugNarrowTitle,
+	"B788": TugTowbarlessTitle, "B789": TugTowbarlessTitle,
+	// Narrowbodies and regional jets: towbarless where TugTowbarlessTitle
+	// clears them, the 737s, the Superjet and the Q400 on a stick tug.
+	"A319": TugTowbarlessTitle, "A19N": TugTowbarlessTitle, "A320": TugTowbarlessTitle, "A20N": TugTowbarlessTitle,
+	"A321": TugTowbarlessTitle, "A21N": TugTowbarlessTitle,
 	"B733": TugNarrowTitle, "B737": TugNarrowTitle, "B37M": TugNarrowTitle, "B738": TugNarrowTitle, "B38M": TugNarrowTitle,
 	"B739": TugNarrowTitle, "B39M": TugNarrowTitle, "B73X": TugNarrowTitle,
-	"BCS1": TugNarrowTitle, "BCS3": TugNarrowTitle,
-	"E170": TugNarrowTitle, "E175": TugNarrowTitle, "E190": TugNarrowTitle, "E195": TugNarrowTitle, "E290": TugNarrowTitle, "E295": TugNarrowTitle,
-	"CRJ7": TugNarrowTitle, "CRJ9": TugNarrowTitle, "CRJX": TugNarrowTitle,
+	"BCS1": DefaultTugTitle, "BCS3": DefaultTugTitle,
+	"E170": TugTowbarlessTitle, "E175": TugTowbarlessTitle, "E190": TugTowbarlessTitle, "E195": TugTowbarlessTitle, "E290": TugTowbarlessTitle, "E295": TugTowbarlessTitle,
+	"CRJ7": TugTowbarlessTitle, "CRJ9": TugTowbarlessTitle, "CRJX": TugTowbarlessTitle,
 	"SU95": TugNarrowTitle,
 	// Low fuselages: turboprops, the 737-400, business jets, small
 	// regional jets.

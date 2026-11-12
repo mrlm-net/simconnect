@@ -39,7 +39,7 @@ func statusOf(m *TrafficManager, key string) FlightStatus {
 
 func TestManagerSpawnsOnTime(t *testing.T) {
 	sp := &fakeSpawner{}
-	m := NewTrafficManager(sp, ManagerOptions{MinTurn: -1}, "LKPR")
+	m := NewTrafficManager(sp, ManagerOptions{MinTurn: -1, StartStands: -1}, "LKPR")
 	m.Add([]Flight{
 		flight("CSA100", "LKPR", "EDDF", t0.Add(30*time.Minute), time.Hour),
 		flight("DLH200", "EDDF", "LKPR", t0.Add(10*time.Minute), time.Hour), // STA 09:10
@@ -64,7 +64,7 @@ func TestManagerSpawnsOnTime(t *testing.T) {
 
 func TestManagerLimitsAndSpacing(t *testing.T) {
 	sp := &fakeSpawner{}
-	m := NewTrafficManager(sp, ManagerOptions{MinTurn: -1, MaxAircraft: 3, DepartureSpacing: 2 * time.Minute, RemoveDepartedAfter: 5 * time.Minute}, "LKPR")
+	m := NewTrafficManager(sp, ManagerOptions{MinTurn: -1, StartStands: -1, MaxAircraft: 3, DepartureSpacing: 2 * time.Minute, RemoveDepartedAfter: 5 * time.Minute}, "LKPR")
 	sp.onSpawn = func(f ManagedFlight) { m.Update(f.Callsign, FlightBoarding, f.Since) }
 	var fs []Flight
 	for i := 0; i < 6; i++ {
@@ -375,7 +375,6 @@ func TestManagerCancelsArrivalDelayedForever(t *testing.T) {
 		t.Error("DLH200 is gone from the flights")
 	}
 }
-
 
 // Three arrivals every 5 minutes, more than the runway takes, through the
 // landing flow: they come in at the flow's rate,

@@ -1156,6 +1156,14 @@ func (cc *controlCenter) spawn(g *airport.Graph, r SpawnRequest) (*controlled, e
 	if r.Kind == "departure" && r.adopt == 0 && g.Layout.Parking[r.Stand].IsGate() && !cc.jetwaysReady(g.Layout.ICAO) {
 		return nil, fmt.Errorf("%w: the jetways at %s are not ready yet", traffic.ErrSpawnBlocked, g.Layout.ICAO)
 	}
+	// One gate at a time: not while another jetway is docking or the gates
+	// refill after one. Placed together, their helpers took each other's
+	// gates and the docks held behind the refills ran out of time: stairs
+	// (live, LKPR 2026-11-11: the start stands 10 s apart, C23, C27, C29,
+	// C30, C31 on stairs).
+	if r.Kind == "departure" && r.adopt == 0 && g.Layout.Parking[r.Stand].IsGate() && cc.jetwayBusy(g.Layout.ICAO) {
+		return nil, fmt.Errorf("%w: a jetway at %s is docking", traffic.ErrSpawnBlocked, g.Layout.ICAO)
+	}
 	var procRoute []airport.NavPoint
 	procName, expect := "", ""
 	if r.Circuit {

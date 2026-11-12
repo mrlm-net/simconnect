@@ -368,9 +368,11 @@ func TestJetflowNoGateGetsStairs(t *testing.T) {
 	}
 }
 
-// E: a dock refused for about a minute (another gate docking that never
-// docks) gives the departure stairs instead.
-func TestJetflowRefusedMinuteGetsStairs(t *testing.T) {
+// E: a dock queued behind another gate docking that never docks waits
+// for that dock to time out and is then asked itself, not given stairs
+// after a minute (live, LKPR 2026-11-11: docks held behind others given
+// stairs).
+func TestJetflowQueuedBehindStuckDockAsked(t *testing.T) {
 	b := newJWBed(t)
 	x, s, u := b.stand("B15"), b.stand("B14"), b.stand("C24")
 	b.fill([]int{x, s, u}, x, s, u)
@@ -390,8 +392,19 @@ func TestJetflowRefusedMinuteGetsStairs(t *testing.T) {
 		t.Fatal("stairs after 30 s")
 	}
 	b.ticks(40)
-	if d.added != 1 {
-		t.Errorf("stand services given %d times after 70 s refused, want once", d.added)
+	if d.added != 0 {
+		t.Fatal("stairs after 70 s queued behind C24")
+	}
+	asked := false
+	for i := 0; i < 120 && !asked; i++ {
+		b.tick(time.Second)
+		asked = b.svc.Status("LKPR", x) != jetway.StatusReserved
+	}
+	if !asked {
+		t.Errorf("B15 never asked after C24's dock timed out (C24 %s)", b.svc.Status("LKPR", u))
+	}
+	if d.added != 0 {
+		t.Errorf("stairs given while B15 was being asked")
 	}
 }
 
