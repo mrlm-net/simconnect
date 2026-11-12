@@ -22,10 +22,16 @@ const (
 	ApproachVisual = "visual/RNAV"
 )
 
-// Weather below either limit calls for an ILS approach.
+// VisualApproachVisibilityM and VisualApproachCeilingFt: below either an
+// airport advertises the ILS (ApproachFor), and no crew asks for a visual
+// approach (pkg/traffic/world). One pair for both, so the ATIS never
+// advertises a visual approach no crew would ask for (#1526). Chosen
+// figures, not book values: the SERA.5005(b) VFR control-zone minima
+// (5 km, 1500 ft, pkg/traffic ControlZoneVisibilityM) decide whether VFR
+// may fly, not which approach IFR arrivals expect.
 const (
-	ilsVisibilityM = 5000
-	ilsCeilingFt   = 1500
+	VisualApproachVisibilityM = 8000
+	VisualApproachCeilingFt   = 3000
 )
 
 // RunwayLimits are an airport's rules for choosing the runway in use.
@@ -102,9 +108,10 @@ type RunwayUse struct {
 func (u RunwayUse) Single() bool { return u.Departure.Name == u.Arrival.Name }
 
 // ApproachFor returns the approach hint for w: ApproachILS when visibility is
-// below 5000 m or the ceiling below 1500 ft, else ApproachVisual.
+// below VisualApproachVisibilityM, the ceiling below VisualApproachCeilingFt
+// (0: none), else ApproachVisual.
 func ApproachFor(w Weather) string {
-	if w.VisibilityM > 0 && w.VisibilityM < ilsVisibilityM || w.CeilingFt > 0 && w.CeilingFt < ilsCeilingFt {
+	if w.VisibilityM > 0 && w.VisibilityM < VisualApproachVisibilityM || w.CeilingFt > 0 && w.CeilingFt < VisualApproachCeilingFt {
 		return ApproachILS
 	}
 	return ApproachVisual

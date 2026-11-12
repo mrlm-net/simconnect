@@ -363,6 +363,7 @@ type TaxiController struct {
 	pushPose           *pushPose        // where the push ends (planPushPose), nil for the older plans
 	faceOut            bool             // a self-manoeuvring stand (standFacesOut, at the start)
 	powerOut           []airport.LatLon // the loop out of the stand under its own power (PowerOut)
+	taxiThrough        bool             // left straight ahead off a taxi-through stand (planTaxiThrough)
 	// pushFacing: the heading a push ends facing, asked for with the
 	// pushback (ClearPushbackFacing).
 	pushFacing     float64
@@ -560,7 +561,7 @@ func (c *TaxiController) Start(req TaxiRequest) error {
 		// Adopted: no spawn; the aircraft is already on the stand.
 		c.req, c.route = req, route
 		c.pushJunction = 1
-		c.faceOut = c.standFacesOut()
+		c.faceOut = c.faceOutOrThrough()
 		if c.req.PowerOut && !c.faceOut {
 			if loop, ok := c.planPowerOut(); ok {
 				c.powerOut, c.faceOut = loop, true
@@ -594,7 +595,7 @@ func (c *TaxiController) Start(req TaxiRequest) error {
 
 	c.req, c.route = req, route
 	c.pushJunction = 1
-	c.faceOut = c.standFacesOut()
+	c.faceOut = c.faceOutOrThrough()
 	if c.req.PowerOut && !c.faceOut {
 		if loop, ok := c.planPowerOut(); ok {
 			c.powerOut, c.faceOut = loop, true // no tug, no push: out under its own power
