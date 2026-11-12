@@ -7,6 +7,15 @@ This project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 ---
 
+## [0.170.1] - 2026-11-12
+
+### Fixed
+
+- Stands: a taxi-through stand (joined to the taxiways only behind it, facing a taxiway across open apron within 45 m of the nose, no other stand in the way, never a gate) is left straight ahead under the aircraft's own power, no pushback: LKTB 2A starts up on the stand and taxis out onto A (#1508).
+- ATIS: the first information at an airport is not always Alpha: a letter of the airport and the date, one on every half hour, the same for the same airport and time (#1509).
+- Airport info: the weather says when the wind is variable (`Variable`), which `WindDirTrue` 0 cannot (#1527).
+- Approaches: the ATIS advertises the ILS below 8 km or under a ceiling below 3000 ft (nav.VisualApproachVisibilityM, VisualApproachCeilingFt), the same limits as a crew asking for a visual approach, not the VFR control-zone minima (5 km, 1500 ft): no visual approach advertised that no crew would ask for (#1526).
+
 ## [0.170.0] - 2026-11-12
 
 ### Added

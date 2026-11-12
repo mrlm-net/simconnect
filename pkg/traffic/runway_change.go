@@ -175,7 +175,8 @@ func (c *TaxiController) planFromStand(req TaxiRequest, rwy airport.Runway, end 
 	}
 	c.req, c.runway, c.end, c.runwayLength = req, rwy, end, rwy.Length
 	c.route, c.origRoute, c.pushJunction, c.pushPlanned = route, nil, 1, nil
-	c.faceOut, c.powerOut = c.standFacesOut(), nil
+	c.powerOut = nil
+	c.faceOut = c.faceOutOrThrough()
 	if c.req.PowerOut && !c.faceOut {
 		if loop, ok := c.planPowerOut(); ok {
 			c.powerOut, c.faceOut = loop, true

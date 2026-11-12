@@ -5261,10 +5261,11 @@ func (it *controlled) weatherNow() *nav.Weather {
 	return it.cc.weather()
 }
 
-// goodVisibility: visibility of 8 km or more under no ceiling below 3000
-// ft, not in cloud (Doc 4444 6.5.3.3).
+// goodVisibility: visibility of nav.VisualApproachVisibilityM or more under
+// no ceiling below nav.VisualApproachCeilingFt, not in cloud: the ATIS
+// advertises visual approaches then too (nav.ApproachFor, #1526).
 func goodVisibility(w *nav.Weather) bool {
-	return w.VisibilityM >= 8000 && (w.CeilingFt <= 0 || w.CeilingFt >= 3000) && !w.InCloud
+	return w.VisibilityM >= nav.VisualApproachVisibilityM && (w.CeilingFt <= 0 || w.CeilingFt >= nav.VisualApproachCeilingFt) && !w.InCloud
 }
 
 // fieldInSight: a crew can cancel IFR for the field ahead; unknown weather

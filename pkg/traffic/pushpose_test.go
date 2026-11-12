@@ -146,12 +146,16 @@ func TestFacesOutFromTheNose(t *testing.T) {
 	}
 }
 
-// Push and pull: where no push alone ends cleanly (LKTB 1M for 09; KJFK
+// Push and pull: where no push alone ends cleanly (LKTB 1M for 09, were it
+// not taxi-through; KJFK
 // D70 for 04L pushes alone since #1443, its push and tow 1 m from the
 // aircraft beside it), the
 // tug pushes the aircraft back and then tows it forward onto the taxiway;
 // the taxi starts from the pose, the nose on it, along its heading.
 func TestPushThenTow(t *testing.T) {
+	// 1M is taxi-through since #1508: its push and tow still planned.
+	defer func(m float64) { taxiThroughMaxMeters = m }(taxiThroughMaxMeters)
+	taxiThroughMaxMeters = 0
 	g := airportGraph(t, "LKTB")
 	i, err := g.Layout.ParkingIndex("1M")
 	if err != nil {

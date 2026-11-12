@@ -1,6 +1,7 @@
 package world
 
 import (
+	"hash/fnv"
 	"math"
 	"net/http"
 	"strings"
@@ -48,6 +49,9 @@ type airportInfo struct {
 
 type weatherInfo struct {
 	WindDirTrue, WindKts, GustKts float64
+	// Variable: the wind direction varies (a METAR's VRB), WindDirTrue
+	// means nothing (nav.Weather.Variable, #1527).
+	Variable                      bool `json:",omitempty"`
 	VisibilityM, CeilingFt, TempC float64
 	DewpointC                     *float64 `json:",omitempty"` // nil when unknown (JSON has no NaN)
 	QNHhPa                        float64
@@ -106,7 +110,7 @@ func (st *state) atisService(icao string) (*nav.ATISService, bool) {
 	}
 	p, hasProcs := st.procedures[icao]
 	var procs *airport.Procedures
-	opts := []nav.ATISOption{nav.ATISWithSelector(st.core.runwaySelector(icao))}
+	opts := []nav.ATISOption{nav.ATISWithSelector(st.core.runwaySelector(icao)), nav.ATISWithLetter(atisStartLetter(icao, traffic.Now()))}
 	if hasProcs {
 		procs = &p
 		opts = append(opts, nav.ATISWithMagVar(p.MagVar))
@@ -117,6 +121,18 @@ func (st *state) atisService(icao string) (*nav.ATISService, bool) {
 	svc := nav.NewATISService(l.Name, l, st.runwayLimits(l, lim), int(lim.TransitionAltitudeFt), opts...)
 	st.atis[icao] = svc
 	return svc, true
+}
+
+// atisStartLetter is the letter an airport's first ATIS takes (#1509):
+// where the day has got to, a new information every half hour from a
+// letter of the airport and the date, not Alpha at every start. The same
+// airport and time give the same letter, so a run repeats.
+func atisStartLetter(icao string, now time.Time) byte {
+	now = now.UTC()
+	h := fnv.New32a()
+	h.Write([]byte(strings.ToUpper(icao) + now.Format("2006-01-02")))
+	n := int(h.Sum32()%26) + now.Hour()*2 + now.Minute()/30
+	return byte('A' + n%26)
 }
 
 // atisTick keeps the ATIS of every airport with traffic of ours current
@@ -235,7 +251,7 @@ func registerAirportInfo(mux *http.ServeMux, st *state) {
 			out.Runways = append(out.Runways, ri)
 		}
 		if wx != nil {
-			wi := &weatherInfo{WindDirTrue: wx.WindDirTrue, WindKts: wx.WindKts, GustKts: wx.GustKts, VisibilityM: wx.VisibilityM,
+			wi := &weatherInfo{WindDirTrue: wx.WindDirTrue, WindKts: wx.WindKts, Variable: wx.Variable, GustKts: wx.GustKts, VisibilityM: wx.VisibilityM,
 				CeilingFt: wx.CeilingFt, TempC: wx.TempC, QNHhPa: wx.QNHhPa, Precip: wx.Precip, InCloud: wx.InCloud, Icing: nav.IcingConditions(*wx)}
 			if !math.IsNaN(wx.DewpointC) {
 				d := wx.DewpointC
