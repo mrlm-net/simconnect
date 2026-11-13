@@ -7,6 +7,13 @@ This project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 ---
 
+## [0.171.0] - 2026-11-13
+
+### Added
+
+- World: stop bars (#1532). Each aircraft's `ControlView` carries `holdAt`, the runway holding point it holds at or stops at next on its route, and `clearedPast`, the holding points ahead that its clearances take it past (a crossing, a line-up or take-off, the exit it vacates by), each until it has passed it. Points are graph nodes with position, runway and ILS flag. `GET /api/holds?icao=` lists every holding point of an airport with its bar released (off) or protected (on) and the call signs cleared past it. `TaxiEvent` and `ArrivalEvent` carry the same as `HoldAt` and `ClearedPast`.
+- Docs: `docs/data-model.openapi.yaml`, the JSON shape of the airport layout, procedures and airway data (OpenAPI 3.1 schemas), linked from the airport layout and airways pages.
+
 ## [0.170.3] - 2026-11-12
 
 ### Added

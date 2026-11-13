@@ -146,7 +146,7 @@ func (c *ArrivalController) takeover(m arrivalMonitor, pos airport.LatLon, onRun
 			clear = d // the exit's first node off the runway surface
 		}
 		if hs := c.req.Graph.Nodes[c.plan.Route.Nodes[i]].HoldShort; hs != nil && hs.Runway != c.plan.Runway.Index {
-			holds = append(holds, holdOnPath{runway: hs.Runway, index: i, dist: d})
+			holds = append(holds, holdOnPath{runway: hs.Runway, index: i, node: c.plan.Route.Nodes[i], dist: d})
 		}
 		pts = append(pts, route[i])
 	}
@@ -324,6 +324,9 @@ func (c *ArrivalController) onInjectedFrame() {
 	if at := c.atLimit(pose); at != c.last.AtLimit {
 		c.last.AtLimit = at
 		c.emit(nil, true) // holding at the clearance limit, or moving on
+	}
+	if at, past := c.holdPoints(pose); setHolds(at, past, &c.last.HoldAt, &c.last.ClearedPast) {
+		c.emit(nil, true) // a stop bar to switch
 	}
 	if !c.flapsUpFrom.IsZero() && c.flapsPct > 0 {
 		c.flapsPct = math.Max(0, c.aircraft().Flaps.LandingPct*(1-c.now().Sub(c.flapsUpFrom).Seconds()/(FlapsRetractSeconds*f(c.timing.flaps))))

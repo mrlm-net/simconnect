@@ -148,7 +148,7 @@ func (c *ArrivalController) taxiPathFrom(nose airport.LatLon, from int) (*Ground
 		d := pathLen(pts) + localDist(pts[len(pts)-1], route[i])
 		apron.add(c.plan.Route.Nodes[i], d)
 		if hs := c.req.Graph.Nodes[c.plan.Route.Nodes[i]].HoldShort; hs != nil && hs.Runway != c.plan.Runway.Index {
-			holds = append(holds, holdOnPath{runway: hs.Runway, index: i, dist: d})
+			holds = append(holds, holdOnPath{runway: hs.Runway, index: i, node: c.plan.Route.Nodes[i], dist: d})
 		}
 		pts = append(pts, route[i])
 	}

@@ -471,6 +471,9 @@ func (c *TaxiController) onDepartureFrame(m taxiMonitor) {
 		c.last.AtLimit = at
 		c.emit(nil, true) // holding at the clearance limit, or moving on
 	}
+	if at, past := c.holdPoints(pose); setHolds(at, past, &c.last.HoldAt, &c.last.ClearedPast) {
+		c.emit(nil, true) // a stop bar to switch
+	}
 	switch c.state {
 	case TaxiPushback:
 		if pose.Arrived && c.towPts != nil && !c.towing {
@@ -1651,7 +1654,7 @@ func (c *TaxiController) startTaxiOut() error {
 		d := pathLen(pts) + localDist(pts[len(pts)-1], route.Points[i])
 		apron.add(route.Nodes[i], d)
 		if hs := c.req.Graph.Nodes[route.Nodes[i]].HoldShort; hs != nil && hs.Runway != c.runway.Index {
-			holds = append(holds, holdOnPath{runway: hs.Runway, index: i, dist: d})
+			holds = append(holds, holdOnPath{runway: hs.Runway, index: i, node: route.Nodes[i], dist: d})
 		}
 		pts = append(pts, route.Points[i])
 	}

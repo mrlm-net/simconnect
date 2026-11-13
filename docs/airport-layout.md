@@ -9,6 +9,8 @@ section: "nav"
 
 `pkg/airport` turns SimConnect facility data into a typed model of an airport's ground layout (runways, parking stands, taxi points, taxi paths and taxiway names) and builds a routable taxi graph from it.
 
+The JSON shape of the layout and procedures is described in [data-model.openapi.yaml](data-model.openapi.yaml) (OpenAPI 3.1, schemas only).
+
 ```go
 import "github.com/mrlm-net/simconnect/pkg/airport"
 ```

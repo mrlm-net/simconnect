@@ -195,6 +195,12 @@ type TaxiEvent struct {
 	// for none; AtLimit is set while the aircraft holds there.
 	LimitNode airport.NodeID
 	AtLimit   bool
+	// HoldAt is the runway holding point (graph node) the aircraft holds
+	// at, or stops at next on its route, -1 none; ClearedPast are the
+	// holding points ahead that its clearances take it past, each until it
+	// has passed it (#1532): stop bars off.
+	HoldAt      airport.NodeID
+	ClearedPast []airport.NodeID
 	// Deicing is set while the aircraft is being de-iced (#323).
 	Deicing bool
 	// PushbackHeld is set while the pushback waits, or stops, for traffic
@@ -323,6 +329,11 @@ type TaxiController struct {
 	extended                                                bool
 	gateAt, pushAt, moveAt                                  time.Time
 	pushCleared, taxiCleared, lineUpCleared, takeoffCleared bool
+	// crossFirst is the first crossing's holding point on route (firstCrossing).
+	crossFirst struct {
+		route *airport.Route
+		at    airport.NodeID
+	}
 	// climb: the waypoints MSFS AI flies after the injected climb (the
 	// SID), for ClimbRoute.
 	climb           []types.SIMCONNECT_DATA_WAYPOINT
@@ -437,7 +448,7 @@ func NewTaxiController(fleet *Fleet, opts ...TaxiOption) *TaxiController {
 		rng:     NewRandom(0xdea),
 	}
 	c.groundDrive = groundDrive{ignoreRunway: -1, limitNode: -1, clock: func() time.Time { return c.now() }, record: c.note}
-	c.last.LimitNode = -1
+	c.last.LimitNode, c.last.HoldAt = -1, -1
 	for _, o := range opts {
 		o(c)
 	}

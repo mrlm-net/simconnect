@@ -9,6 +9,8 @@ section: "nav"
 
 `pkg/nav` reads enroute navigation data — waypoints, VORs, NDBs and the airways joining them — from the SimConnect facility API, builds a routable airway graph and caches it as JSON so later runs (and tests) need no simulator.
 
+The JSON shape of the cached fixes and airways is described in [data-model.openapi.yaml](data-model.openapi.yaml) (OpenAPI 3.1, schemas only).
+
 ```go
 import "github.com/mrlm-net/simconnect/pkg/nav"
 ```
