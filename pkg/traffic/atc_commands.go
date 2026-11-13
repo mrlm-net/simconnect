@@ -198,7 +198,7 @@ func (c *TaxiController) vacateAfterReject(pose TakeoffPose) error {
 	for i, n := range route.Nodes {
 		if hs := g.Nodes[n].HoldShort; hs != nil && hs.Runway != c.runway.Index {
 			at, _ := path.DistanceTo(route.Points[i])
-			holds = append(holds, holdOnPath{runway: hs.Runway, index: i, dist: at})
+			holds = append(holds, holdOnPath{runway: hs.Runway, index: i, node: n, dist: at})
 		}
 	}
 	c.crossZones, c.nextCross, c.crossClears = crossingZones(g, route.Points, holds), 0, 0

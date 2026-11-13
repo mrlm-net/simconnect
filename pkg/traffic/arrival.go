@@ -204,6 +204,10 @@ type ArrivalEvent struct {
 	// for none; AtLimit is set while the aircraft holds there.
 	LimitNode airport.NodeID
 	AtLimit   bool
+	// HoldAt and ClearedPast: the runway holding points, as in TaxiEvent
+	// (#1532); the exit's holding point is cleared past while vacating.
+	HoldAt      airport.NodeID
+	ClearedPast []airport.NodeID
 	// Lights is the light state the sim reports.
 	Lights Lights
 	Err    error
@@ -429,7 +433,7 @@ func NewArrivalController(fleet *Fleet, opts ...ArrivalOption) *ArrivalControlle
 		rng: NewRandom(0x5eed),
 	}
 	c.groundDrive = groundDrive{ignoreRunway: -1, limitNode: -1, clock: func() time.Time { return c.now() }, record: c.note}
-	c.last.LimitNode = -1
+	c.last.LimitNode, c.last.HoldAt = -1, -1
 	for _, o := range opts {
 		o(c)
 	}

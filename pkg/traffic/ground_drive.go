@@ -84,6 +84,8 @@ type groundDrive struct {
 	limit     float64
 	hasLimit  bool
 	limitNode airport.NodeID
+	// holdSeen: a holding point's distance along the path (aheadOf).
+	holdSeen holdOnRoute
 
 	// ripple: how it moves up in a queue (ground_ripple.go).
 	ripple queueRipple
@@ -306,6 +308,7 @@ func (d *groundDrive) atCrossingHold(pose GroundPose) (string, bool) {
 // holdOnPath is a hold-short node on an injected path.
 type holdOnPath struct {
 	runway, index int
+	node          airport.NodeID
 	dist          float64
 }
 
@@ -314,6 +317,27 @@ type holdOnPath struct {
 type crossZone struct {
 	from, to float64
 	runway   string
+	// nodes are its hold-short nodes, where it enters and leaves the runway.
+	nodes [2]airport.NodeID
+}
+
+// crossingHolds is where the crossings ahead hold the aircraft, s metres
+// along its path (#1532): at, the hold-short node of the first crossing it
+// is not cleared over (-1 none), and past, appended to, the hold-short nodes
+// of the crossings before it that it is cleared over and has not passed.
+func (d *groundDrive) crossingHolds(s float64, past []airport.NodeID) (airport.NodeID, []airport.NodeID) {
+	for k, z := range d.crossZones {
+		if d.holdAtCrossings && k >= d.nextCross {
+			return z.nodes[0], past
+		}
+		if s < z.from {
+			past = append(past, z.nodes[0])
+		}
+		if s < z.to {
+			past = append(past, z.nodes[1])
+		}
+	}
+	return -1, past
 }
 
 // crossingZones pairs consecutive hold-shorts of the same runway with the
@@ -332,7 +356,7 @@ func crossingZones(g *airport.Graph, route []airport.LatLon, holds []holdOnPath)
 			crosses = g.RunwayAt(route[j], 0) == a.runway
 		}
 		if crosses {
-			zones = append(zones, crossZone{a.dist, b.dist, g.Layout.Runways[a.runway].Name()})
+			zones = append(zones, crossZone{a.dist, b.dist, g.Layout.Runways[a.runway].Name(), [2]airport.NodeID{a.node, b.node}})
 		}
 	}
 	return zones

@@ -1,0 +1,382 @@
+openapi: 3.1.0
+info:
+  title: MSFS sim airport & navigation data model
+  version: 0.1.0
+  description: |
+    JSON shape of the airport and navigation data the simconnect library
+    decodes from MSFS 2024 SimConnect facility records
+    (github.com/mrlm-net/simconnect, pkg/airport and pkg/nav).
+    Data model only, no endpoints.
+
+    Units: lat/lon degrees, altitudes meters MSL, lengths meters,
+    headings/courses degrees, speeds knots, airway distances NM.
+    Enums are written by name: the SimConnect constant without its type
+    prefix ("GATE_HEAVY", "HOLD_SHORT", "TF") - simconnect v0.121.0+.
+    A value with no name is written as its integer. Readers also accept
+    the legacy integer or a numeric string (older dumps and caches).
+paths: {}
+components:
+  schemas:
+    # ---------- shared ----------
+    LatLon:
+      type: object
+      required: [lat, lon]
+      properties:
+        lat: { type: number, format: double }
+        lon: { type: number, format: double }
+
+    # ---------- airport ground layout (airport.Layout) ----------
+    Layout:
+      type: object
+      description: |
+        Ground layout of one airport. Slices are indexed by SimConnect list
+        index (taxiPoints[i].index == i, likewise runways, parking, taxiPaths);
+        TaxiPath.nameIndex indexes taxiNames.
+      required: [icao, name, lat, lon, alt, runways, parking, taxiPoints, taxiPaths, taxiNames]
+      properties:
+        icao: { type: string, example: LKPR }
+        name: { type: string, example: Vaclav Havel Airport Prague }
+        lat: { type: number, description: Airport reference point }
+        lon: { type: number }
+        alt: { type: number, description: meters MSL }
+        runways: { type: array, items: { $ref: '#/components/schemas/Runway' } }
+        parking: { type: array, items: { $ref: '#/components/schemas/Parking' } }
+        taxiPoints: { type: array, items: { $ref: '#/components/schemas/TaxiPoint' } }
+        taxiPaths: { type: array, items: { $ref: '#/components/schemas/TaxiPath' } }
+        taxiNames: { type: array, items: { type: string } }
+        frequencies: { type: array, items: { $ref: '#/components/schemas/Frequency' } }
+        tower:
+          $ref: '#/components/schemas/LatLon'
+        towerAlt:
+          type: number
+          description: Ground elevation at the tower (TOWER_ALTITUDE), meters MSL, not the cab.
+        hasTower: { type: boolean }
+        transitionAlt: { type: number, description: 'meters; 0/absent = not given by scenery' }
+        transitionLevel: { type: number, description: 'meters; 0/absent = not given by scenery' }
+
+    Runway:
+      type: object
+      required: [index, center, alt, heading, length, width, primary, secondary]
+      properties:
+        index: { type: integer }
+        center: { $ref: '#/components/schemas/LatLon' }
+        alt: { type: number, description: meters MSL }
+        heading: { type: number, description: degrees true, direction of the primary end }
+        length: { type: number, description: meters }
+        width: { type: number, description: meters }
+        surface:
+          type: string
+          description: 'Lower-case material name, may contain a space ("oil treated", "steel mats"); every grass kind is "grass" and every water kind "water"; absent when unknown.'
+          examples: [concrete, asphalt, grass, gravel, water, bitumen, tarmac, oil treated]
+        hard: { type: boolean, description: 'Paved: concrete, asphalt, bitumen, macadam, tarmac, brick' }
+        primary: { $ref: '#/components/schemas/RunwayEnd' }
+        secondary: { $ref: '#/components/schemas/RunwayEnd' }
+
+    RunwayEnd:
+      type: object
+      required: [number, designator, name, heading, threshold]
+      properties:
+        number: { type: integer, description: '1-36, or 37-44 for N, NE, E, SE, S, SW, W, NW' }
+        designator: { $ref: '#/components/schemas/RunwayDesignator' }
+        name: { type: string, example: 27R }
+        heading: { type: number, description: degrees true, take-off/landing direction }
+        threshold:
+          $ref: '#/components/schemas/LatLon'
+          description: Start of the runway surface; displaced thresholds not applied.
+        ils: { type: string, description: ILS ident, absent without one }
+        ilsRegion: { type: string }
+
+    Parking:
+      type: object
+      required: [index, name, suffix, number, type, heading, radius, biasX, biasZ, position]
+      properties:
+        index: { type: integer }
+        name: { $ref: '#/components/schemas/ParkingName' }
+        suffix: { $ref: '#/components/schemas/ParkingName' }
+        number: { type: integer, minimum: 0 }
+        type: { $ref: '#/components/schemas/ParkingType' }
+        heading: { type: number, description: degrees true }
+        radius: { type: number, description: meters }
+        biasX: { type: number, description: meters east of the reference point }
+        biasZ: { type: number, description: meters north of the reference point }
+        position: { $ref: '#/components/schemas/LatLon' }
+        airlines:
+          type: array
+          items: { type: string }
+          description: Airline codes (ICAO or IATA as the scenery defines); absent = any airline.
+
+    TaxiPoint:
+      type: object
+      required: [index, type, orientation, biasX, biasZ, position]
+      properties:
+        index: { type: integer }
+        type: { $ref: '#/components/schemas/TaxiPointType' }
+        orientation: { type: integer }
+        biasX: { type: number }
+        biasZ: { type: number }
+        position: { $ref: '#/components/schemas/LatLon' }
+
+    TaxiPath:
+      type: object
+      description: Edge between two taxi points, or a taxi point and a parking spot when type is PARKING (3).
+      required: [index, type, width, runwayNumber, runwayDesignator, start, end, nameIndex]
+      properties:
+        index: { type: integer }
+        type: { $ref: '#/components/schemas/TaxiPathType' }
+        width: { type: number, description: meters }
+        runwayNumber: { type: integer }
+        runwayDesignator: { $ref: '#/components/schemas/RunwayDesignator' }
+        start: { type: integer, description: Taxi point index }
+        end: { type: integer, description: Taxi point index, or parking index when type is PARKING }
+        nameIndex: { type: integer, description: Index into Layout.taxiNames }
+
+    Frequency:
+      type: object
+      required: [kind, mhz, name]
+      properties:
+        kind:
+          type: string
+          enum: [atis, clearance, ground, tower, approach, departure, center, ctaf, fis, other]
+          description: ctaf also covers UNICOM and MULTICOM.
+        mhz: { type: number, example: 118.105 }
+        name: { type: string, description: 'As the scenery names it, may be empty', example: PRAHA TOWER }
+
+    # ---------- procedures (airport.Procedures) ----------
+    Procedures:
+      type: object
+      required: [icao, magVar, departures, arrivals, approaches]
+      properties:
+        icao: { type: string }
+        magVar: { type: number, description: Airport magnetic variation, degrees (MAGVAR) }
+        departures: { type: array, items: { $ref: '#/components/schemas/Procedure' } }
+        arrivals: { type: array, items: { $ref: '#/components/schemas/Procedure' } }
+        approaches: { type: array, items: { $ref: '#/components/schemas/Approach' } }
+
+    Procedure:
+      type: object
+      description: |
+        SID or STAR. SID = runway transition -> legs -> enroute transition;
+        STAR = enroute transition -> legs -> runway transition.
+        No runway transitions = serves all runways.
+      required: [name, legs, runwayTransitions, enrouteTransitions]
+      properties:
+        name: { type: string }
+        legs: { type: array, items: { $ref: '#/components/schemas/Leg' }, description: Common route }
+        runwayTransitions: { type: array, items: { $ref: '#/components/schemas/Transition' } }
+        enrouteTransitions: { type: array, items: { $ref: '#/components/schemas/Transition' } }
+
+    Transition:
+      type: object
+      description: Runway transition (runway set) or enroute/approach transition (name = the fix it starts or ends at).
+      required: [legs]
+      properties:
+        name: { type: string }
+        runway: { type: string, example: '24' }
+        legs: { type: array, items: { $ref: '#/components/schemas/Leg' } }
+
+    Approach:
+      type: object
+      required: [type, name, runway, transitions, final, missed]
+      properties:
+        type: { $ref: '#/components/schemas/ApproachType' }
+        name: { type: string, example: RNAV 24 Z }
+        runway: { type: string, example: '24' }
+        suffix: { type: string, example: Z }
+        transitions: { type: array, items: { $ref: '#/components/schemas/Transition' } }
+        final: { type: array, items: { $ref: '#/components/schemas/Leg' } }
+        missed: { type: array, items: { $ref: '#/components/schemas/Leg' } }
+
+    Leg:
+      type: object
+      description: One ARINC 424 procedure leg. Courses are magnetic; turn them true with the procedure set's magVar.
+      required: [type, position, arcCenter]
+      properties:
+        type: { $ref: '#/components/schemas/LegType' }
+        fix: { type: string, description: Absent for course/heading legs ending at an altitude or manual termination }
+        region: { type: string }
+        fixKind:
+          type: string
+          enum: [W, V, N, R, A]
+          description: W waypoint, V VOR, N NDB, R runway, A airport
+        position: { $ref: '#/components/schemas/LatLon', description: Zero without a fix }
+        flyOver: { type: boolean }
+        turnRight: { type: boolean }
+        turnLeft: { type: boolean }
+        course: { type: number, description: 'Degrees magnetic (true = course - magVar)' }
+        distance: { type: number, description: Leg length or DME distance, meters }
+        altDesc: { $ref: '#/components/schemas/AltitudeDescriptor', description: Absent = no altitude constraint }
+        alt1: { type: number, description: meters MSL }
+        alt2: { type: number, description: 'meters MSL (lower bound for BETWEEN)' }
+        speed: { type: number, description: 'Speed limit, knots; absent = none' }
+        arcCenter: { $ref: '#/components/schemas/LatLon', description: RF and AF legs }
+        rho: { type: number, description: Arc radius / DME distance }
+        originFix: { type: string, description: 'Recommended navaid a CD, VD or FD leg measures its DME distance from; absent in data dumped before v0.160.0' }
+        origin: { $ref: '#/components/schemas/LatLon', description: Position of originFix; absent without one }
+        iaf: { type: boolean }
+        faf: { type: boolean }
+        map: { type: boolean, description: Missed approach point }
+
+    # ---------- enroute nav (pkg/nav) ----------
+    FixKind:
+      type: string
+      enum: [W, V, N]
+      description: W waypoint, V VOR, N NDB
+
+    FixKey:
+      type: object
+      description: Worldwide fix identity (idents repeat across regions; a VOR and a waypoint may share one). Text form IDENT.REGION.KIND, e.g. VOZ.LK.V.
+      required: [ident, region, kind]
+      properties:
+        ident: { type: string, example: VOZ }
+        region: { type: string, example: LK }
+        kind: { $ref: '#/components/schemas/FixKind' }
+
+    Fix:
+      type: object
+      required: [ident, region, kind, position]
+      properties:
+        ident: { type: string }
+        region: { type: string }
+        kind: { $ref: '#/components/schemas/FixKind' }
+        position: { $ref: '#/components/schemas/LatLon' }
+        type: { $ref: '#/components/schemas/WaypointType' }
+        freq: { type: number, description: 'VOR in MHz, NDB in kHz' }
+        name: { type: string, description: 'Navaid name (VOZICE); waypoints have none' }
+        terminal: { type: boolean, description: IS_TERMINAL_WPT }
+
+    WaypointType:
+      anyOf:
+        - type: string
+          enum: [NONE, NAMED, UNNAMED, VOR, NDB, OFF_ROUTE, IAF, FAF, RNAV, VFR]
+        - type: integer
+      description: WAYPOINT record TYPE.
+
+    AirwayType:
+      anyOf:
+        - type: string
+          enum: [NONE, VICTOR, JET, BOTH]
+        - type: integer
+      description: 'VICTOR low, JET high. JSON is upper case; Go String() is lower case ("jet").'
+
+    FixRef:
+      type: object
+      required: [key, position]
+      properties:
+        key: { $ref: '#/components/schemas/FixKey' }
+        position: { $ref: '#/components/schemas/LatLon' }
+        minAltM: { type: number, description: 'Minimum altitude, meters; absent when not given (most LK segments)' }
+
+    RouteLink:
+      type: object
+      description: One ROUTE record of a waypoint; prev/next absent at the airway ends.
+      required: [airway, type]
+      properties:
+        airway: { type: string, example: L984 }
+        type: { $ref: '#/components/schemas/AirwayType' }
+        prev: { $ref: '#/components/schemas/FixRef' }
+        next: { $ref: '#/components/schemas/FixRef' }
+
+    NavResult:
+      type: object
+      description: A loaded fix with its airway links. No JSON tags in Go, so field names are as below.
+      required: [Key, Fix, Routes, Found]
+      properties:
+        Key: { $ref: '#/components/schemas/FixKey' }
+        Fix: { $ref: '#/components/schemas/Fix' }
+        Routes: { type: [array, 'null'], items: { $ref: '#/components/schemas/RouteLink' } }
+        Found: { type: boolean, description: False when the sim knows no such fix }
+
+    AirwaySegment:
+      type: object
+      required: [from, to, distanceNM]
+      properties:
+        from: { $ref: '#/components/schemas/FixKey' }
+        to: { $ref: '#/components/schemas/FixKey' }
+        distanceNM: { type: number }
+        minAltM: { type: number, description: 'Higher of the two ends, meters (round feet, e.g. 1524 = 5000 ft)' }
+
+    Airway:
+      type: object
+      description: An ident can cover several disjoint pieces; segments are not necessarily one chain.
+      required: [name, type, segments]
+      properties:
+        name: { type: string }
+        type: { $ref: '#/components/schemas/AirwayType' }
+        segments: { type: array, items: { $ref: '#/components/schemas/AirwaySegment' } }
+
+    AirwayGraph:
+      type: object
+      description: Enroute network; every segment can be flown both ways (no one-way data in the sim).
+      required: [center, radiusNM, fixes, airways]
+      properties:
+        center: { $ref: '#/components/schemas/LatLon' }
+        radiusNM: { type: number }
+        fixes:
+          type: array
+          items: { $ref: '#/components/schemas/Fix' }
+          description: Loaded fixes, then airway ends beyond the crawl (key and position only).
+        airways: { type: array, items: { $ref: '#/components/schemas/Airway' } }
+
+    # ---------- SimConnect enums (names; unnamed values as integers) ----------
+    RunwayDesignator:
+      anyOf:
+        - type: string
+          enum: [NONE, LEFT, RIGHT, CENTER, WATER, A, B, LAST]
+        - type: integer
+
+    ParkingType:
+      anyOf:
+        - type: string
+          enum: [NONE, RAMP_GA, RAMP_GA_SMALL, RAMP_GA_MEDIUM, RAMP_GA_LARGE, RAMP_CARGO, RAMP_MIL_CARGO,
+                 RAMP_MIL_COMBAT, GATE_SMALL, GATE_MEDIUM, GATE_HEAVY, DOCK_GA, FUEL, VEHICLE,
+                 RAMP_GA_EXTRA, GATE_EXTRA]
+        - type: integer
+
+    ParkingName:
+      anyOf:
+        - type: string
+          enum: [NONE, PARKING, N_PARKING, NE_PARKING, E_PARKING, SE_PARKING, S_PARKING, SW_PARKING,
+                 W_PARKING, NW_PARKING, GATE, DOCK, GATE_A, GATE_B, GATE_C, GATE_D, GATE_E, GATE_F,
+                 GATE_G, GATE_H, GATE_I, GATE_J, GATE_K, GATE_L, GATE_M, GATE_N, GATE_O, GATE_P,
+                 GATE_Q, GATE_R, GATE_S, GATE_T, GATE_U, GATE_V, GATE_W, GATE_X, GATE_Y, GATE_Z]
+        - type: integer
+
+    TaxiPointType:
+      anyOf:
+        - type: string
+          enum: [NONE, NORMAL, HOLD_SHORT, ILS_HOLD_SHORT, HOLD_SHORT_NO_DRAW, ILS_HOLD_SHORT_NO_DRAW]
+        - type: integer
+      description: Value 3 has no name and is written as the integer 3.
+
+    TaxiPathType:
+      anyOf:
+        - type: string
+          enum: [NONE, TAXI, RUNWAY, PARKING, PATH, CLOSED, VEHICLE, ROAD, PAINTED_LINE]
+        - type: integer
+
+    ApproachType:
+      anyOf:
+        - type: string
+          enum: [UNDEFINED, GPS, VOR, NDB, ILS, LOCALIZER, SDF, LDA, VORDME, NDBDME, RNAV, LOCALIZER_BACK_COURSE]
+        - type: integer
+
+    LegType:
+      anyOf:
+        - type: string
+          enum: [NONE, AF, CA, CD, CF, CI, CR, DF, FA, FC, FD, FM, HA, HF, HM, IF, PI, RF, TF, VA, VD, VI, VM, VR]
+        - type: integer
+      description: |
+        ARINC 424 path terminator: AF arc to fix, CA course to altitude, CD course
+        to DME distance, CF course to fix, CI course to intercept, CR course to
+        radial, DF direct to fix, FA fix to altitude, FC track from fix for a
+        distance, FD track from fix to DME distance, FM fix to manual termination,
+        HA/HF/HM hold to altitude/one circuit/manual, IF initial fix, PI procedure
+        turn, RF radius to fix, TF track to fix, VA/VD/VI/VM/VR heading to
+        altitude/DME distance/intercept/manual/radial.
+
+    AltitudeDescriptor:
+      anyOf:
+        - type: string
+          enum: [AT, AT_OR_ABOVE, AT_OR_BELOW, BETWEEN]
+        - type: integer
+      description: 'AT/AT_OR_ABOVE/AT_OR_BELOW apply to alt1; BETWEEN is alt2..alt1. NONE is never written: Leg.altDesc is omitted instead.'

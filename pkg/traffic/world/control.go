@@ -425,11 +425,17 @@ type ControlView struct {
 	SayingUntil    *time.Time `json:"sayingUntil,omitempty"`
 	HoldingShortOf string     `json:"holdingShortOf,omitempty"`
 	// TaxiRemainingM: a departure's taxi still to go to its runway (m).
-	TaxiRemainingM float64        `json:"taxiRemainingM,omitempty"`
-	AtLimit        bool           `json:"atLimit"`
-	LimitNode      int            `json:"limitNode"`
-	Position       airport.LatLon `json:"position"`
-	Heading        float64        `json:"heading"`
+	TaxiRemainingM float64 `json:"taxiRemainingM,omitempty"`
+	AtLimit        bool    `json:"atLimit"`
+	LimitNode      int     `json:"limitNode"`
+	// HoldAt is the runway holding point it holds at, or stops at next on
+	// its route (nil none); ClearedPast are the holding points ahead that
+	// its clearances take it past, each until it has passed it: the stop
+	// bars to switch off (#1532; per airport: GET /api/holds).
+	HoldAt      *HoldPoint     `json:"holdAt,omitempty"`
+	ClearedPast []HoldPoint    `json:"clearedPast,omitempty"`
+	Position    airport.LatLon `json:"position"`
+	Heading     float64        `json:"heading"`
 	// AltFt: its altitude (feet MSL) as the simulator reports it; 0 not seen.
 	AltFt       float64          `json:"altFt,omitempty"`
 	GroundSpeed float64          `json:"groundSpeed"`
@@ -1583,7 +1589,7 @@ func (it *controlled) update(ev TaxiOrArrival) {
 	// at once (push.go). Positions come with the regular poll.
 	defer func() {
 		if prev.State != v.State || prev.ATC != v.ATC || prev.AtLimit != v.AtLimit || prev.LimitNode != v.LimitNode ||
-			prev.Lights != v.Lights || prev.Error != v.Error || prev.Done != v.Done || prev.Manual != v.Manual || !slices.Equal(prev.Actions, v.Actions) {
+			prev.Lights != v.Lights || prev.Error != v.Error || prev.Done != v.Done || prev.Manual != v.Manual || !slices.Equal(prev.Actions, v.Actions) || !sameHolds(prev, *v) {
 			it.cc.changed("control")
 		}
 	}()
@@ -1735,6 +1741,7 @@ func (it *controlled) update(ev TaxiOrArrival) {
 	}
 	if e := ev.dep; e != nil {
 		v.State, v.HoldingShortOf, v.AtLimit, v.LimitNode = e.State.String(), e.HoldingShortOf, e.AtLimit, int(e.LimitNode)
+		v.HoldAt, v.ClearedPast = holdPointsView(it.graph, e.HoldAt, e.ClearedPast)
 		v.TaxiRemainingM = e.Remaining
 		if e.State != traffic.TaxiHoldingShort {
 			it.heldShortAt = time.Time{}
@@ -1789,6 +1796,7 @@ func (it *controlled) update(ev TaxiOrArrival) {
 	}
 	if e := ev.arr; e != nil {
 		v.State, v.HoldingShortOf, v.AtLimit, v.LimitNode = e.State.String(), e.HoldingShortOf, e.AtLimit, int(e.LimitNode)
+		v.HoldAt, v.ClearedPast = holdPointsView(it.graph, e.HoldAt, e.ClearedPast)
 		v.Position, v.Heading, v.GroundSpeed, v.Lights, v.OnGround = e.Position, e.Heading, e.GroundSpeed, e.Lights.String(), e.OnGround
 		if e.Err != nil {
 			v.Error = e.Err.Error()
@@ -2375,6 +2383,19 @@ func registerControl(mux *http.ServeMux, st *state) {
 	// GET /api/control — controlled aircraft.
 	// GET /api/stands?icao=X — who holds which stand: reservations of the
 	// controlled traffic and aircraft the scan found on stands.
+	// Every runway holding point of an airport with its stop bar (#1532).
+	mux.HandleFunc("GET /api/holds", func(w http.ResponseWriter, r *http.Request) {
+		cc := center(w)
+		if cc == nil {
+			return
+		}
+		g, err := st.cache.Graph(r.URL.Query().Get("icao"))
+		if err != nil {
+			http.Error(w, err.Error(), http.StatusNotFound)
+			return
+		}
+		writeJSON(w, cc.holdBars(g))
+	})
 	mux.HandleFunc("GET /api/stands", func(w http.ResponseWriter, r *http.Request) {
 		cc := center(w)
 		if cc == nil {
