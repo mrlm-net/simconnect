@@ -161,8 +161,11 @@ func (it *controlled) onRequest(req string) {
 	default:
 		return
 	}
-	if it.gates.Load() {
-		return // the user answers
+	// The user answers: under their control, or on a staffed station that
+	// checkStaffed has not looked at yet (handed from an unstaffed delivery
+	// to a staffed ground a moment ago, gates is still false).
+	if it.gates.Load() || it.atc != "" && it.staffedNow(it.atc) {
+		return
 	}
 	it.askGround(req)
 }
@@ -195,7 +198,7 @@ func (it *controlled) askGround(req string) {
 	it.callIf(traffic.PosGround, prio, func() bool {
 		it.mu.Lock()
 		defer it.mu.Unlock()
-		return it.request == req
+		return it.request == req && !it.gates.Load() // the user's now: not ours to answer
 	}, nil, func() { it.answer(req) })
 }
 

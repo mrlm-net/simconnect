@@ -7,6 +7,13 @@ This project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 ---
 
+## [0.171.2] - 2026-11-13
+
+### Fixed
+
+- World: with ground staffed and delivery not, a departure handed to ground by the AI's delivery asks the player. The AI's ground no longer answers its first call in the moment before the aircraft became the player's: the hand-off replayed the waiting request before `checkStaffed` had looked at the new station, and the answer already queued was said ("request pushback and start up", "on a staffed station: the player's", "pushback and start up approved"). The request now looks at the station itself, and an answer queued for an aircraft that has since become the player's is dropped (#1538).
+
+
 ## [0.171.1] - 2026-11-13
 
 ### Fixed
