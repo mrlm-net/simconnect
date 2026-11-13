@@ -208,9 +208,7 @@ func (cc *controlCenter) cancelEmergency(it *controlled) error {
 		return errors.New("emergency: none to cancel")
 	}
 	it.emergencyLevel = ""
-	if squawk != "" {
-		it.view.Squawk = squawk
-	}
+	it.view.Squawk = squawk
 	pos, tail := it.atc, it.Tail
 	it.mu.Unlock()
 	if pos == "" {

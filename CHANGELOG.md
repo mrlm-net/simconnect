@@ -7,6 +7,13 @@ This project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 ---
 
+## [0.171.1] - 2026-11-13
+
+### Fixed
+
+- World: a cancelled emergency gives the arrival its code back (none), no longer squawking 7700 for the rest of the flight (#1533).
+
+
 ## [0.171.0] - 2026-11-13
 
 ### Added
