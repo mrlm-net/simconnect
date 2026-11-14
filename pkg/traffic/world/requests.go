@@ -198,7 +198,9 @@ func (it *controlled) askGround(req string) {
 	it.callIf(traffic.PosGround, prio, func() bool {
 		it.mu.Lock()
 		defer it.mu.Unlock()
-		return it.request == req && !it.gates.Load() // the user's now: not ours to answer
+		// The user's now, or still with delivery (#1542): not ours to
+		// answer; the hand-off replays it.
+		return it.request == req && !it.gates.Load() && (it.dep == nil || it.delivered)
 	}, nil, func() { it.answer(req) })
 }
 
