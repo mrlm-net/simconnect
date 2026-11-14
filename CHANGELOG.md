@@ -7,6 +7,13 @@ This project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 ---
 
+## [0.171.3] - 2026-11-14
+
+### Fixed
+
+- World: an arrival whose crew diverts after its third go-around for no landing clearance flies the diversion on a staffed tower as well. It used to announce "diverting to" its alternate, stay the staffed tower's after the go-around, fly back onto the final and land without a clearance. The diversion was flown only by the sequence's absorption, which skips an aircraft under the player's control. It is now flown before that skip, because it is the crew's decision, not a controller's (#1544).
+
+
 ## [0.171.2] - 2026-11-13
 
 ### Fixed

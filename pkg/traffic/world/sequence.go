@@ -246,9 +246,19 @@ func (q *sequences) absorb(now time.Time, icao string, seq []traffic.SequenceEnt
 				break
 			}
 		}
+		if it == nil {
+			continue
+		}
+		// A crew diverting (#1411) flies it on a staffed station too: the
+		// crew's decision, not a controller's. It stays the staffed tower's
+		// after its go-around until the player hands it over, and skipped
+		// here it flew back onto the final and landed uncleared (#1544).
+		if q.flyDiversion(now, icao, it, e) {
+			continue
+		}
 		// Under the player's control (manual, or on a staffed station: #1096):
 		// no speeds or vectors from the AI; it stays in the sequence.
-		if it == nil || it.joinPending.Load() || it.gates.Load() {
+		if it.joinPending.Load() || it.gates.Load() {
 			continue // VFR: told to join first (#711)
 		}
 		if q.settling(now, icao, e.Callsign, seq) {
@@ -269,9 +279,6 @@ func (q *sequences) absorb(now time.Time, icao string, seq []traffic.SequenceEnt
 		// Going around with the tower, not handed back yet: approach has
 		// nothing to say to it (live, FTHAB told "number 3, reduce speed to
 		// 210 knots" 8 s into its go-around, on the tower's frequency).
-		if q.flyDiversion(now, icao, it, e) {
-			continue
-		}
 		it.mu.Lock()
 		withTower := it.atc == traffic.PosTower
 		it.mu.Unlock()
