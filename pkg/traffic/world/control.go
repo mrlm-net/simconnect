@@ -4953,6 +4953,17 @@ func (it *controlled) handoff(ev TaxiOrArrival) {
 			if cleared := it.cc.landCleared; cleared != nil && cleared(it.Tail) {
 				return
 			}
+			// The player's tower answers, and nobody takes back a landing
+			// clearance the player gave (#1540).
+			if it.gates.Load() || it.staffedNow(traffic.PosTower) {
+				return
+			}
+			it.mu.Lock()
+			playerCleared := it.landCleared
+			it.mu.Unlock()
+			if playerCleared {
+				return
+			}
 			it.say(traffic.CircuitInstruction(it.Tail, traffic.InstrContinue))
 		})
 	}

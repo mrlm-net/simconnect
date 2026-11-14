@@ -7,6 +7,15 @@ This project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 ---
 
+## [0.171.4] - 2026-11-14
+
+### Fixed
+
+- World: on staffed ground and tower our service vehicles neither call nor are answered by the AI; a taxiway is theirs, a crossing still sequenced by the tower, unsaid (#1539).
+- World: on a staffed tower the AI no longer answers an arrival's check-in, and never says "continue approach" after the player's "cleared to land" (#1540).
+- World: a departure still with delivery has no push or start answered by the AI's ground before its clearance, when an unstaffed delivery releases it (#1542).
+
+
 ## [0.171.3] - 2026-11-14
 
 ### Fixed

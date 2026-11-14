@@ -103,3 +103,74 @@ func TestStaffedGroundAfterDelivery(t *testing.T) {
 		t.Fatalf("%s: the player's pushback and start-up never said", dep.Tail)
 	}
 }
+
+// TestStaffedGroundBeforeClearance (#1542): departures wait for a staffed
+// delivery's clearance until their crews are ready to push, then delivery
+// is unstaffed. The AI's delivery clears them; the AI's ground answers none
+// of them (it did, before the clearance, as they went automatic), and a
+// cleared one waits on the staffed ground with pushstart.
+func TestStaffedGroundBeforeClearance(t *testing.T) {
+	if testing.Short() {
+		t.Skip("runs the World")
+	}
+	o := Options{DataDir: dataDir(t), ICAO: "LKPR", Manual: true, FrameRate: 10}
+	if testing.Verbose() {
+		o.World.Output = os.Stderr
+	}
+	h, err := Start(o)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer h.Close()
+	h.World.SetStaffed([]world.StaffedStation{{ICAO: "LKPR", Position: "delivery"}, {ICAO: "LKPR", Position: "ground"}, {ICAO: "LKPR", Position: "tower"}})
+	if _, err := h.World.Do(http.MethodPost, "/api/schedule", map[string]any{"enabled": false}); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := h.World.Do(http.MethodPost, "/api/game", map[string]any{"on": true, "icao": "LKPR", "intervalSec": 60}); err != nil {
+		t.Fatal(err)
+	}
+	departures := func() int {
+		n := 0
+		for _, v := range h.World.Snapshot().Aircraft {
+			if v.Kind == "departure" {
+				n++
+			}
+		}
+		return n
+	}
+	if !h.Until(20*time.Minute, func() bool { return departures() >= 2 }) {
+		t.Fatalf("%d departures in 20 simulated minutes, want 2", departures())
+	}
+	h.Advance(5 * time.Minute) // their crews ready to push, still uncleared
+	h.World.SetStaffed([]world.StaffedStation{{ICAO: "LKPR", Position: "ground"}, {ICAO: "LKPR", Position: "tower"}})
+	h.Advance(3 * time.Minute)
+
+	cleared := false
+	for _, tx := range h.Heard() {
+		if tx.Intent == traffic.IntentDepartureClearance && !tx.Pilot {
+			cleared = true
+		}
+		if tx.Pilot || tx.Position != traffic.PosGround {
+			continue
+		}
+		switch tx.Intent {
+		case traffic.IntentPushback, traffic.IntentStartUp, traffic.IntentTaxi, traffic.IntentFollowTaxi, traffic.IntentFollow:
+			t.Errorf("the AI's ground on a staffed ground: %s %s %q", tx.Callsign, tx.Intent, tx.Text)
+		}
+	}
+	if !cleared {
+		t.Fatal("the AI's delivery cleared no departure")
+	}
+	if t.Failed() {
+		return
+	}
+	for _, v := range h.World.Snapshot().Aircraft {
+		if v.Kind == "departure" && v.ATC == string(traffic.PosGround) && slices.Contains(v.Actions, "pushstart") {
+			return
+		}
+	}
+	for _, v := range h.World.Snapshot().Aircraft {
+		t.Logf("%s %s %s %s manual=%v %v", v.Tail, v.Kind, v.State, v.ATC, v.Manual, v.Actions)
+	}
+	t.Fatal("no cleared departure waiting on ground with pushstart")
+}

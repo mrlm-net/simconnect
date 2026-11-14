@@ -109,9 +109,14 @@ func (v *vehicleATC) cleared(icao string, r traffic.VehicleRequest) bool {
 // atcAnswerDelay, a runway crossing left to the tower.
 func (v *vehicleATC) ask(q *vehicleReq) {
 	cc, icao, r := v.cc, q.icao, q.r
-	if cc.core.vehicleRadioOff.Load() {
-		// Quiet: a taxiway is the vehicle's; a crossing waits for the tower
-		// in its turn (crossCleared), nothing said.
+	pos := traffic.PosGround
+	if r.Gate == traffic.GateRunway {
+		pos = traffic.PosTower
+	}
+	if v.quiet(icao, pos) {
+		// Quiet (the radio off, or the station staffed: #1539): a taxiway
+		// is the vehicle's; a crossing waits for the tower in its turn
+		// (crossCleared), nothing said.
 		if r.Gate == traffic.GateTaxiway {
 			v.mu.Lock()
 			q.cleared = true
@@ -148,6 +153,20 @@ func (v *vehicleATC) ask(q *vehicleReq) {
 			Text: station + ", " + q.name + ", request cross runway " + v.said(icao, r.Runway)})
 	}
 	cc.log.printf("%-6s %s: asks %s %s%s", q.name, r.Kind, r.Gate, r.Runway, strings.Join(r.Taxiways, ","))
+}
+
+// quiet reports whether the vehicles say nothing to pos at icao: their
+// radio is off, or a player staffs the station (#1539). The player has no
+// way to answer a vehicle, so the AI does not answer it on the player's
+// frequency: a taxiway is the vehicle's own, a crossing is still
+// sequenced by the tower, unsaid.
+func (v *vehicleATC) quiet(icao string, pos traffic.Position) bool {
+	if v.cc.core.vehicleRadioOff.Load() {
+		return true
+	}
+	station, _ := v.cc.stationOf(icao, pos)
+	_, staffed := v.cc.core.staffedAt(icao, pos, station)
+	return staffed
 }
 
 // said is a runway as the tower says it: the end in use, else the first.
@@ -195,7 +214,7 @@ func (v *vehicleATC) crossCleared(icao string, cross []string) {
 		if q == nil {
 			continue
 		}
-		if cc.core.vehicleRadioOff.Load() {
+		if v.quiet(icao, traffic.PosTower) {
 			v.mu.Lock()
 			q.cleared = true
 			v.mu.Unlock()
@@ -220,7 +239,7 @@ func (v *vehicleATC) vacated(icao string, r traffic.VehicleRequest) {
 	name := v.name(r.Vehicle, r.Kind)
 	delete(v.reqs, reqKey(icao, r))
 	v.mu.Unlock()
-	if v.cc.core.vehicleRadioOff.Load() {
+	if v.quiet(icao, traffic.PosTower) {
 		return
 	}
 	_, freq := v.cc.stationOf(icao, traffic.PosTower)
