@@ -7,6 +7,13 @@ This project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 ---
 
+## [0.171.3] - 2026-11-14
+
+### Fixed
+
+- World: the AI's ground no longer answers a departure not yet handed to it. A departure on a staffed ground whose crew had asked for its push while waiting for its clearance was released to automatic on the unstaffed delivery, and the AI's ground approved the push before the clearance was said (live, LROP: "pushback approved" 1 s after spawn). The request now waits for the clearance, which hands it to ground: to the player on a staffed ground (#1542).
+
+
 ## [0.171.2] - 2026-11-13
 
 ### Fixed
