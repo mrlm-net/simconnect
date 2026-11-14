@@ -39,6 +39,9 @@ func (l *lockedLog) String() string {
 // player hands it over), so it flew the go-around back onto the final and
 // landed without a clearance, the crew no longer checking (live, VECTOR.PRO
 // at LKPR, KLM504: "diverting to LKMB", then "landing → rollout"; #1544).
+//
+// It needs simconnect-data's airports.json for the alternate (none known, the
+// crew goes round again): in director-linux.yml's SKIP.
 func TestNoClearanceDiversionFlies(t *testing.T) {
 	if testing.Short() {
 		t.Skip("runs the World")
