@@ -7,6 +7,16 @@ This project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 ---
 
+## [0.171.5] - 2026-11-15
+
+### Security
+
+- Go 1.27.4 is the minimum (`go.mod`, airport map, simvar-cli): GO-2026-6859 in `net/http` (#1547).
+
+### Changed
+
+- Airport map: voice-goio v0.17.0 (controller-side grammar) (#1547).
+
 ## [0.171.4] - 2026-11-14
 
 ### Fixed
