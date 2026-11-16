@@ -92,7 +92,9 @@ const towerHeightM = 100
 
 // towerView is where the tower stands at an airport and where that comes
 // from: "yours" (set on the map), "known" (airport.Limits), "simulator"
-// (the facility's TOWER_*), "airport" (none: over the reference point).
+// (the facility's TOWER_*), "osm" (filled in by the data where the sim has
+// none, Layout.TowerSource; its tagged height is the cab), "airport"
+// (none: over the reference point).
 type towerView struct {
 	ICAO   string  `json:"icao"`
 	Lat    float64 `json:"lat"`
@@ -109,6 +111,12 @@ func (cc *controlCenter) towerAt(g *airport.Graph) towerView {
 	v := towerView{ICAO: l.ICAO, Lat: l.Latitude, Lon: l.Longitude, CabM: towerHeightM, Source: "airport"}
 	if l.HasTower {
 		v.Lat, v.Lon, v.Source = l.Tower.Lat, l.Tower.Lon, "simulator"
+		if l.TowerSource != "" {
+			v.Source = l.TowerSource
+		}
+		if l.TowerHeightM > 0 {
+			v.CabM = l.TowerHeightM
+		}
 	}
 	if t := cc.limitsOf(g).Tower; t != nil {
 		v.Lat, v.Lon, v.Source = t.Position.Lat, t.Position.Lon, "known"

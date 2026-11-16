@@ -51,6 +51,12 @@ components:
           type: number
           description: Ground elevation at the tower (TOWER_ALTITUDE), meters MSL, not the cab.
         hasTower: { type: boolean }
+        towerSource:
+          type: string
+          description: "Where tower comes from: absent = the simulator, 'osm' = OpenStreetMap (simconnect-data fills it where the sim has none)."
+        towerHeightM:
+          type: number
+          description: Tower height in meters when the source tags one (OSM); absent = unknown.
         transitionAlt: { type: number, description: 'meters; 0/absent = not given by scenery' }
         transitionLevel: { type: number, description: 'meters; 0/absent = not given by scenery' }
 

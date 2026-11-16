@@ -38,6 +38,11 @@ type Layout struct {
 	Tower         LatLon  `json:"tower,omitempty"`
 	TowerAltitude float64 `json:"towerAlt,omitempty"`
 	HasTower      bool    `json:"hasTower,omitempty"`
+	// TowerSource is where Tower comes from: "" the sim, "osm"
+	// OpenStreetMap (simconnect-data fills it where the sim has none).
+	// TowerHeightM is the tower's height when the source tags one, else 0.
+	TowerSource  string  `json:"towerSource,omitempty"`
+	TowerHeightM float64 `json:"towerHeightM,omitempty"`
 	// TransitionAltitude and TransitionLevel are the scenery's, meters (0:
 	// not given; LimitsFor takes the altitude where no published value is
 	// known).
