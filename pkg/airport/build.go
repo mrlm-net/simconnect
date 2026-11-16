@@ -43,11 +43,16 @@ type RawAirport struct {
 // RawFrequency is a FREQUENCY record: TYPE
 // (SIMCONNECT_FACILITY_FREQUENCY_TYPE), FREQUENCY in Hz, NAME.
 // RawTower is the AIRPORT record's tower (TOWER_LATITUDE, _LONGITUDE,
-// _ALTITUDE).
+// _ALTITUDE), or one filled in by the data where the sim gives none: Source
+// "osm" (OpenStreetMap, OSM its element such as "way/794617342", HeightM
+// its tagged height, 0 when untagged); Source "" is the sim's.
 type RawTower struct {
 	Latitude  float64 `json:"lat"`
 	Longitude float64 `json:"lon"`
 	Altitude  float64 `json:"alt"`
+	Source    string  `json:"source,omitempty"`
+	OSM       string  `json:"osm,omitempty"`
+	HeightM   float64 `json:"heightM,omitempty"`
 }
 
 type RawFrequency struct {
@@ -135,6 +140,7 @@ func BuildLayout(raw RawAirport) (*Layout, error) {
 	}
 	if t := raw.Tower; t != nil {
 		l.Tower, l.TowerAltitude, l.HasTower = LatLon{Lat: t.Latitude, Lon: t.Longitude}, t.Altitude, true
+		l.TowerSource, l.TowerHeightM = t.Source, t.HeightM
 	}
 	offset := func(x, z float32) LatLon {
 		lat, lon := convert.OffsetToLatLon(raw.Latitude, raw.Longitude, float64(x), float64(z))

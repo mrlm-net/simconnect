@@ -7,6 +7,12 @@ This project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 ---
 
+## [0.172.0] - 2026-11-16
+
+### Added
+- `pkg/airport`: towers simconnect-data fills in from OpenStreetMap where the sim gives none. `RawTower` reads `source`, `osm` and `heightM`; `Layout.TowerSource` ("osm") and `Layout.TowerHeightM` carry them.
+- `pkg/traffic/world`: the tower view reports `Source "osm"` for such towers (not "simulator") and uses the tagged height as the cab.
+
 ## [0.171.5] - 2026-11-15
 
 ### Security
