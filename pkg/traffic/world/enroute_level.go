@@ -147,6 +147,18 @@ func (s *scheduler) plannedTraffic(callsign string) ([]traffic.TrackedAircraft, 
 			plans[a.Tail] = it.arr.ProcedurePlan()
 		}
 	}
+	// The virtual overflights (#1482): where each is now, on its way ahead.
+	virtual, ways := s.virtualAircraft(s.cc.clock.Now())
+	for _, a := range virtual {
+		if seen[a.Tail] || a.Tail == callsign {
+			continue
+		}
+		seen[a.Tail] = true
+		out = append(out, a)
+		if w := ways[a.Tail]; len(w) > 0 {
+			plans[a.Tail] = w
+		}
+	}
 	for _, e := range append(pending, mapValues(enroute)...) {
 		if seen[e.f.Callsign] || e.f.Callsign == callsign || len(e.route) < 2 {
 			continue

@@ -18,6 +18,8 @@ type PlayerTrafficInfo struct {
 	Type      string  `json:"type"`      // as said: "Airbus A320"
 	Level     string  `json:"level"`     // as said: "3000 feet", "flight level 120"
 	Text      string  `json:"text"`
+	// Virtual: an overflight flown with no simulator object (#1482).
+	Virtual bool `json:"virtual,omitempty"`
 }
 
 // Traffic near the user aircraft its ATC is told of (PlayerTraffic): within
@@ -46,6 +48,18 @@ func (w *World) PlayerTraffic(callsign, icao string) []PlayerTrafficInfo {
 	if me == nil || me.OnGround {
 		return nil
 	}
+	st.mu.Lock()
+	sched := st.schedule
+	st.mu.Unlock()
+	virtual := map[string]bool{}
+	if sched != nil {
+		// The overflights with no object too (#1482): its ATC knows them.
+		vs, _ := sched.virtualAircraft(cc.clock.Now())
+		for _, v := range vs {
+			virtual[v.Tail] = true
+		}
+		air = append(air, vs...)
+	}
 	ta := 0.0
 	if icao != "" {
 		ta = cc.taOf(icao)
@@ -66,7 +80,7 @@ func (w *World) PlayerTraffic(callsign, icao string) []PlayerTrafficInfo {
 		typ := typeSaid(traffic.ProfileFor(o.Title).Type)
 		level := levelSaid(ta, o.AltFt)
 		tx := traffic.TrafficInformation(traffic.PosApproach, callsign, clock, saidNM, dir, typ, level)
-		out = append(out, PlayerTrafficInfo{Callsign: o.Tail, Clock: clock, NM: nm, Direction: dir, Type: typ, Level: level, Text: tx.Text})
+		out = append(out, PlayerTrafficInfo{Callsign: o.Tail, Clock: clock, NM: nm, Direction: dir, Type: typ, Level: level, Text: tx.Text, Virtual: virtual[o.Tail] && o.ObjectID == 0})
 	}
 	sort.Slice(out, func(i, j int) bool { return out[i].NM < out[j].NM })
 	return out

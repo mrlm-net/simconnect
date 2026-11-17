@@ -257,6 +257,9 @@ type ManagerOptions struct {
 	OnEvent func(ManagerEvent)
 }
 
+// DefaultMaxOverflights is ManagerOptions.MaxOverflights' default.
+const DefaultMaxOverflights = 20
+
 func (o *ManagerOptions) defaults() {
 	def := func(d *time.Duration, v time.Duration) {
 		if *d == 0 {
@@ -294,7 +297,7 @@ func (o *ManagerOptions) defaults() {
 		o.MaxAttempts = 3
 	}
 	if o.MaxOverflights == 0 {
-		o.MaxOverflights = 20
+		o.MaxOverflights = DefaultMaxOverflights
 	}
 	if o.Checks == nil {
 		o.Checks = DefaultChecks()
@@ -1045,11 +1048,14 @@ func (m *TrafficManager) set(f *ManagedFlight, s FlightStatus, now time.Time) {
 }
 
 // find returns the managed flight of a call sign: the active one when it
-// is both an arrival and a departure.
+// is both an arrival and a departure, or an overflight too (#1482: an
+// overflight flown hours after an arrival of the same call sign landed was
+// updated as the arrival, done, and cancelled as never created).
 func (m *TrafficManager) find(callsign string) *ManagedFlight {
 	d, a := m.flights["departure "+callsign], m.flights["arrival "+callsign]
-	if d == nil && a == nil {
-		return m.flights["overflight "+callsign]
+	o := m.flights["overflight "+callsign]
+	if d == nil && a == nil || o != nil && o.Status.active() && (d == nil || !d.Status.active()) && (a == nil || !a.Status.active()) {
+		return o
 	}
 	switch {
 	case d == nil:

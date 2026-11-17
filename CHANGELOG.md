@@ -7,6 +7,24 @@ This project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 ---
 
+## [0.175.0] - 2026-11-17
+
+### Added
+
+- **Overflights in distance tiers** (#1482). An overflight far from the viewer (the user aircraft, and the aircraft our camera is on) can now be a virtual track: the World flies it along its planned waypoints with no simulator object and no request. Within `overflightMaterialiseNM` of a viewer it is created as a NonATC aircraft at exactly the track's pose, with the waypoints it has left. Farther than `overflightDematerialiseNM` (default 10 NM past the other) it is removed and flown on virtually from where it was. The gap keeps it from flipping at the edge.
+  - Set with `world.Options.Overflights` (`OverflightTiers{MaterialiseNM, DematerialiseNM, MaxVirtual}`), `ScheduleSettings` or `POST /api/schedule` (`overflightMaterialiseNM`, `overflightDematerialiseNM`, `maxVirtualOverflights`; a negative range turns them off). Off by default: with no materialise range, nothing changes.
+  - With the tiers on, `maxOverflights` counts the overflights in the simulator, nearest first, and `maxVirtualOverflights` (default 200) counts all of them at once.
+  - A virtual track is still traffic. It is on `GET /api/traffic` and in `Snapshot().Virtual`, marked `"virtual": true` with an ID from `0xFF000000` up. The other traffic's levels are planned clear of it, and it is in the user aircraft's traffic information (`PlayerTrafficInfo.virtual`). `GET /api/schedule` shows the ranges and `virtualOverflights`.
+  - Offline at LKPR, 60 an hour with a 40 NM range: at most 7 overflights in the simulator (20, the cap, with the tiers off), and their data requests dropped from about 1050 to 160 a minute.
+- `traffic.VirtualFlight`: an airborne flight along a waypoint chain with no simulator object, flown with the offline simulator's model. It provides `Step`, `Pose`, `PoseAfter`, `Ahead` and `Done`, and `VirtualPose.InitPosition` to create the aircraft where it is. Advancing 200 of them takes about 0.08 ms a step.
+- `traffic.DefaultMaxOverflights` (20).
+
+### Fixed
+
+- An overflight with the call sign of an earlier airport flight (an arrival that had landed hours before) was updated as that flight, and was cancelled as "the simulator did not create it". The manager now updates the overflight while it is the active flight.
+- `TrafficManager.Attach` with another object than before forgets the last sight of the old one, so an aircraft re-created for a flight is not taken as already gone. `Attach(callsign, 0)` stops following it.
+- Offline simulator (`worldtest.Loopback`): an aircraft created in the air moves at its airspeed from the start, as in the simulator. Before, it read 0 kt until its first move, so the conflict watch predicted it standing still. It also records creations and removals (`Creations`, `Removals`).
+
 ## [0.174.1] - 2026-11-17
 
 ### Fixed

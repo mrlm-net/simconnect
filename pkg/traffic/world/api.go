@@ -102,6 +102,11 @@ type Options struct {
 	// Schedule times the scheduled traffic (#741); zero values keep the
 	// manager's defaults.
 	Schedule ScheduleTiming
+	// Overflights: the overflights' distance tiers (#1482), virtual far
+	// from the viewer and in the simulator near it; the zero value is off
+	// (each one in the simulator for its whole crossing). POST
+	// /api/schedule changes them.
+	Overflights OverflightTiers
 
 	// OnTransmission hears every transmission, once logged: the host says
 	// it (its voice) or shows it. Called on the engine's goroutines; it

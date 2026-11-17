@@ -80,7 +80,7 @@ func TestOverflights(t *testing.T) {
 			if _, err := os.Stat(filepath.Join(root, icao, "layout.json")); err != nil {
 				t.Skipf("no offline data for %s in %s", icao, root)
 			}
-			m := runOverflights(t, root, icao, overflightHours())
+			m := runOverflights(t, root, icao, overflightHours(), overflightRun{})
 			m.report(t)
 			m.check(t)
 		})
@@ -89,6 +89,10 @@ func TestOverflights(t *testing.T) {
 
 // overflightMetrics are what a run measured.
 type overflightMetrics struct {
+	// shared: call signs flown as an overflight and as a flight of an
+	// airport too (hours apart); their objects and calls are not told
+	// apart by tail, so they are left out of the costs and the tiers.
+	shared     map[string]bool
 	icao       string
 	seed       uint64
 	hours      int
@@ -115,6 +119,7 @@ type overflightMetrics struct {
 	allJumps   map[string]int // of any aircraft, by placer: "world after ai"
 	calls      map[string]int // all calls by kind
 	callsOver  map[string]int // the overflights' calls by kind, summed
+	tiers      *tierMetrics   // with the distance tiers on (#1482)
 	peakAC     int
 	meanAC     float64
 	peakOver   int
@@ -178,7 +183,7 @@ func overflightAirportRefs(t *testing.T, h *Harness, root string) {
 	}
 }
 
-func runOverflights(t *testing.T, root, icao string, hours int) *overflightMetrics {
+func runOverflights(t *testing.T, root, icao string, hours int, run overflightRun) *overflightMetrics {
 	wall := time.Now()
 	o := Options{DataDir: root, ICAO: icao, Manual: true, FrameRate: 5, Start: overflightStart, AircraftTitles: overflightTitles()}
 	if testing.Verbose() && os.Getenv("WORLDTEST_LOG") != "" {
@@ -191,11 +196,17 @@ func runOverflights(t *testing.T, root, icao string, hours int) *overflightMetri
 	defer h.Close()
 	overflightAirportRefs(t, h, root)
 	no := false
-	if err := h.World.SetSchedule(world.ScheduleSettings{Enabled: true, Airports: []string{icao}, Density: 1, MaxAircraft: 12, VFR: &no, Seed: h.Seed}); err != nil {
+	if err := h.World.SetSchedule(world.ScheduleSettings{Enabled: true, Airports: []string{icao}, Density: 1, MaxAircraft: 12, VFR: &no, Seed: h.Seed,
+		OverflightsPerHour: run.perHour, MaxOverflights: run.maxOver, OverflightMaterialiseNM: run.materialiseNM, OverflightDematerialiseNM: run.dematerialiseNM,
+		MaxVirtualOverflights: run.maxVirtual}); err != nil {
 		t.Fatal(err)
 	}
 	m := &overflightMetrics{icao: icao, seed: h.Seed, hours: hours, planned: map[string]boardFlight{}, enter0: map[string]time.Time{},
-		levels: map[string]int{}, conflicts: map[string]int{}, resolved: map[string]int{}, callsOver: map[string]int{}, allJumps: map[string]int{}}
+		levels: map[string]int{}, conflicts: map[string]int{}, resolved: map[string]int{}, callsOver: map[string]int{}, allJumps: map[string]int{}, shared: map[string]bool{}}
+	if run.materialiseNM > 0 {
+		m.tiers = newTierMetrics(run)
+		m.tiers.shared = m.shared
+	}
 	start := h.Clock.Now()
 	end := start.Truncate(time.Hour).Add(time.Duration(hours) * time.Hour) // whole hours
 	centre := airport.LatLon{Lat: h.Layout.Latitude, Lon: h.Layout.Longitude}
@@ -221,15 +232,30 @@ func runOverflights(t *testing.T, root, icao string, hours int) *overflightMetri
 		for _, f := range v.Flights {
 			if f.Kind == "overflight" {
 				over[f.Callsign] = true
+				if m.tiers != nil && (f.Status == "enroute" || f.Status == "done" && f.Err == "") {
+					m.tiers.flown[f.Callsign] = true // flown, virtually or in the simulator
+				}
 				m.planned[f.Callsign] = f
 				if _, ok := m.enter0[f.Callsign]; !ok {
 					m.enter0[f.Callsign] = f.Enter
 				}
+			} else {
+				m.shared[f.Callsign] = true // an overflight's as well, maybe (sorted out below)
 			}
 		}
 	}
 	for now := start; now.Before(end); now = h.Clock.Now() {
-		h.Advance(5 * time.Second)
+		if m.tiers != nil {
+			// Second by second: where each virtual track is when it is
+			// created in the simulator (tiers.go).
+			for range 5 {
+				h.Advance(time.Second)
+				m.tiers.sample(t, h)
+			}
+			m.tiers.moveViewer(h, start)
+		} else {
+			h.Advance(5 * time.Second)
+		}
 		at := h.Clock.Now()
 		if samples%12 == 0 {
 			board()
@@ -243,7 +269,7 @@ func runOverflights(t *testing.T, root, icao string, hours int) *overflightMetri
 				continue
 			}
 			nAC++
-			if over[ob.ATCID] {
+			if over[ob.ATCID] && !m.shared[ob.ATCID] {
 				nOver++
 				// Its level, each way: level flight (within 20 ft of where it
 				// was 5 s before) at a whole flight level, from FL100.
@@ -351,9 +377,20 @@ func runOverflights(t *testing.T, root, icao string, hours int) *overflightMetri
 
 	// What they cost, and whether they jumped.
 	m.calls = h.Sim.Calls()
+	if m.tiers != nil {
+		m.tiers.finish(over)
+	}
+	for cs := range m.shared {
+		if !over[cs] {
+			delete(m.shared, cs)
+		}
+	}
 	for cs := range over {
+		if m.shared[cs] {
+			continue
+		}
 		c := h.Sim.CallsOf(cs)
-		if c[CallCreate] > 0 {
+		if c[CallCreate] > 0 || m.tiers != nil && m.tiers.flown[cs] {
 			m.created = append(m.created, cs)
 		}
 		for k, n := range c {
@@ -363,7 +400,7 @@ func runOverflights(t *testing.T, root, icao string, hours int) *overflightMetri
 	sort.Strings(m.created)
 	for _, j := range h.Sim.Jumps() {
 		m.allJumps[j.By+" after "+j.From]++
-		if over[j.Tail] {
+		if over[j.Tail] && !m.shared[j.Tail] {
 			m.jumps = append(m.jumps, j)
 		}
 	}
@@ -480,6 +517,9 @@ func (m *overflightMetrics) report(t *testing.T) {
 	for _, k := range kinds {
 		fmt.Fprintf(&b, "    %-9s %7d %8.1f %7d %8.1f %8.2f\n", k, m.calls[k], float64(m.calls[k])/m.minutes, m.callsOver[k], float64(m.callsOver[k])/n, float64(m.callsOver[k])/m.minutes)
 	}
+	if m.tiers != nil {
+		m.tiers.report(&b, m)
+	}
 	t.Log(b.String())
 }
 
@@ -505,7 +545,7 @@ func (m *overflightMetrics) check(t *testing.T) {
 	if float64(planned) < mean/2 {
 		t.Errorf("%s: %d overflights planned in %d h, want %.0f at least (half the mean)", m.icao, planned, m.hours, mean/2)
 	}
-	if m.confOO > 0 {
+	if m.confOO > 0 && (m.tiers == nil || !m.tiers.run.pairsMeet) {
 		t.Errorf("%s: %d conflict-watch firings between two overflights: %v", m.icao, m.confOO, m.conflicts)
 	}
 	if len(m.jumps) > 0 {

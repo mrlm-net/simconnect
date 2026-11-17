@@ -122,6 +122,10 @@ type Traffic struct {
 	// Type is the ICAO type designator from the model title ("B738"),
 	// "" when not known.
 	Type string `json:"type,omitempty"`
+	// Virtual: one of ours flown by the World with no simulator object
+	// (an overflight far from the viewer, #1482); ObjectID is then the
+	// World's, no simulator's.
+	Virtual bool `json:"virtual,omitempty"`
 }
 
 type aircraftRaw struct {
@@ -1515,6 +1519,9 @@ func (w *World) Register(mux *http.ServeMux) {
 			t = cc.labelled(t)
 			for i := range t {
 				t[i].Route = pointsAhead(airport.LatLon{Lat: t[i].Latitude, Lon: t[i].Longitude}, routes[t[i].ObjectID]) // ours flown by MSFS AI: the way it still goes
+			}
+			if sched != nil {
+				t = append(t, sched.virtualTraffic(cc.clock.Now())...) // and those with no object (#1482)
 			}
 		}
 		writeJSON(w, t)
