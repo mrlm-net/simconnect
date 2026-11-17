@@ -3,6 +3,7 @@ package worldtest
 import (
 	"maps"
 	"math"
+	"slices"
 	"time"
 
 	"github.com/mrlm-net/simconnect/pkg/calc"
@@ -57,7 +58,35 @@ type placement struct {
 	lat, lon float64
 	hdg, kts float64
 	by       string
+	// Its step from the placement before (from: that one): metres north
+	// and east, degrees turned (signed), metres; none on the first.
+	step step
+	from struct {
+		by   string
+		kts  float64
+		step step
+	}
 }
+
+type step struct {
+	dn, de, turn, d float64
+	gap             time.Duration // the frame it took
+	ok              bool
+}
+
+// liveFrame is the longest frame the jump trace's rule is made for: the
+// simulator's 30 to 60 Hz. Its floors (a metre, 3°) are per frame of
+// that length.
+const liveFrame = time.Second / 30
+
+// jumpTraceGap is the jump trace's: placements farther apart are not judged.
+const jumpTraceGap = 1500 * time.Millisecond
+
+// ktsPerMS converts VELOCITY BODY Z (m/s) to knots.
+const ktsPerMS = 1 / 0.514444
+
+// metresPerDeg: a degree of latitude, metres.
+const metresPerDeg = 111320.0
 
 // ledger is the loopback's count; under Loopback.mu.
 type ledger struct {
@@ -90,22 +119,101 @@ func (l *Loopback) count(kind string, objectID uint32) {
 	}
 }
 
-// place checks a placement of objectID against its last one. l.mu held.
+// place takes a placement of objectID and judges the one before it, now
+// that what came after it is known (its speed written after it, the step
+// after it). l.mu held.
 func (l *Loopback) place(objectID uint32, lat, lon, hdg, kts float64, by string) {
 	g := &l.calls
 	g.init()
 	now := l.clock()
 	last, ok := g.last[objectID]
-	dt := now.Sub(last.at)
-	g.last[objectID] = placement{at: now, gap: dt, lat: lat, lon: lon, hdg: hdg, kts: kts, by: by}
-	if !ok {
-		return
+	cur := placement{at: now, lat: lat, lon: lon, hdg: hdg, kts: kts, by: by}
+	if ok {
+		cur.gap = now.Sub(last.at)
+		cur.step = step{
+			dn:   (lat - last.lat) * metresPerDeg,
+			de:   (lon - last.lon) * metresPerDeg * math.Cos(lat*math.Pi/180),
+			turn: math.Remainder(hdg-last.hdg, 360),
+			d:    calc.HaversineMeters(last.lat, last.lon, lat, lon),
+			gap:  cur.gap, ok: true,
+		}
+		cur.from.by, cur.from.kts, cur.from.step = last.by, last.kts, last.step
+		if j, jumped := g.judge(objectID, last, &cur); jumped {
+			g.jumps = append(g.jumps, j)
+		}
 	}
-	d := calc.HaversineMeters(last.lat, last.lon, lat, lon)
-	turn := math.Abs(math.Remainder(hdg-last.hdg, 360))
-	if traffic.JumpTraced(math.Max(kts, last.kts), dt, last.gap, d, turn) {
-		g.jumps = append(g.jumps, Jump{At: now, ObjectID: objectID, Tail: g.tails[objectID], By: by, From: last.by,
-			Metres: d, TurnDeg: turn, Dt: dt, Kts: math.Max(kts, last.kts)})
+	g.last[objectID] = cur
+}
+
+// judge reports whether p is a placement the jump trace would report:
+// farther from the one before than the speed explains, or turned more than
+// it may (traffic.JumpTraced). next is the placement after it, nil when
+// none came (yet).
+//
+// On frames longer than a live one (Options.FrameRate under 30) the rule's
+// per-frame floors no longer hold: a tug turning a steady 90°/s, smooth at
+// 60 Hz (1.5° a frame), turns 18° in a 5 Hz frame. There p is a jump only
+// when its step also breaks from the step before (that motion gone on,
+// scaled to p's frame) and the step after breaks from it, each by more than
+// the rule allows: an outlier, a step aside or a snap, not a steady turn,
+// its start or end, or a reversal sampled coarsely.
+func (g *ledger) judge(objectID uint32, p placement, next *placement) (Jump, bool) {
+	s := p.step
+	if !s.ok {
+		return Jump{}, false
+	}
+	speed := math.Max(p.kts, p.from.kts)
+	if !traffic.JumpTraced(speed, s.gap, p.from.step.gap, s.d, math.Abs(s.turn)) {
+		return Jump{}, false
+	}
+	j := Jump{At: p.at, ObjectID: objectID, Tail: g.tails[objectID], By: p.by, From: p.from.by, Metres: s.d, TurnDeg: math.Abs(s.turn), Dt: s.gap, Kts: speed}
+	if s.gap <= liveFrame {
+		return j, true
+	}
+	if p.from.step.ok && !breaks(p.from.step, s, speed) {
+		return Jump{}, false
+	}
+	if next != nil && next.step.gap <= jumpTraceGap && !breaks(s, next.step, math.Max(speed, next.kts)) {
+		return Jump{}, false
+	}
+	return j, true
+}
+
+// breaks reports whether step b breaks from step a, a's motion gone on for
+// b's frame, by more than the jump trace's rule allows.
+func breaks(a, b step, kts float64) bool {
+	if a.gap <= 0 {
+		return true
+	}
+	k := float64(b.gap) / float64(a.gap)
+	rd := math.Hypot(b.dn-a.dn*k, b.de-a.de*k)
+	rt := math.Abs(b.turn - a.turn*k)
+	return traffic.JumpTraced(kts, b.gap, a.gap, rd, rt)
+}
+
+// unplace ends objectID's placements (removed): its last one is judged
+// with none after it. l.mu held.
+func (l *Loopback) unplace(objectID uint32) {
+	g := &l.calls
+	g.init()
+	if p, ok := g.last[objectID]; ok {
+		if j, jumped := g.judge(objectID, p, nil); jumped {
+			g.jumps = append(g.jumps, j)
+		}
+	}
+	delete(g.last, objectID)
+}
+
+// bodyZ takes a VELOCITY BODY Z written for objectID (m/s): travelling
+// backwards the World places it with INITPOSITION Airspeed 0 (a DWORD, no
+// negative speeds) and writes minus its speed here with every placement
+// (traffic wheels.go), so its last placement moved at |v|. l.mu held.
+func (l *Loopback) bodyZ(objectID uint32, v float64) {
+	g := &l.calls
+	g.init()
+	if p, ok := g.last[objectID]; ok {
+		p.kts = math.Max(p.kts, math.Abs(v)*ktsPerMS)
+		g.last[objectID] = p
 	}
 }
 
@@ -148,9 +256,20 @@ func (l *Loopback) CallsOf(tail string) map[string]int {
 	return maps.Clone(l.calls.byTail[tail])
 }
 
-// Jumps are the placements so far the jump trace would report, in order.
+// Jumps are the placements so far the jump trace would report, in order;
+// on frames longer than a live one, outliers only (judge). The last
+// placement of each object, judged with none after it yet, counts too.
 func (l *Loopback) Jumps() []Jump {
 	l.mu.Lock()
 	defer l.mu.Unlock()
-	return append([]Jump(nil), l.calls.jumps...)
+	g := &l.calls
+	g.init()
+	js := append([]Jump(nil), g.jumps...)
+	for id, p := range g.last {
+		if j, jumped := g.judge(id, p, nil); jumped {
+			js = append(js, j)
+		}
+	}
+	slices.SortStableFunc(js, func(a, b Jump) int { return a.At.Compare(b.At) })
+	return js
 }

@@ -255,6 +255,8 @@ func (l *Loopback) SetDataOnSimObject(definitionID uint32, objectID uint32, flag
 			o.AltFt = v
 		case "PLANE HEADING DEGREES TRUE":
 			o.Heading = deg(v, d.unit)
+		case "VELOCITY BODY Z":
+			l.bodyZ(o.ID, v)
 		}
 	}
 	return nil
@@ -349,7 +351,7 @@ func (l *Loopback) AIRemoveObject(objectID uint32, requestID uint32) error {
 	l.count(CallRemove, objectID)
 	if objectID != UserObjectID {
 		delete(l.objects, objectID)
-		delete(l.calls.last, objectID)
+		l.unplace(objectID)
 	}
 	return nil
 }
