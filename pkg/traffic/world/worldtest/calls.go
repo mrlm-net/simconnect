@@ -88,13 +88,26 @@ const ktsPerMS = 1 / 0.514444
 // metresPerDeg: a degree of latitude, metres.
 const metresPerDeg = 111320.0
 
+// Placed is an aircraft created or removed (Creations, Removals): when,
+// which, and where it was created or last placed.
+type Placed struct {
+	At       time.Time
+	ObjectID uint32
+	Tail     string
+	Lat, Lon float64 // degrees
+	AltFt    float64
+	Heading  float64 // degrees true
+}
+
 // ledger is the loopback's count; under Loopback.mu.
 type ledger struct {
-	total  map[string]int
-	byTail map[string]map[string]int
-	tails  map[uint32]string // every object's tail, removed ones kept
-	last   map[uint32]placement
-	jumps  []Jump
+	total   map[string]int
+	byTail  map[string]map[string]int
+	tails   map[uint32]string // every object's tail, removed ones kept
+	last    map[uint32]placement
+	jumps   []Jump
+	created []Placed
+	removed []Placed
 }
 
 func (g *ledger) init() {
@@ -240,6 +253,22 @@ func (l *Loopback) SetAIPosition(definitionID, objectID uint32, p types.SIMCONNE
 		l.setPosition(o, p, PlacedAI)
 	}
 	return nil
+}
+
+// Creations are the objects created so far, in order, where each was
+// created.
+func (l *Loopback) Creations() []Placed {
+	l.mu.Lock()
+	defer l.mu.Unlock()
+	return slices.Clone(l.calls.created)
+}
+
+// Removals are the objects removed so far, in order, where each was last
+// placed.
+func (l *Loopback) Removals() []Placed {
+	l.mu.Lock()
+	defer l.mu.Unlock()
+	return slices.Clone(l.calls.removed)
 }
 
 // Calls are the calls counted so far, by kind.

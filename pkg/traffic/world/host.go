@@ -87,6 +87,10 @@ type Snapshot struct {
 	// Player is the user aircraft's place in a landing sequence while the
 	// host has cleared it to land (ClearPlayer); nil otherwise.
 	Player *PlayerPlace `json:"player,omitempty"`
+	// Virtual are the overflights flown with no simulator object now
+	// (OverflightTiers, #1482): each with Virtual, ObjectID a World-given
+	// one.
+	Virtual []Traffic `json:"virtual,omitempty"`
 	// Dropped is how many fed messages were dropped (Feed).
 	Dropped uint64 `json:"dropped"`
 	// Link is the director link of an actuator (LinkDirector, #779):
@@ -122,6 +126,12 @@ func (w *World) Snapshot() Snapshot {
 	if cc != nil {
 		out.Connected, out.At, out.Aircraft = true, cc.clock.Now(), cc.views()
 		out.Player = cc.playerPlace()
+	}
+	w.st.mu.Lock()
+	sched := w.st.schedule
+	w.st.mu.Unlock()
+	if cc != nil && sched != nil {
+		out.Virtual = sched.virtualTraffic(out.At)
 	}
 	w.st.mu.Lock()
 	if h, ok := w.st.actLink.(*hubLink); ok {
@@ -444,7 +454,17 @@ type ScheduleSettings struct {
 	// Density; MaxOverflights at once (0: 20), on top of MaxAircraft.
 	OverflightsPerHour float64 `json:"overflightsPerHour,omitempty"`
 	MaxOverflights     int     `json:"maxOverflights,omitempty"`
-	Seed               uint64  `json:"seed,omitempty"`
+	// The overflights' distance tiers (#1482, OverflightTiers): within
+	// OverflightMaterialiseNM of the viewer an overflight is created in
+	// the simulator, beyond OverflightDematerialiseNM it is flown
+	// virtually (0: 10 NM past the other); MaxOverflights then counts those
+	// in the simulator, MaxVirtualOverflights all at once (0: 200). 0 keeps
+	// what is set (Options.Overflights, off by default); a negative
+	// materialise range turns the tiers off.
+	OverflightMaterialiseNM   float64 `json:"overflightMaterialiseNM,omitempty"`
+	OverflightDematerialiseNM float64 `json:"overflightDematerialiseNM,omitempty"`
+	MaxVirtualOverflights     int     `json:"maxVirtualOverflights,omitempty"`
+	Seed                      uint64  `json:"seed,omitempty"`
 	// Airports are several scheduled airports (ICAO, with ICAO).
 	Airports []string `json:"airports,omitempty"`
 	// IFR, VFR: the airline and the light aircraft flights (nil: as

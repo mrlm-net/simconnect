@@ -54,6 +54,13 @@ type scheduler struct {
 	// overPerHour: the overflights in the peak hour at density 1 (0:
 	// defaultOverflightsPerHour).
 	overPerHour float64
+	// tiers: the overflights' distance tiers (#1482, overflight_tiers.go);
+	// maxOver: MaxOverflights as set (0: the manager's default), the cap
+	// on those in the simulator with the tiers on. nextVirtual numbers
+	// the virtual tracks.
+	tiers       OverflightTiers
+	maxOver     int
+	nextVirtual uint32
 	seed        uint64
 	// noIFR and noVFR switch the airline (and overflying) and the light
 	// aircraft flights off; both run by default.
@@ -123,6 +130,8 @@ func newScheduler(st *state, cc *controlCenter) *scheduler {
 		Picture: cc.world, Overflights: s.overflights, OverflightsReady: s.areaKnown, Conditions: s.conditions, RunwayQueue: cc.runwayQueue,
 		Night: s.night, Objects: s.objectsAt}) // other traffic respected by default
 	s.mgr.SetEnabled(false)
+	s.tiers = st.core.hooks.Overflights
+	s.applyOverflightCaps()
 	s.timing = s.mgr.Options().Timing()
 	s.applyTuning(st.tuning.get())
 	return s
@@ -806,6 +815,7 @@ func (s *scheduler) tick(now time.Time) {
 	if s.cc.weather != nil && s.cc.weather() == nil && traffic.Since(s.created) < weatherWait && !s.actuating() {
 		s.handovers(now)
 		s.corridorTick(now)
+		s.tiersTick(now)
 		return
 	}
 	// The models for the schedule (withModels): taken here, not under the
@@ -821,6 +831,7 @@ func (s *scheduler) tick(now time.Time) {
 	s.models = models
 	s.mu.Unlock()
 	s.mgr.Tick(now)
+	s.tiersTick(now) // virtual overflights on, near ones into the simulator
 	s.expirePending()
 	s.paceEnroute(now) // no catching up the one ahead en route
 	s.handovers(now)
@@ -840,6 +851,15 @@ type scheduleView struct {
 	OverflightsPerHour float64                  `json:"overflightsPerHour"`
 	MaxOverflights     int                      `json:"maxOverflights"`
 	Others             traffic.OtherTrafficMode `json:"others"`
+	// The overflights' distance tiers (#1482), when on: the ranges (NM)
+	// an overflight is created in the simulator within and taken out
+	// beyond, MaxOverflights then counting those in the simulator, and
+	// MaxVirtualOverflights all of them at once; VirtualOverflights are
+	// flown with no object now.
+	OverflightMaterialiseNM   float64 `json:"overflightMaterialiseNM,omitempty"`
+	OverflightDematerialiseNM float64 `json:"overflightDematerialiseNM,omitempty"`
+	MaxVirtualOverflights     int     `json:"maxVirtualOverflights,omitempty"`
+	VirtualOverflights        int     `json:"virtualOverflights,omitempty"`
 	// IFR and VFR: the airline flights (and overflights) and the light
 	// aircraft flights run.
 	IFR bool `json:"ifr"`
@@ -880,6 +900,13 @@ func registerSchedule(mux *http.ServeMux, st *state) {
 		o := s.mgr.Options()
 		v := scheduleView{Enabled: s.mgr.Enabled(), Airports: s.mgr.Airports(), Density: density, Seed: seed, IFR: ifr, VFR: vfr, Generator: gen, OffsetMin: off,
 			MaxAircraft: o.MaxAircraft, MaxObjects: o.MaxObjects, OverflightsPerHour: perHour, MaxOverflights: o.MaxOverflights, Others: o.Others, Active: s.mgr.Active(), Flights: s.mgr.Flights(), Now: s.cc.clock.Now()}
+		s.mu.Lock()
+		if t := s.tiers; t.On() {
+			v.MaxOverflights = s.maxOverflightsOr()
+			v.OverflightMaterialiseNM, v.OverflightDematerialiseNM, v.MaxVirtualOverflights = t.MaterialiseNM, t.Dematerialise(), t.Virtual()
+		}
+		s.mu.Unlock()
+		v.VirtualOverflights = s.virtualCount()
 		writeJSON(w, v)
 	})
 	postSchedule := func(w http.ResponseWriter, r *http.Request) {
@@ -898,14 +925,19 @@ func registerSchedule(mux *http.ServeMux, st *state) {
 			MaxObjects *int `json:"maxObjects"`
 			// Overflights: in the peak hour at density 1 (from the next hour
 			// planned), and at once.
-			OverflightsPerHour float64  `json:"overflightsPerHour"`
-			MaxOverflights     int      `json:"maxOverflights"`
-			Seed               *uint64  `json:"seed"`
-			Others             string   `json:"others"`    // respect | ignore
-			IFR                *bool    `json:"ifr"`       // airline flights and overflights
-			VFR                *bool    `json:"vfr"`       // light aircraft through the circuit
-			Generator          *bool    `json:"generator"` // false: only flights added (POST /api/flights, #738)
-			OffsetMin          *float64 `json:"offsetMin"` // the airline timetable this many minutes later flown now (#738)
+			OverflightsPerHour float64 `json:"overflightsPerHour"`
+			MaxOverflights     int     `json:"maxOverflights"`
+			// The overflights' distance tiers (#1482): 0 keeps what is set,
+			// a negative materialise range turns them off.
+			OverflightMaterialiseNM   float64  `json:"overflightMaterialiseNM"`
+			OverflightDematerialiseNM float64  `json:"overflightDematerialiseNM"`
+			MaxVirtualOverflights     int      `json:"maxVirtualOverflights"`
+			Seed                      *uint64  `json:"seed"`
+			Others                    string   `json:"others"`    // respect | ignore
+			IFR                       *bool    `json:"ifr"`       // airline flights and overflights
+			VFR                       *bool    `json:"vfr"`       // light aircraft through the circuit
+			Generator                 *bool    `json:"generator"` // false: only flights added (POST /api/flights, #738)
+			OffsetMin                 *float64 `json:"offsetMin"` // the airline timetable this many minutes later flown now (#738)
 		}
 		if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
 			http.Error(w, err.Error(), http.StatusBadRequest)
@@ -952,7 +984,21 @@ func registerSchedule(mux *http.ServeMux, st *state) {
 		if req.MaxObjects != nil {
 			s.mgr.SetMaxObjects(*req.MaxObjects)
 		}
-		s.mgr.SetMaxOverflights(req.MaxOverflights)
+		s.mu.Lock()
+		if req.MaxOverflights > 0 {
+			s.maxOver = req.MaxOverflights
+		}
+		if v := req.OverflightMaterialiseNM; v != 0 {
+			s.tiers.MaterialiseNM = max(v, 0)
+		}
+		if v := req.OverflightDematerialiseNM; v != 0 {
+			s.tiers.DematerialiseNM = max(v, 0)
+		}
+		if v := req.MaxVirtualOverflights; v != 0 {
+			s.tiers.MaxVirtual = max(v, 0)
+		}
+		s.mu.Unlock()
+		s.applyOverflightCaps()
 		if req.ICAO != "" {
 			req.Airports = append(req.Airports, req.ICAO)
 		}
@@ -999,6 +1045,12 @@ func registerSchedule(mux *http.ServeMux, st *state) {
 		onOff := map[bool]string{true: "on", false: "off"}
 		tlog.printf("schedule: %v at %s, density %.1f, max %d aircraft, overflights %.0f/h (max %d), IFR %s, VFR %s, other traffic: %s", onOff[s.mgr.Enabled()],
 			strings.Join(s.mgr.Airports(), ","), density, o.MaxAircraft, perHour*density, o.MaxOverflights, onOff[ifr], onOff[vfr], o.Others)
+		if t := s.tiersNow(); t.On() {
+			s.mu.Lock()
+			in := s.maxOverflightsOr()
+			s.mu.Unlock()
+			tlog.printf("schedule: overflights virtual beyond %.0f NM of the viewer, in the simulator within %.0f NM (max %d in it, %d in all)", t.Dematerialise(), t.MaterialiseNM, in, t.Virtual())
+		}
 		w.WriteHeader(http.StatusNoContent)
 	}
 	// Each setting taken is kept and set again on the next connection: a

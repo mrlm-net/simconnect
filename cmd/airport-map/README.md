@@ -167,8 +167,8 @@ The page uses these; scripts and tests can too.
 | `GET /api/control/log` | The last 200 traffic log lines, newest last |
 | `GET /api/stands?icao=XXXX` | Held stands: index, label, owner, detected, object ID, half span |
 | `GET /api/models` | The aircraft titles the simulator can spawn, as `Title :: Livery` |
-| `GET /api/schedule` | Scheduled traffic: enabled, airports, density, maximum, others, `ifr` and `vfr`, active count, flights |
-| `POST /api/schedule` | Start, stop or change it: `enabled`, `icao` or `airports`, `density`, `maxAircraft`, `seed`, `others` (`respect` or `ignore`), `ifr` and `vfr` (airline flights and overflights, light aircraft: switched off, their flights not yet in the simulator go at once) |
+| `GET /api/schedule` | Scheduled traffic: enabled, airports, density, maximum, others, `ifr` and `vfr`, the overflights' distance tiers and how many are virtual (`virtualOverflights`), active count, flights |
+| `POST /api/schedule` | Start, stop or change it: `enabled`, `icao` or `airports`, `density`, `maxAircraft`, `seed`, `others` (`respect` or `ignore`), `ifr` and `vfr` (airline flights and overflights, light aircraft: switched off, their flights not yet in the simulator go at once); `overflightMaterialiseNM`, `overflightDematerialiseNM` and `maxVirtualOverflights` for the overflights' [distance tiers](../../docs/traffic-schedules.md#distance-tiers) (a negative range turns them off) |
 | `GET /api/boards?icao=XXXX` | The departure and arrival boards of an airport |
 | `GET /api/sequence?icao=XXXX` | The landing sequence per runway: conditions, LVP, and each arrival's number, wake, spacing, landing time, delay and distance to go |
 | `POST /api/approach/{icao}/{callsign}/{action}` | An approach instruction: `up`, `down`, `direct`, `slow`, `hold`, `release`, `goaround`. `204`, `404` when not in a sequence, `409` when refused |

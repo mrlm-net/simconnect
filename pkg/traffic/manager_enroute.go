@@ -95,11 +95,16 @@ func (m *TrafficManager) extendOverflights(now time.Time) {
 }
 
 // Attach tells the manager which aircraft flies a flight (its SimConnect
-// object ID), so it can follow it in the picture.
+// object ID), so it can follow it in the picture; 0: none now (flown with
+// no object, #1482), not followed. Another aircraft than before is
+// followed afresh: the last sight of the one before does not count.
 func (m *TrafficManager) Attach(callsign string, objectID uint32) {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 	if f := m.find(callsign); f != nil {
+		if f.ObjectID != objectID {
+			f.seenAt = time.Time{}
+		}
 		f.ObjectID = objectID
 	}
 }

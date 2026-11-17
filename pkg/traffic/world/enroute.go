@@ -87,6 +87,15 @@ type enrouteAC struct {
 	cruiseKts, pacedKts float64
 	// pendingAt: when its creation was asked (pending until answered).
 	pendingAt time.Time
+	// A virtual overflight (#1482, overflight_tiers.go): vt flies it with
+	// no object (objectID 0), flown to vtAt (zero: from the next tick on);
+	// virtualID is its ID on the map. materialising: its aircraft asked
+	// for and not answered yet, vt standing where it is created. gone:
+	// taken off the list meanwhile, its aircraft removed once answered.
+	vt                  *traffic.VirtualFlight
+	vtAt                time.Time
+	virtualID           uint32
+	materialising, gone bool
 }
 
 // spawnEnroute creates an enroute arrival or an overflight where its
@@ -310,6 +319,14 @@ func (s *scheduler) spawnEnrouteOn(f traffic.ManagedFlight, e *enrouteAC, model 
 		return err
 	}
 	e.waypoints, e.route = wps, route
+	if f.Overflight() && e.corridor == "" && s.tiersNow().On() {
+		// Far from the viewer it costs the simulator nothing: flown here
+		// until it is near one (overflight_tiers.go).
+		s.virtualTrack(f, e, spawn, wps)
+		s.cc.log.printf("%-6s schedule: %s %s → %s en route, %s, FL%03d along %s, %d waypoints, virtual", f.Callsign, f.Kind, orUnknown(f.Origin), orUnknown(f.Destination), f.Type,
+			int(math.Round(route[0].AltFt/100)), along, len(wps))
+		return nil
+	}
 	title, livery, _ := strings.Cut(model, liverySep)
 	s.mu.Lock()
 	e.reqID, e.pendingAt = s.freeEnrouteReq(), traffic.Now()
@@ -340,15 +357,28 @@ func (s *scheduler) handle(msg engine.Message) bool {
 	s.mu.Lock()
 	e := s.pending[uint32(m.DwRequestID)]
 	delete(s.pending, uint32(m.DwRequestID))
-	if e != nil {
+	gone := e != nil && e.gone
+	if e != nil && !gone {
 		e.objectID = uint32(m.DwObjectID)
 		s.enroute[e.f.Callsign] = e
+		if e.vt != nil {
+			// A virtual overflight in the simulator now (#1482): flown by
+			// the simulator's AI from where it was created.
+			e.vt, e.vtAt, e.materialising, e.pendingAt = nil, time.Time{}, false, time.Time{}
+		}
 	}
 	s.mu.Unlock()
 	if e == nil {
 		return false
 	}
 	cc := s.cc
+	if gone {
+		// Taken off the list while the simulator created it.
+		if err := cc.sim.RemoveObject(uint32(m.DwObjectID), reqRemoveEnroute); err != nil {
+			s.cc.log.printf("%-6s schedule: en route: %v", e.f.Callsign, err)
+		}
+		return true
+	}
 	if err := cc.sim.FlyEnroute(e.reqID, e.objectID, e.waypoints); err != nil {
 		s.cc.log.printf("%-6s schedule: en route: %v", e.f.Callsign, err)
 	}
@@ -432,11 +462,25 @@ func (s *scheduler) handovers(now time.Time) {
 	}
 }
 
-// dropEnroute takes an enroute aircraft out of the simulator.
+// dropEnroute takes an enroute aircraft out of the simulator; a virtual
+// one (#1482) has none, or one being created, removed once it is.
 func (s *scheduler) dropEnroute(e *enrouteAC) {
 	s.mu.Lock()
 	delete(s.enroute, e.f.Callsign)
+	if e.objectID == 0 {
+		e.gone = true
+		if !e.materialising {
+			for id, p := range s.pending {
+				if p == e {
+					delete(s.pending, id)
+				}
+			}
+		}
+	}
 	s.mu.Unlock()
+	if e.objectID == 0 {
+		return
+	}
 	s.cc.do(func() error { return s.cc.sim.RemoveObject(e.objectID, reqRemoveEnroute) })
 	s.cc.dropOwn(e.objectID)
 	s.cc.world.ForgetOwn(e.objectID)
@@ -487,6 +531,13 @@ func (s *scheduler) nearJustCreated(p airport.LatLon, altFt float64) string {
 	defer s.mu.Unlock()
 	now := traffic.Now()
 	near := func(e *enrouteAC) bool {
+		if e != nil && e.vt != nil {
+			// A virtual overflight (#1482): where it is, at any time (no
+			// picture sees it).
+			q := e.vt.Pose()
+			return calc.HaversineNM(q.Position.Lat, q.Position.Lon, p.Lat, p.Lon) < entryClearNM &&
+				(altFt == 0 || math.Abs(q.AltFt-altFt) < entryClearFt)
+		}
 		if e == nil || len(e.route) == 0 || now.Sub(e.pendingAt) > justCreatedFor {
 			return false
 		}
@@ -596,6 +647,13 @@ func (s *scheduler) expirePending() {
 	for id, e := range s.pending {
 		if !e.pendingAt.IsZero() && traffic.Since(e.pendingAt) > enroutePendingFor {
 			delete(s.pending, id)
+			if e.vt != nil {
+				// A virtual overflight (#1482): flown on virtually from
+				// where it stood, tried again.
+				e.materialising, e.vtAt = false, time.Time{}
+				s.cc.log.printf("%-6s overflight: not created by the simulator: flown on virtually", e.f.Callsign)
+				continue
+			}
 			s.cc.log.printf("%-6s en route: not created by the simulator: dropped", e.f.Callsign)
 		}
 	}

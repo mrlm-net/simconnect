@@ -263,17 +263,29 @@ func (l *Loopback) SetDataOnSimObject(definitionID uint32, objectID uint32, flag
 }
 
 func (l *Loopback) create(title, tail string, lat, lon, altFt, hdg float64, onGround bool, requestID uint32) error {
-	return l.createObject(title, tail, lat, lon, altFt, hdg, onGround, false, requestID)
+	return l.createObject(title, tail, lat, lon, altFt, hdg, 0, onGround, false, requestID)
 }
 
-func (l *Loopback) createObject(title, tail string, lat, lon, altFt, hdg float64, onGround, vehicle bool, requestID uint32) error {
+// createNonATC creates an aircraft at p: one in the air moves at its
+// airspeed from the start, as the simulator reports it (#1482: a new
+// overflight read 0 kt until its first move, and the conflict watch
+// predicted it standing still in another's way).
+func (l *Loopback) createNonATC(title, tail string, p types.SIMCONNECT_DATA_INITPOSITION, requestID uint32) error {
+	kts := 0.0
+	if p.OnGround == 0 {
+		kts = float64(p.Airspeed)
+	}
+	return l.createObject(title, tail, p.Latitude, p.Longitude, p.Altitude, p.Heading, kts, p.OnGround != 0, false, requestID)
+}
+
+func (l *Loopback) createObject(title, tail string, lat, lon, altFt, hdg, kts float64, onGround, vehicle bool, requestID uint32) error {
 	l.mu.Lock()
 	defer l.mu.Unlock()
 	if l.holdCreates {
-		l.heldCreates = append(l.heldCreates, func() { l.createNow(title, tail, lat, lon, altFt, hdg, onGround, vehicle, requestID) })
+		l.heldCreates = append(l.heldCreates, func() { l.createNow(title, tail, lat, lon, altFt, hdg, kts, onGround, vehicle, requestID) })
 		return nil
 	}
-	l.createNow(title, tail, lat, lon, altFt, hdg, onGround, vehicle, requestID)
+	l.createNow(title, tail, lat, lon, altFt, hdg, kts, onGround, vehicle, requestID)
 	return nil
 }
 
@@ -297,16 +309,17 @@ func (l *Loopback) ReleaseCreates() {
 }
 
 // createNow creates the object and answers; under l.mu.
-func (l *Loopback) createNow(title, tail string, lat, lon, altFt, hdg float64, onGround, vehicle bool, requestID uint32) {
+func (l *Loopback) createNow(title, tail string, lat, lon, altFt, hdg, kts float64, onGround, vehicle bool, requestID uint32) {
 	l.nextID++
 	id := l.nextID
 	if lat == 0 && lon == 0 {
 		lat, lon, altFt, onGround = l.spawnLat, l.spawnLon, l.groundFt, true
 	}
-	l.objects[id] = &Object{ID: id, Title: title, ATCID: tail, Lat: lat, Lon: lon, AltFt: altFt, Heading: hdg, OnGround: onGround, Vehicle: vehicle}
+	l.objects[id] = &Object{ID: id, Title: title, ATCID: tail, Lat: lat, Lon: lon, AltFt: altFt, Heading: hdg, GroundKts: kts, OnGround: onGround, Vehicle: vehicle}
 	l.calls.init()
 	l.calls.tails[id] = tail
 	l.count(CallCreate, id)
+	l.calls.created = append(l.calls.created, Placed{At: l.clock(), ObjectID: id, Tail: tail, Lat: lat, Lon: lon, AltFt: altFt, Heading: hdg})
 	l.place(id, lat, lon, hdg, 0, PlacedCreate)
 	m := types.SIMCONNECT_RECV_ASSIGNED_OBJECT_ID{DwRequestID: types.DWORD(requestID), DwObjectID: types.DWORD(id)}
 	m.DwID = types.DWORD(types.SIMCONNECT_RECV_ID_ASSIGNED_OBJECT_ID)
@@ -330,25 +343,29 @@ func (l *Loopback) AICreateEnrouteATCAircraftEX1(szContainerTitle string, szLive
 }
 
 func (l *Loopback) AICreateNonATCAircraft(szContainerTitle string, szTailNumber string, initPos types.SIMCONNECT_DATA_INITPOSITION, RequestID uint32) error {
-	return l.create(szContainerTitle, szTailNumber, initPos.Latitude, initPos.Longitude, initPos.Altitude, initPos.Heading, initPos.OnGround != 0, RequestID)
+	return l.createNonATC(szContainerTitle, szTailNumber, initPos, RequestID)
 }
 
 func (l *Loopback) AICreateNonATCAircraftEX1(szContainerTitle string, szLivery string, szTailNumber string, initPos types.SIMCONNECT_DATA_INITPOSITION, RequestID uint32) error {
-	return l.create(szContainerTitle, szTailNumber, initPos.Latitude, initPos.Longitude, initPos.Altitude, initPos.Heading, initPos.OnGround != 0, RequestID)
+	return l.createNonATC(szContainerTitle, szTailNumber, initPos, RequestID)
 }
 
 func (l *Loopback) AICreateSimulatedObject(szContainerTitle string, initPos types.SIMCONNECT_DATA_INITPOSITION, RequestID uint32) error {
-	return l.createObject(szContainerTitle, "", initPos.Latitude, initPos.Longitude, initPos.Altitude, initPos.Heading, initPos.OnGround != 0, true, RequestID)
+	return l.createObject(szContainerTitle, "", initPos.Latitude, initPos.Longitude, initPos.Altitude, initPos.Heading, 0, initPos.OnGround != 0, true, RequestID)
 }
 
 func (l *Loopback) AICreateSimulatedObjectEX1(szContainerTitle string, szLivery string, initPos types.SIMCONNECT_DATA_INITPOSITION, RequestID uint32) error {
-	return l.createObject(szContainerTitle, "", initPos.Latitude, initPos.Longitude, initPos.Altitude, initPos.Heading, initPos.OnGround != 0, true, RequestID)
+	return l.createObject(szContainerTitle, "", initPos.Latitude, initPos.Longitude, initPos.Altitude, initPos.Heading, 0, initPos.OnGround != 0, true, RequestID)
 }
 
 func (l *Loopback) AIRemoveObject(objectID uint32, requestID uint32) error {
 	l.mu.Lock()
 	defer l.mu.Unlock()
 	l.count(CallRemove, objectID)
+	if o := l.objects[objectID]; o != nil && objectID != UserObjectID {
+		l.calls.init()
+		l.calls.removed = append(l.calls.removed, Placed{At: l.clock(), ObjectID: objectID, Tail: o.ATCID, Lat: o.Lat, Lon: o.Lon, AltFt: o.AltFt, Heading: o.Heading})
+	}
 	if objectID != UserObjectID {
 		delete(l.objects, objectID)
 		l.unplace(objectID)

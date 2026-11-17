@@ -61,6 +61,17 @@ over := traffic.Overflights(cfg, traffic.OverflightOptions{
 
 Each has `Enter` and `Exit`, when it crosses into and out of the area at its cruise speed; they are zero for other flights. Like `Schedule`, it is deterministic for a seed. The [Traffic Manager](traffic-manager.md#enroute-traffic-and-overflights) spawns both: `ManagerOptions.Source` for the schedule and `ManagerOptions.Overflights` for the overflights.
 
+### Distance tiers
+
+Every overflight in the simulator is an object that costs the simulator's main thread, seen or not. With the tiers on (`world.Options.Overflights`, or `POST /api/schedule` with `overflightMaterialiseNM`), an overflight far from the viewer is a **virtual track**: the World flies it along its planned waypoints (`traffic.VirtualFlight`, the flying model of the offline simulator), with no simulator object and no request. The viewer is the user aircraft and the aircraft our camera is on.
+
+- **Materialise:** within `overflightMaterialiseNM` of a viewer, the nearest virtual tracks are created as NonATC aircraft at exactly the track's pose (position, level, heading, speed) and given the waypoints they have left.
+- **Dematerialise:** farther than `overflightDematerialiseNM` from every viewer (default 10 NM past the materialise range), the aircraft is removed and flown on virtually from where it was. The gap keeps an aircraft from flipping at the edge.
+- **Caps:** `maxOverflights` then counts the overflights in the simulator, nearest first; `maxVirtualOverflights` (default 200) counts all of them at once, virtual or not.
+- **Still traffic:** a virtual track is on the map (`GET /api/traffic`) and in `Snapshot().Virtual`, marked `"virtual": true`, with an ID from `0xFF000000` up. The levels and releases of the other traffic are planned clear of it, and the user aircraft's traffic information tells it. `GET /api/schedule` shows the ranges and `virtualOverflights`, how many are virtual now.
+
+Off by default: with no materialise range, every overflight is in the simulator for its whole crossing, as before. A negative `overflightMaterialiseNM` turns the tiers off again. About the visibility from the flight deck (40 NM) is enough. Offline at LKPR, 60 overflights an hour with a 40 NM range kept at most 7 in the simulator (20, the cap, with the tiers off) and cut the overflights' data requests from about 1050 to 160 a minute.
+
 ## Editing the data
 
 `DefaultScheduleConfig()` ships with:
