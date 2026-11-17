@@ -50,6 +50,7 @@ A pose without `FovDeg` uses `camera.DefaultFovDeg` (55°). A `Shot` is the came
 - `Move` goes from one pose to another, eased (`Smooth`: no jerk at either end).
 - `Path` flies through keyframes on a Catmull-Rom curve. This is where combined moves come from: rising while circling while pushing in.
 - `Orbit`, `Chase`, `Track` (a camera fixed in the world that follows an aircraft) and `TrackZoom` (the same, zooming).
+- `Spot.TravelTo` and `Pan` (see [Travel](#travel)).
 
 ### Drone moves
 
@@ -76,11 +77,46 @@ Ours say all of them, at the frame they happen. The player's and other traffic's
 
 It reads the scan, so it sees ours, other traffic and the player alike. `Kinds` (`ours`, `other`, `player`), `Types` (ICAO designators) and `Events` limit what it may pick. It cuts to a closer spot at most every 10 s, and only one 30% closer. What an aircraft is doing is worked out from where it is and how it moves, not from our controllers: an unusual approach off the runway's line counts as nothing to watch until it lines up.
 
+### One observer
+
+A hard cut to a spot far away makes the simulator load the scenery and models there, and they pop in just after the cut. With `travelMaxM` set, the director is one drone that moves between its spots instead:
+
+- **Where it is:** every shot starts from the camera's current pose. The first shot of a spotting is a cut from wherever the camera was.
+- **Cut:** only to a spot within `cutM` of the eye (default 300 m, at most `travelMaxM`). The area there is loaded, so it reads as a new angle.
+- **Travel:** a spot within `travelMaxM` is flown to, a slow drone flight that is a shot in itself (`camera.Spot.TravelTo`), at `travelSpeed` (default 15 m/s, kept to 10–20). The spot shot joins it with no cut.
+- **Farther:** not gone to. A subject whose spot is out of reach is not picked.
+- **Subjects near it first:** a candidate's score adds the way from the eye to its spot. A landing or a take-off still comes before a taxi.
+- **Landings:** an aircraft lined up with a runway up to 12 NM out pulls the drone there. It leaves about 60 s before the flight to the touchdown spot would be too late, in hops when that spot is out of reach, filming the arrival on the way. Each hop goes to the spot within reach nearest it, or, with none nearer, to a waypoint in the air towards it, above the higher of the two plus 15 m. No travel starts for a taxi while a landing is due within 5 minutes, and a taxi or a take-off already climbing out gives way to a landing that cannot wait.
+- **Nothing to film:** a slow look round where it is (`camera.Pan`), at the nearest parked aircraft or now and then the player's (at most every 5 minutes, kind `player` if `kinds` is set), else a 30° sweep. It never jumps elsewhere for that.
+
+`travelMaxM` 0 (absent) keeps the cuts anywhere, as before: `cutM` and `travelSpeed` are then not used. `GET /api/camera` gives `move`: `cut`; and with the observer `travel` while the drone flies, `join` in the spot it flew to (or the spot taken again, no cut), `look` while it looks round.
+
+```json
+POST /api/camera/spotting
+{"icao": "LKPR", "travelMaxM": 1000, "cutM": 300, "travelSpeed": 15}
+```
+
 ## Spots
 
-A `camera.Spot` is a camera standing in the world: fixed, or on a straight rail (`RailEnd`, at most `RailSpeed`, 4 m/s by default) going abeam its subject. Its lens (`FovMin`, `FovMax`) is chosen to keep the aircraft at `Share` of the frame's width, the change smoothed. `Spot.Track(object, size, d, feed, clock)` plays it for up to `MaxStretch`.
+A `camera.Spot` is a camera standing in the world: fixed, or on a straight rail (`RailEnd`, at most `RailSpeed`, 4 m/s by default) going abeam its subject. Its lens (`FovMin`, `FovMax`) is chosen to keep the aircraft at `Share` of the frame's width, the change smoothed. `Spot.Track(object, size, d, feed, clock)` plays it for up to `MaxStretch`. `Spot.Framing(size, dist)` is the lens it would choose.
 
 The aim is a world point from a filter on the subject's samples, which may come only once a second: it runs on with the velocity found between them and takes corrections out slowly, so a long lens does not show a step and a subject flying straight is not lagged. `LockAim` aims at the object itself instead, the simulator keeping it dead centre.
+
+The filter is a `camera.Aim` (`NewAim(object, feed, clock)`), one per subject. Shots that film the same subject one after another share it, so the aim and the lens run on across them: `Spot.Follow(aim, size, d, join)` is `Track` on a shared aim, and `join` carries on from the last shot on it (its rail starts at the point nearest the eye shown last and moves on gently, the lens from the last one).
+
+### Travel
+
+`Spot.TravelTo(aim, size, camera.Travel{From, Move, SpeedMps, MarginM})` flies the drone from the pose `From` (its eye a world point) to the spot's eye, framing the aim's subject:
+
+- **Speed:** eases in and out of a steady cruise over `TravelRamp` (8 s) at each end, the speed rising and falling as `Smooth`, so there is no step in it. The cruise is `SpeedMps` (default `DefaultTravelSpeed`, 15 m/s), counting the climb.
+- **Height:** it climbs to the higher of its two ends plus `MarginM` (default 15 m) and comes down to the spot at the end. There is no ground data, so the spots' heights are what is known.
+- **View:** a world target in `From` turns to the subject no faster than `TravelTurnRate` (6°/s); a long turn makes the travel longer. Then it aims as the spot does, `LockAim` too. The lens blends from `From`'s to the spot's framing.
+- **Moves:** `TravelGlide` straight; `TravelDolly` alongside a moving aircraft, on its heading; `TravelSlide` bowing out round a parked aircraft; `TravelRise` higher, over an apron; `TravelPushIn` ending moving towards the subject. `TravelAuto` picks from the subject.
+- **Join:** it ends exactly at the spot's eye with the spot's lens. Play `Spot.Follow(aim, size, d, true)` after it on the same aim and going into the spot shot is not a cut.
+
+The length is the way at the cruise plus one ramp, at most `MaxStretch`. Poses are set on the simulator's frame like any other shot; the aim runs per frame on the samples it has.
+
+`camera.Pan(name, eye, from, to, fromFov, toFov, d)` turns a camera standing at `eye` from one world point to another, eased; `PanLength` is long enough to stay under `PanRate` (4°/s).
 
 `World.Spots(icao)` (`GET /api/camera/spots?icao=`) lists an airport's spots, generated from its data: `threshold:<end>`, `touchdown:<end>` (on a rail), `approach:<end>`, `holding:<end>` and `apron:<lowest stand>`. A low one keeps clear of the runways, taxiways and stands, and a spot with no clear place is left out. `World.PlaySpot` (`POST /api/camera/spot`) plays one on any aircraft: `id` (-1 the player) or `tail`, with `sec`, `share` and `lock`. In a scene, `"spot": "touchdown:24"` on a shot, or `"touchdown"` for the aircraft's own runway.
 
@@ -105,7 +141,7 @@ d.Tick(time.Now())
 d.Handle(msg)
 ```
 
-The director acquires the camera on the first `Tick` with a shot to play, and asks again every `AcquireRetry` (5 s) while it is not given (`ErrNotAcquired` meanwhile); a camera held by someone else or disabled by the user is not asked for again until `Release`. It sets the current shot's pose on every tick and moves to the next shot when one ends; with nothing queued it holds the last pose. After each cut the new shot holds its first pose for `CutSettle` (600 ms) while the picture settles. `OnShot` hears each shot as it starts; `Current` and `Remaining` tell what plays. After a reconnect call `Reset(api)` (nil keeps the client). `Release` gives the camera back and deletes the world locker. Always release it: a camera left acquired stays stuck for the user.
+The director acquires the camera on the first `Tick` with a shot to play, and asks again every `AcquireRetry` (5 s) while it is not given (`ErrNotAcquired` meanwhile); a camera held by someone else or disabled by the user is not asked for again until `Release`. It sets the current shot's pose on every tick and moves to the next shot when one ends; with nothing queued it holds the last pose. After each cut the new shot holds its first pose for `CutSettle` (600 ms) while the picture settles. `OnShot` hears each shot as it starts; `Current` and `Remaining` tell what plays, `Pose` the last pose set (where the camera is, for a shot that starts from there). After a reconnect call `Reset(api)` (nil keeps the client). `Release` gives the camera back and deletes the world locker. Always release it: a camera left acquired stays stuck for the user.
 
 ## Shots on a replay
 
@@ -248,7 +284,7 @@ scene-cli scene NAME | off | glides | moves | vehicle-radio on|off
 A capture reads the simulator's own camera (`CameraGet` answers without taking it). It saves the camera's position, heading, pitch and field of view, and its offset from the aircraft filmed: right, up and ahead, with the point aimed at. It also saves where the camera is on the airport: the nearest stand and taxiway, and its distance along and beside the runway. The picture is the simulator's window, which must be on screen; a covered window gives a stale picture.
 
 ```text
-GET  /api/camera                     mode, subject, shot
+GET  /api/camera                     mode, subject, shot; spotting: event, move (cut | travel | join | look)
 POST /api/camera {mode, id}          off | follow (id: the card) | auto
 GET  /api/camera/scenes              the scenes
 POST /api/camera/scene?name=&icao=   play one
@@ -256,4 +292,5 @@ GET  /api/camera/moves               the moves a shot takes
 GET  /api/camera/glides              the glides between picked frames
 POST /api/camera/shot {icao, tail, move | from, to | glide, side, sec, back, fov, at}   one shot; the camera goes back after it
 POST /api/camera/capture {icao, name, tail}   the simulator's camera, placed
+POST /api/camera/spotting {icao, kinds, types, events, share, lock, cutM, travelMaxM, travelSpeed}   the spotting director
 ```

@@ -9,6 +9,7 @@ import (
 
 	"github.com/mrlm-net/simconnect/pkg/airport"
 	"github.com/mrlm-net/simconnect/pkg/calc"
+	"github.com/mrlm-net/simconnect/pkg/camera"
 )
 
 // The spotting director: left to itself the camera watches an airport from its
@@ -20,13 +21,23 @@ import (
 // SpottingRequest starts the spotting director at ICAO. The filters are what it
 // may pick, empty for anything: Kinds "ours", "other", "player"; Types ICAO type
 // designators; Events "landing", "takeoff", "taxi". Share and Lock as on a spot.
+//
+// TravelMaxM above 0 makes the camera one observer (spotobserver.go): it
+// cuts only to a spot within CutM of where it is (0: DefaultSpotCutM, at
+// most TravelMaxM), flies to one within TravelMaxM (a travel shot at
+// TravelSpeed m/s, 0: camera.DefaultTravelSpeed, kept to 10–20), and does
+// not go farther; it prefers subjects near it. TravelMaxM 0 (absent) cuts to
+// any spot, as before, and CutM and TravelSpeed are not used.
 type SpottingRequest struct {
-	ICAO   string   `json:"icao"`
-	Kinds  []string `json:"kinds,omitempty"`
-	Types  []string `json:"types,omitempty"`
-	Events []string `json:"events,omitempty"`
-	Share  float64  `json:"share,omitempty"`
-	Lock   bool     `json:"lock,omitempty"`
+	ICAO        string   `json:"icao"`
+	Kinds       []string `json:"kinds,omitempty"`
+	Types       []string `json:"types,omitempty"`
+	Events      []string `json:"events,omitempty"`
+	Share       float64  `json:"share,omitempty"`
+	Lock        bool     `json:"lock,omitempty"`
+	CutM        float64  `json:"cutM,omitempty"`
+	TravelMaxM  float64  `json:"travelMaxM,omitempty"`
+	TravelSpeed float64  `json:"travelSpeed,omitempty"`
 }
 
 const (
@@ -90,13 +101,24 @@ type spotter struct {
 	lastIn  time.Time
 	spot    CameraSpot // the one in use (Name "": none)
 	cutAt   time.Time
+
+	// obs: the observer (req.TravelMaxM > 0), its state in observer.
+	obs bool
+	observer
 }
 
-// spotCut is a cut the director wants.
+// spotCut is a cut the director wants. With the observer: travel, flown to
+// the spot; again, the spot taken again on the same aircraft, joined; look,
+// a look round instead.
 type spotCut struct {
-	spot  string
-	t     Traffic
-	event string
+	spot   string
+	t      Traffic
+	event  string
+	travel bool
+	again  bool
+	look   *spotLook
+	// at: the spot itself, when it is none of the airport's (a waypoint).
+	at *CameraSpot
 }
 
 // spotOnGround says t is on the ground.
@@ -215,6 +237,16 @@ func (s *spotter) spotFor(t *Traffic, kts float64, event, end string) (CameraSpo
 
 // look reads the traffic and decides: the subject, and a cut when one is due.
 func (s *spotter) look(now time.Time, list []Traffic) *spotCut {
+	s.see(now, list)
+	if s.obs {
+		return s.observe(now, list)
+	}
+	return s.cuts(now, list)
+}
+
+// see takes the scan in: each aircraft's speed, from its positions, and
+// whether it flew.
+func (s *spotter) see(now time.Time, list []Traffic) {
 	seen := map[uint32]spotted{}
 	for i := range list {
 		t := &list[i]
@@ -235,7 +267,11 @@ func (s *spotter) look(now time.Time, list []Traffic) *spotCut {
 		seen[t.ObjectID] = h
 	}
 	s.seen = seen
+}
 
+// subjectIn is the subject in list, nil when it is gone or has not done
+// what it was doing for spotGrace.
+func (s *spotter) subjectIn(now time.Time, list []Traffic) *Traffic {
 	var sub *Traffic
 	for i := range list {
 		if s.subject != 0 && list[i].ObjectID == s.subject {
@@ -249,6 +285,12 @@ func (s *spotter) look(now time.Time, list []Traffic) *spotCut {
 			sub = nil
 		}
 	}
+	return sub
+}
+
+// cuts: the director as it was, cutting to any spot.
+func (s *spotter) cuts(now time.Time, list []Traffic) *spotCut {
+	sub := s.subjectIn(now, list)
 	// A taxi gives way to a landing or a take-off; those are seen through.
 	if sub == nil || s.event == "taxi" {
 		if p, ev, end := s.pick(list, now, sub != nil); p != nil {
@@ -342,8 +384,10 @@ func (m *cameraMan) startSpotting(req SpottingRequest) error {
 	if err := m.setMode("spotting", 0); err != nil {
 		return err
 	}
+	s := &spotter{req: req, g: g, spots: spots}
+	s.observer, s.obs = observerFor(req)
 	m.mu.Lock()
-	m.spotter = &spotter{req: req, g: g, spots: spots}
+	m.spotter = s
 	m.spotEvent, m.spotAt = "", time.Time{}
 	m.mu.Unlock()
 	return nil
@@ -358,6 +402,12 @@ func (m *cameraMan) spottingLook(now time.Time) {
 	if s == nil || sc == nil {
 		return
 	}
+	if s.obs && s.played {
+		// Where the camera is: every shot starts from there.
+		if p, ok := m.dir.Pose(); ok && p.Eye.Frame == camera.World {
+			s.pose, s.havePose = p, true
+		}
+	}
 	cut := s.look(sc.at, sc.list) // by the scan's clock: speeds come from its positions
 	m.mu.Lock()
 	if m.spotter != s {
@@ -365,11 +415,33 @@ func (m *cameraMan) spottingLook(now time.Time) {
 		return // stopped meanwhile
 	}
 	m.spotEvent, m.subject = s.event, s.name
-	if s.spot.Name == "" {
+	if s.spot.Name == "" && !s.obs {
 		m.shot = "" // no spot yet for this one
 	}
 	m.mu.Unlock()
 	if cut == nil {
+		return
+	}
+	if s.obs {
+		shots, move, busy := m.observerShots(s, cut, sc.list)
+		if len(shots) == 0 {
+			return
+		}
+		if busy > 0 {
+			s.busy = sc.at.Add(busy + spotBusyAfter)
+		}
+		s.played = true
+		m.mu.Lock()
+		defer m.mu.Unlock()
+		if m.spotter != s {
+			return
+		}
+		m.shot, m.move = shots[0].Name(), move
+		m.joinShot = nil
+		if move == "travel" {
+			m.joinShot = shots[1]
+		}
+		m.dir.Play(shots...)
 		return
 	}
 	t := &cut.t
@@ -387,7 +459,7 @@ func (m *cameraMan) spottingLook(now time.Time) {
 	if m.spotter != s {
 		return
 	}
-	m.shot = shot.Name()
+	m.shot, m.move = shot.Name(), "cut"
 	m.dir.Play(shot)
 }
 

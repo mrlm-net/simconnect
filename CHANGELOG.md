@@ -7,6 +7,21 @@ This project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 ---
 
+## [0.173.0] - 2026-11-17
+
+### Added
+
+- **Spotting as one observer** (#1472): `SpottingRequest` takes `travelMaxM`, `cutM` and `travelSpeed`. With `travelMaxM` set, the spotting director is one drone that moves between its spots instead of cutting across the airport, so scenery and models no longer pop in after a far cut. Without it (the default) the director cuts as before, and `cutM` and `travelSpeed` are not used.
+  - **Cut or travel** (#1473): the director keeps the camera's pose. The first shot is a cut from wherever the camera was. After that it cuts only to a spot within `cutM` (default 300 m, at most `travelMaxM`), flies to one within `travelMaxM`, and does not go to one farther away. `GET /api/camera` gives `move`: `cut`, `travel`, `join` (the spot reached by a travel, or the same spot taken again, with no cut) or `look`.
+  - **Subjects by distance** (#1475): a candidate's score adds the way from the eye to its spot, and landings and take-offs still come before a taxi. An aircraft lined up with a runway up to 12 NM out pulls the drone there. The drone leaves about 60 s before the flight to the touchdown spot would be too late. When that spot is out of reach, it hops toward it, filming the arrival on the way. Each hop goes to the spot within reach nearest it, or to a waypoint in the air when no spot is nearer. No travel starts for a taxi while a landing is due within 5 minutes. A taxi, or a take-off already climbing out, gives way to a landing that cannot wait. With nothing to film, the drone looks round where it is: at the nearest parked aircraft, now and then at the player's, or in a slow sweep.
+- **Travel shot** (#1474): `camera.Spot.TravelTo(aim, size, camera.Travel{From, Move, SpeedMps, MarginM})` flies the drone from a pose to a spot's eye. It eases in and out of a 15 m/s cruise (`TravelRamp` 8 s at each end, the climb counted in the speed) and climbs to the higher end plus a margin (15 m). Its view turns to the subject no faster than `TravelTurnRate` (6°/s), and the lens blends to the spot's framing. It ends exactly at the spot's eye. The moves are `TravelGlide`, `TravelDolly` (alongside a moving aircraft), `TravelSlide` (past a parked one), `TravelRise` (over an apron) and `TravelPushIn`; `TravelAuto` picks one.
+- **`camera.Aim`**: `NewAim(object, feed, clock)` is the spot aim filter, shared by the shots that film one subject. `Spot.Follow(aim, size, d, join)` plays a spot on it; with `join` the shot carries on from the last shot (rail position and lens), so a travel or a spot taken again does not cut.
+- **`camera.Pan`, `PanLength`, `PanRate`**: a slow look round from a still eye. **`Spot.Framing`** is the lens a spot picks for a size at a distance. **`Director.Pose`** is the last pose set on the camera.
+
+### Changed
+
+- `camera.Spot.Track` keeps its signature and behaviour; it now runs on the shared `Aim` (as `Follow`).
+
 ## [0.172.0] - 2026-11-16
 
 ### Added

@@ -31,6 +31,8 @@ import (
 //
 //	GET  /api/camera            — mode, subject, shot
 //	POST /api/camera {mode, id} — off | follow (id: the card) | auto
+//	POST /api/camera/spotting {icao, kinds, types, events, share, lock, cutM, travelMaxM, travelSpeed}
+//	                            — the spotting director (spotting.go); GET /api/camera gives its move
 //	GET  /api/camera/scenes            — the scripted scenes (scenes.go)
 //	POST /api/camera/scene?name=&icao= — play one
 //	GET  /api/camera/moves             — the moves a shot takes
@@ -75,6 +77,10 @@ type cameraMan struct {
 	spotter   *spotter
 	spotEvent string
 	spotAt    time.Time
+	// move: how the spotting camera got to its shot (cut, travel, join,
+	// look); joinShot the spot shot a travel ends in, "join" as it starts.
+	move     string
+	joinShot camera.Shot
 	// sceneStarting: a scene asked for and not yet playing (#62: two at once).
 	sceneStarting bool
 	follow        int    // the card followed
@@ -149,6 +155,10 @@ func newCameraMan(cc *controlCenter, client engine.Client) *cameraMan {
 		m.dir.OnShot(func(s camera.Shot) {
 			m.mu.Lock()
 			m.shot = s.Name()
+			// A pointer (Spot.Follow): compared, never a panic.
+			if m.joinShot != nil && m.joinShot == s {
+				m.move, m.joinShot = "join", nil
+			}
 			if r := m.scene; r != nil {
 				r.emit(SceneEvent{Kind: "shot", Beat: r.beat, Shot: s.Name(), Subject: m.subject})
 			}
@@ -241,7 +251,7 @@ func (m *cameraMan) setModeIf(mode string, follow int, still func() bool) error 
 		m.rememberSim()
 	}
 	m.mode, m.follow, m.subject, m.shots, m.err = mode, follow, "", 0, ""
-	m.spotter, m.spotEvent = nil, ""
+	m.spotter, m.spotEvent, m.move, m.joinShot = nil, "", "", nil
 	m.mu.Unlock()
 	if m.frames != nil {
 		m.frames(mode != "off")
@@ -705,7 +715,12 @@ type cameraView struct {
 	Mode    string `json:"mode"`
 	Subject string `json:"subject,omitempty"`
 	// Event: spotting, what the subject is doing (landing, takeoff, taxi).
-	Event    string `json:"event,omitempty"`
+	Event string `json:"event,omitempty"`
+	// Move: spotting, how the camera got to the shot: "cut", or with the
+	// observer (SpottingRequest.TravelMaxM) "travel" while the drone flies
+	// to a spot, "join" in the spot it flew to (no cut), "look" looking
+	// round where it is.
+	Move     string `json:"move,omitempty"`
 	Shot     string `json:"shot,omitempty"`
 	Acquired bool   `json:"acquired"`
 	Error    string `json:"error,omitempty"`
@@ -725,7 +740,7 @@ type cameraView struct {
 func (m *cameraMan) view() cameraView {
 	m.mu.Lock()
 	defer m.mu.Unlock()
-	v := cameraView{Mode: m.mode, Subject: m.subject, Event: m.spotEvent, Shot: m.shot, Error: m.err}
+	v := cameraView{Mode: m.mode, Subject: m.subject, Event: m.spotEvent, Move: m.move, Shot: m.shot, Error: m.err}
 	if m.scene != nil {
 		v.Scene = m.scene.progress()
 	}
