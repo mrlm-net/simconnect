@@ -7,6 +7,12 @@ This project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 ---
 
+## [0.174.1] - 2026-11-17
+
+### Fixed
+
+- worldtest: the loopback's jump count (`Loopback.Jumps`) no longer counts what only its coarse frames make. On frames longer than a live one (the overflight bed runs at 5 Hz), a placement the jump trace's rule reports counts only when its step also breaks from the steps before and after it: a step aside or a snap still counts, a steady tight turn, its start or a reversal does not. At 30 to 60 Hz the rule is applied as before. A tug's way backwards now counts at the speed the World writes in VELOCITY BODY Z (INITPOSITION Airspeed is 0 then), not at 0 kt. The overflight bed's 81 jumps at LKPR and 173 to 206 at EGLL in 3 h were all tugs (driving in from the depot, backing off, driving home), none of them aircraft; the same LKPR run at 60 Hz counts none. Engine unchanged (#1481).
+
 ## [0.174.0] - 2026-11-17
 
 ### Added
