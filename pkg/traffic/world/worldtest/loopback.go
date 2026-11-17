@@ -95,6 +95,8 @@ type Loopback struct {
 	clock              func() time.Time
 	aircraftTitles     []string
 	groundTitles       []string
+	// calls: the calls counted and the placements checked (calls.go).
+	calls ledger
 }
 
 // NewLoopback returns a loopback with the user aircraft at lat, lon on
@@ -167,6 +169,7 @@ func (l *Loopback) RequestDataOnSimObject(requestID uint32, definitionID uint32,
 		delete(l.reqs, requestID)
 		return nil
 	}
+	l.count(CallRequest, objectID)
 	r := &request{req: requestID, def: definitionID, obj: objectID, period: period, interval: interval}
 	if period == types.SIMCONNECT_PERIOD_ONCE {
 		l.sendData(r, false, 1, 1)
@@ -179,6 +182,7 @@ func (l *Loopback) RequestDataOnSimObject(requestID uint32, definitionID uint32,
 func (l *Loopback) RequestDataOnSimObjectType(requestID uint32, definitionID uint32, dwRadiusMeters uint32, objectType types.SIMCONNECT_SIMOBJECT_TYPE) error {
 	l.mu.Lock()
 	defer l.mu.Unlock()
+	l.count(CallScan, 0)
 	var ids []uint32
 	for id, o := range l.objects {
 		switch objectType {
@@ -211,17 +215,21 @@ func (l *Loopback) SetDataOnSimObject(definitionID uint32, objectID uint32, flag
 	}
 	o := l.objects[objectID]
 	ds := l.defs[definitionID]
+	switch {
+	case len(ds) == 0:
+		l.count(CallSetData, objectID)
+	case ds[0].typ == types.SIMCONNECT_DATATYPE_INITPOSITION || ds[0].name == "PLANE LATITUDE":
+		l.count(CallPosition, objectID)
+	case ds[0].typ == types.SIMCONNECT_DATATYPE_WAYPOINT:
+		l.count(CallWaypoints, objectID)
+	default:
+		l.count(CallSetData, objectID)
+	}
 	if o == nil || data == nil || len(ds) == 0 {
 		return nil
 	}
 	if ds[0].typ == types.SIMCONNECT_DATATYPE_INITPOSITION {
-		p := *(*types.SIMCONNECT_DATA_INITPOSITION)(data)
-		if p.Latitude != 0 || p.Longitude != 0 {
-			o.Lat, o.Lon, o.AltFt = p.Latitude, p.Longitude, p.Altitude
-			o.Pitch, o.Bank, o.Heading = p.Pitch, p.Bank, p.Heading
-			o.OnGround = p.OnGround != 0
-			o.GroundKts = float64(p.Airspeed)
-		}
+		l.setPosition(o, *(*types.SIMCONNECT_DATA_INITPOSITION)(data), PlacedWorld)
 		return nil
 	}
 	if ds[0].name == "CAMERA STATE" {
@@ -294,6 +302,10 @@ func (l *Loopback) createNow(title, tail string, lat, lon, altFt, hdg float64, o
 		lat, lon, altFt, onGround = l.spawnLat, l.spawnLon, l.groundFt, true
 	}
 	l.objects[id] = &Object{ID: id, Title: title, ATCID: tail, Lat: lat, Lon: lon, AltFt: altFt, Heading: hdg, OnGround: onGround, Vehicle: vehicle}
+	l.calls.init()
+	l.calls.tails[id] = tail
+	l.count(CallCreate, id)
+	l.place(id, lat, lon, hdg, 0, PlacedCreate)
 	m := types.SIMCONNECT_RECV_ASSIGNED_OBJECT_ID{DwRequestID: types.DWORD(requestID), DwObjectID: types.DWORD(id)}
 	m.DwID = types.DWORD(types.SIMCONNECT_RECV_ID_ASSIGNED_OBJECT_ID)
 	l.emit(unsafe.Slice((*byte)(unsafe.Pointer(&m)), unsafe.Sizeof(m)))
@@ -334,8 +346,10 @@ func (l *Loopback) AICreateSimulatedObjectEX1(szContainerTitle string, szLivery 
 func (l *Loopback) AIRemoveObject(objectID uint32, requestID uint32) error {
 	l.mu.Lock()
 	defer l.mu.Unlock()
+	l.count(CallRemove, objectID)
 	if objectID != UserObjectID {
 		delete(l.objects, objectID)
+		delete(l.calls.last, objectID)
 	}
 	return nil
 }
@@ -392,6 +406,7 @@ func (l *Loopback) sendData(r *request, byType bool, entry, outOf uint32) {
 	if o == nil || !ok {
 		return
 	}
+	l.count(CallData, o.ID)
 	var hdr types.SIMCONNECT_RECV_SIMOBJECT_DATA
 	off := int(unsafe.Offsetof(hdr.DwData))
 	body := l.encode(o, ds)

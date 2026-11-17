@@ -46,6 +46,9 @@ type Options struct {
 	// WORLDTEST_SEED, else a new one each run. It is printed, for a failure
 	// to be run again.
 	Seed uint64
+	// AircraftTitles are the aircraft models the loopback lists (nil:
+	// DefaultAircraftTitles), set before the World asks.
+	AircraftTitles []string
 }
 
 // Harness is a World running on a Loopback: no simulator.
@@ -53,14 +56,17 @@ type Harness struct {
 	// ownData: the settings folder made for it, removed at Close.
 	ownData   string
 	closeOnce sync.Once
-	World *world.World
-	Sim   *Loopback
-	ICAO  string
+	World     *world.World
+	Sim       *Loopback
+	ICAO      string
 	// Layout is the airport loaded.
 	Layout *airport.Layout
 
 	// Clock is the manual clock (Options.Manual), nil on the wall clock.
 	Clock *traffic.ManualClock
+	// Seed is the traffic's random seed (Options.Seed, WORLDTEST_SEED):
+	// a scenario seeds its own choices from it, for a run to replay.
+	Seed uint64
 
 	frame  time.Duration
 	cancel context.CancelFunc
@@ -98,6 +104,7 @@ func Start(o Options) (*Harness, error) {
 		seed = rand.Uint64()
 	}
 	traffic.SetRandomSeed(seed)
+	h.Seed = seed
 	fmt.Println("worldtest: WORLDTEST_SEED=" + strconv.FormatUint(seed, 10))
 	if wo.ModelProviders == nil {
 		wo.ModelProviders = map[string]bool{"FSLTL": true} // the live tests' models (DefaultAircraftTitles)
@@ -140,6 +147,7 @@ func Start(o Options) (*Harness, error) {
 		traffic.SetTimeSource(h.Clock)
 	}
 	h.Sim = NewLoopback(l.Latitude, l.Longitude, l.Altitude/0.3048, 16384)
+	h.Sim.SetTitles(o.AircraftTitles, nil)
 	// The user aircraft parked on the smallest stand, not on the airport's
 	// reference point: at LKPR that lies on runway 06/24, and the tower
 	// held every departure and sent every arrival around for it.

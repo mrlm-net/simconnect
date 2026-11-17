@@ -80,6 +80,7 @@ func (l *Loopback) TransmitClientEvent(objectID uint32, eventID uint32, data uin
 	if objectID == types.SIMCONNECT_OBJECT_ID_USER {
 		objectID = UserObjectID
 	}
+	l.count(CallEvent, objectID)
 	if name := l.events[eventID]; name == "ZULU_HOURS_SET" || name == "ZULU_MINUTES_SET" {
 		l.setZulu(name, data)
 		return nil

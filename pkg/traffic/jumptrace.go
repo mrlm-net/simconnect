@@ -109,9 +109,9 @@ func callers() string {
 var frameStats struct {
 	sync.Mutex
 	n, late, bunched int
-	lastDt  map[*groundDrive]float64
-	lastAt  map[*groundDrive]time.Time
-	since   time.Time
+	lastDt           map[*groundDrive]float64
+	lastAt           map[*groundDrive]time.Time
+	since            time.Time
 }
 
 func countFrame(d *groundDrive, dt float64) {
@@ -139,4 +139,16 @@ func countFrame(d *groundDrive, dt float64) {
 			Now().Format("15:04:05"), frameStats.n, frameStats.late, pct(frameStats.late), frameStats.bunched, pct(frameStats.bunched), len(frameStats.lastDt))
 		frameStats.n, frameStats.late, frameStats.bunched, frameStats.lastDt, frameStats.lastAt, frameStats.since = 0, 0, 0, map[*groundDrive]float64{}, map[*groundDrive]time.Time{}, Now()
 	}
+}
+
+// JumpTraced reports whether the jump trace would report a placement d
+// metres from the last one placed for the same aircraft and turned turnDeg
+// from it, dt after it (gap: between that one and the one before), at kts
+// (the faster of the two): the trace's rule for a test bed that places
+// aircraft without the Injector (SimlessAI on a loopback, #1481).
+func JumpTraced(kts float64, dt, gap time.Duration, d, turnDeg float64) bool {
+	if dt <= 0 || dt > jumpTraceGap {
+		return false
+	}
+	return d > jumpAllowedM(kts, dt, gap) || turnDeg > jumpTurnAllowed(dt)
 }
