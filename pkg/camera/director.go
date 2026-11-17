@@ -285,3 +285,11 @@ func (d *Director) Release() error {
 	}
 	return api.CameraRelease("")
 }
+
+// Pose is the last pose set on the camera (false: none since Release): where
+// the camera is, for a next shot that starts from there.
+func (d *Director) Pose() (Pose, bool) {
+	d.mu.Lock()
+	defer d.mu.Unlock()
+	return d.last, d.havePose
+}
