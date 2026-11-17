@@ -70,6 +70,15 @@ const (
 	simlessStartKts = 250.0
 )
 
+// AIPositionWriter is a client that takes the positions SimlessAI writes
+// for the aircraft it flies (standing in for the simulator's AI) apart
+// from the World's own calls: a loopback counting SimConnect calls leaves
+// them out, as a simulator never gets them (#1481). A client without it
+// gets them as SetDataOnSimObject.
+type AIPositionWriter interface {
+	SetAIPosition(definitionID, objectID uint32, p types.SIMCONNECT_DATA_INITPOSITION) error
+}
+
 // SimlessAIDefID is the data definition SimlessAI defines for the
 // positions it writes when no other definition of a position came first.
 var SimlessAIDefID uint32 = 0x7FFF_F000
@@ -275,8 +284,13 @@ func (s *SimlessAI) Step(now time.Time) {
 	def := s.posDef
 	s.writing = true
 	s.mu.Unlock()
+	ai, _ := s.Client.(AIPositionWriter)
 	for _, w := range out {
 		p := w.p
+		if ai != nil {
+			ai.SetAIPosition(def, w.id, p)
+			continue
+		}
 		s.Client.SetDataOnSimObject(def, w.id, types.SIMCONNECT_DATA_SET_FLAG_DEFAULT, 0, uint32(unsafe.Sizeof(p)), unsafe.Pointer(&p))
 	}
 	s.mu.Lock()

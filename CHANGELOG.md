@@ -7,6 +7,15 @@ This project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 ---
 
+## [0.174.0] - 2026-11-17
+
+### Added
+
+- **Overflights test bed** (#1481): `TestOverflights` in `pkg/traffic/world/worldtest` turns the schedule on at LKPR, EGLL and LZKZ and runs whole hours of traffic time on the loopback client and the manual clock, with SimlessAI flying the overflights' waypoint chains. For each airport it reports the overflights planned and entered per hour against the rate and the hour's wave, the levels flown each way (semicircular rule), the closest approach between airborne aircraft (two overflights, an overflight and our own traffic), conflict-watch firings and separation-monitor losses involving an overflight, jumps, the SimConnect calls by kind (all, per overflight, per minute), and the aircraft in the simulator at once (peak and mean). Today's behaviour is pinned as the baseline: no hour plans more than the generator's ceiling of its mean, at least half the mean over the run, no conflict-watch firing between two overflights, no jump of an overflight. A run prints `WORLDTEST_SEED` and a fingerprint of the overflights planned; the same seed plans the same flights again. `WORLDTEST_OVERFLIGHT_HOURS` sets the hours per airport (default 2: about 40 s of wall time each for LKPR and EGLL, 25 s for LZKZ). An airport missing from the offline data is skipped, so CI runs LKPR from the repository's own test data.
+- `worldtest.Loopback` counts the World's SimConnect calls by kind and by aircraft (`Calls`, `CallsOf`, the `Call*` kinds) and checks every placement against the one before by the jump trace's rule (`Jumps`). `Options.AircraftTitles` sets the models the loopback lists; `Harness.Seed` is the run's seed.
+- `traffic.JumpTraced`: the jump trace's rule, for a test bed that places aircraft without the Injector.
+- `traffic.AIPositionWriter`: a client implementing it gets the positions SimlessAI flies its aircraft to through `SetAIPosition`, so a loopback can tell them from the World's own calls. A client without it gets them as before.
+
 ## [0.173.0] - 2026-11-17
 
 ### Added
