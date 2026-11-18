@@ -308,6 +308,8 @@ func (s *scheduler) spawnEnrouteOn(f traffic.ManagedFlight, e *enrouteAC, model 
 		}
 	}
 	defer among()
+	// Its climbs as the AI flies them, before its way is planned clear.
+	route = climbable(route, f.Type, e.cruiseKts)
 	if who := s.nearPoint(route[0].Position, route[0].AltFt); who != "" {
 		return fmt.Errorf("%w: %s near its position", traffic.ErrSpawnBlocked, who)
 	}

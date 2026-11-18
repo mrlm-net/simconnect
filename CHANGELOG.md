@@ -7,6 +7,12 @@ This project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 ---
 
+## [0.177.1] - 2026-11-18
+
+### Fixed
+
+- En route arrivals and other en route flights that appear mid-climb are now planned with climbs the AI can fly, so the conflict watch no longer fires between them and overflights they were planned clear of. A flight plan lays out its climb at the type's climb speed, but the AI flies those points at cruise speed: a short hop such as an E545 from LKMT to LKPR needed about 5,000 ft a minute to reach FL400, fell behind at 3,000, and the watch expected it to catch up. Each climb is now limited to the type's climb rate, at most 2,500 ft a minute, at the speed the leg is flown. A climb whose top the route leaves downward within the watch's 5-minute look-ahead now levels at the altitude it descends to, because the watch takes a climbing aircraft on climbing past such a top.
+
 ## [0.177.0] - 2026-11-18
 
 ### Added

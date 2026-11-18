@@ -6,6 +6,7 @@ import (
 	"time"
 
 	"github.com/mrlm-net/simconnect/pkg/calc"
+	"github.com/mrlm-net/simconnect/pkg/nav"
 	"github.com/mrlm-net/simconnect/pkg/traffic"
 )
 
@@ -104,6 +105,95 @@ func atLevel(route []traffic.RoutePoint, cruise, ft float64) []traffic.RoutePoin
 		}
 	}
 	return out
+}
+
+// enrouteClimbMaxFpm: an en route climb is planned no steeper than this,
+// whatever the type's rate; MSFS AI climbs at about 3000 fpm at most, less
+// high up (SimlessAI: simlessMaxVS).
+const enrouteClimbMaxFpm = 2500.0
+
+// climbable is route with no point higher than the aircraft climbs to by
+// then from the point before, flying the leg at the speed of the point it
+// heads for (as MSFS AI does) at the type's climb rate, enrouteClimbMaxFpm
+// at most. A plan's climb is laid out at the type's climb speed, but its
+// points are flown at the cruise speed: offline, LKPR, OKILI (E545 LKMT →
+// LKPR) appeared at 7300 ft with FL400 51 NM on, flown at 460 kt a 5000
+// fpm climb; the AI fell behind at 3000 fpm and the conflict watch, taking
+// it to catch up at 4350 fpm, fired for SWR1395 at FL350. A climb's top
+// left downward within the conflict watch's look-ahead goes no higher than
+// the point it goes down to: the watch takes an aircraft climbing now on
+// climbing past such a top (offline, LKPR: AUA909, E190 LOWW → LKPR, up to
+// FL320 and down to 29454 ft at its STAR entry 7 NM on, stopped at FL340
+// for BAW862 at FL350). A climb not finished at the route's end levels off
+// at the level of its direction below.
+func climbable(route []traffic.RoutePoint, typ string, cruiseKts float64) []traffic.RoutePoint {
+	fpm := math.Min(nav.PerformanceFor(typ).ClimbFPM, enrouteClimbMaxFpm)
+	if len(route) < 2 || fpm <= 0 {
+		return route
+	}
+	out := append([]traffic.RoutePoint(nil), route...)
+	capped := make([]bool, len(out))
+	for i := 1; i < len(out); i++ {
+		a, b := out[i-1], out[i]
+		kts := b.Kts
+		if kts <= 0 {
+			kts = a.Kts
+		}
+		if kts <= 0 || b.AltFt <= a.AltFt {
+			continue
+		}
+		nm := calc.HaversineNM(a.Position.Lat, a.Position.Lon, b.Position.Lat, b.Position.Lon)
+		top := a.AltFt + nm/kts*60*fpm
+		if b.AltFt > top {
+			out[i].AltFt, capped[i] = top, true
+			out[i].Kts = math.Min(b.Kts, traffic.EnrouteSpeedKts(top, cruiseKts))
+		}
+	}
+	// A climb's top flown level for less than the conflict watch's
+	// look-ahead before the route turns down: no higher than the point it
+	// goes down to, or the one it climbed from.
+	for changed := true; changed; {
+		changed = false
+		for i := 1; i < len(out); i++ {
+			if out[i].AltFt <= out[i-1].AltFt {
+				continue
+			}
+			j, hours := i+1, 0.0
+			for ; j < len(out) && out[j].AltFt == out[i].AltFt; j++ {
+				if kts := out[j].Kts; kts > 0 {
+					hours += calc.HaversineNM(out[j-1].Position.Lat, out[j-1].Position.Lon, out[j].Position.Lat, out[j].Position.Lon) / kts
+				}
+			}
+			if j == len(out) || out[j].AltFt > out[i].AltFt || time.Duration(hours*float64(time.Hour)) >= conflictLookAhead {
+				continue
+			}
+			to := math.Max(out[i-1].AltFt, out[j].AltFt)
+			for k := i; k < j; k++ {
+				out[k].AltFt = to
+				out[k].Kts = math.Min(out[k].Kts, traffic.EnrouteSpeedKts(to, cruiseKts))
+			}
+			changed = true
+		}
+	}
+	// A climb not finished at the route's end: to the level of its
+	// direction below.
+	if n := len(out) - 1; capped[n] && out[n].AltFt > out[n-1].AltFt && out[n].AltFt >= 10000 {
+		p, q := out[n-1].Position, out[n].Position
+		out[n].AltFt = math.Max(levelBelowFt(out[n].AltFt, calc.BearingDegrees(p.Lat, p.Lon, q.Lat, q.Lon)), out[n-1].AltFt)
+		out[n].Kts = math.Min(out[n].Kts, traffic.EnrouteSpeedKts(out[n].AltFt, cruiseKts))
+	}
+	return out
+}
+
+// levelBelowFt is the highest level of the semicircular rule for a track
+// at or below ft (cruiseLevelFt's levels), from FL100.
+func levelBelowFt(ft, trackDeg float64) float64 {
+	for fl := math.Floor(ft / 1000); fl >= 10; fl-- {
+		if l := cruiseLevelFt(fl*1000, trackDeg); l <= ft && l == fl*1000 {
+			return l
+		}
+	}
+	return ft
 }
 
 // legKts is the speed route's first leg is flown at, as its way is
