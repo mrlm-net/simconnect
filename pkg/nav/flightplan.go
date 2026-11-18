@@ -320,7 +320,7 @@ func Plan(req FlightPlanRequest, g *AirwayGraph) (*FlightPlan, error) {
 	}
 	end := Waypoint{Ident: strings.ToUpper(req.Arrival.ICAO), Kind: PointAirport, Position: arrPos, Phase: PhaseApproach}
 	if arrOK {
-		end = Waypoint{Ident: "RW" + arrEnd.Name, Kind: PointRunway, Position: arrEnd.Threshold, Phase: PhaseApproach}
+		end = Waypoint{Ident: "RW" + arrEnd.Name, Kind: PointRunway, Position: arrEnd.LandingThreshold(), Phase: PhaseApproach}
 		arrElev = runwayAltitude(req.Arrival.Layout, arrEnd.Name, arrElev)
 	}
 

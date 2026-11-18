@@ -5,6 +5,7 @@ import (
 	"strconv"
 	"strings"
 
+	"github.com/mrlm-net/simconnect/pkg/calc"
 	"github.com/mrlm-net/simconnect/pkg/types"
 )
 
@@ -76,13 +77,29 @@ type RunwayEnd struct {
 	Designator types.SIMCONNECT_FACILITY_RUNWAY_DESIGNATOR `json:"designator"`
 	Name       string                                      `json:"name"`    // e.g. "06", "27R", "N"
 	Heading    float64                                     `json:"heading"` // degrees true, take-off/landing direction
-	// Threshold is the start of the runway surface in this direction. Displaced
-	// thresholds are not taken into account.
+	// Threshold is the start of the runway surface in this direction: where
+	// a take-off roll starts (TORA from the pavement end) and what the runway
+	// geometry is measured from. A landing uses LandingThreshold.
 	Threshold LatLon `json:"threshold"`
+	// DisplacedM is how far the landing threshold is displaced in from
+	// Threshold along Heading, in meters; 0 when not displaced (#1560).
+	DisplacedM float64 `json:"displacedM,omitempty"`
 	// ILS is the ident of the end's ILS and ILSRegion its region (the
 	// facility's VOR record has the frequency), "" without one.
 	ILS       string `json:"ils,omitempty"`
 	ILSRegion string `json:"ilsRegion,omitempty"`
+}
+
+// LandingThreshold is where a landing on this end crosses the threshold:
+// Threshold, or DisplacedM further along Heading when the threshold is
+// displaced. The final approach, glide path, aim point and landing distance
+// are measured from it; a take-off still starts at Threshold.
+func (e RunwayEnd) LandingThreshold() LatLon {
+	if e.DisplacedM <= 0 {
+		return e.Threshold
+	}
+	lat, lon := calc.DisplaceByHeading(e.Threshold.Lat, e.Threshold.Lon, e.Heading, e.DisplacedM)
+	return LatLon{Lat: lat, Lon: lon}
 }
 
 // Parking is a parking spot (gate, ramp or dock).

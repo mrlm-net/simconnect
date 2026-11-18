@@ -122,7 +122,7 @@ func (cc *controlCenter) behindTheFlow(g *airport.Graph, items, rejoined []*cont
 		if !ok || v.Done || v.State != "approaching" {
 			return 0, "", false
 		}
-		return calc.HaversineNM(v.Position.Lat, v.Position.Lon, end.Threshold.Lat, end.Threshold.Lon), v.Runway, true
+		return toLandingNM(v.Position, end), v.Runway, true
 	}
 	type arr struct {
 		it  *controlled
@@ -396,7 +396,7 @@ func (cc *controlCenter) lastOnOldRunway(g *airport.Graph, items []*controlled, 
 			if (nav.RunwayLimits{Closed: cc.core.closed(g.Layout.ICAO)}).ClosedEnd(v.Runway) {
 				continue
 			}
-			if nm := calc.HaversineNM(v.Position.Lat, v.Position.Lon, end.Threshold.Lat, end.Threshold.Lon); nm <= runwayChangeKeepNM {
+			if nm := toLandingNM(v.Position, end); nm <= runwayChangeKeepNM {
 				landing = append(landing, near{it.Tail, nm})
 			}
 		}

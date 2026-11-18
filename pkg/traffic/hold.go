@@ -257,7 +257,7 @@ func (c *ArrivalController) HoldFix(minFromThresholdNM float64) (Hold, bool) {
 	wps := c.proc.Waypoints
 	final := len(wps) - 2
 	next := c.procWaypoint(wps[:max(final, 1)])
-	thr := c.plan.End.Threshold
+	thr := c.plan.End.LandingThreshold()
 	for i := next; i < final; i++ {
 		var route []airport.LatLon
 		for _, w := range wps[i:] {

@@ -142,15 +142,16 @@ func NewCircuit(l *airport.Layout, rwy string, cfg CircuitConfig, p AircraftProf
 	top := field + height
 	approach := p.Approach.ApproachKts
 	c := Circuit{Runway: end.Name, Side: side, HeightFt: top, DownwindNM: downwind, heading: hdg, maxBank: maxBank}
+	land := end.LandingThreshold() // the final to a displaced threshold
 	c.Points = []CircuitPoint{
 		// Climbing on the upwind; the crosswind turn about two thirds up.
 		{Leg: LegUpwind, Position: at(far, upwind, 0), AltFt: field + height*2/3, Kts: kts},
 		{Leg: LegCrosswind, Position: at(far, upwind, downwind), AltFt: top, Kts: kts},
-		{Leg: LegDownwind, Position: at(end.Threshold, 0, downwind), AltFt: top, Kts: kts},
+		{Leg: LegDownwind, Position: at(land, 0, downwind), AltFt: top, Kts: kts},
 		// Down to the base turn; the final from base at the glide path.
-		{Leg: LegBase, Position: at(end.Threshold, -base, downwind), AltFt: math.Max(field+base*CircuitGlideFtPerNM, top-300), Kts: (kts + approach) / 2},
-		{Leg: LegFinal, Position: at(end.Threshold, -base, 0), AltFt: field + base*CircuitGlideFtPerNM, Kts: approach},
-		{Leg: LegRunway, Position: end.Threshold, AltFt: field, Kts: approach},
+		{Leg: LegBase, Position: at(land, -base, downwind), AltFt: math.Max(field+base*CircuitGlideFtPerNM, top-300), Kts: (kts + approach) / 2},
+		{Leg: LegFinal, Position: at(land, -base, 0), AltFt: field + base*CircuitGlideFtPerNM, Kts: approach},
+		{Leg: LegRunway, Position: land, AltFt: field, Kts: approach},
 	}
 	return c, nil
 }

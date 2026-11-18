@@ -236,7 +236,8 @@ func (t *towers) tick(now time.Time) {
 			// straight line, an arrival passing near the field on its STAR or
 			// downwind "landed in 1m38s" eleven minutes early and held every
 			// departure (live, RYR1485, 2026-10-02).
-			d := calc.HaversineNM(v.Position.Lat, v.Position.Lon, end.Threshold.Lat, end.Threshold.Lon)
+			thr := end.LandingThreshold()
+			d := calc.HaversineNM(v.Position.Lat, v.Position.Lon, thr.Lat, thr.Lon)
 			it.mu.Lock()
 			route := it.approach
 			it.mu.Unlock()
@@ -251,7 +252,7 @@ func (t *towers) tick(now time.Time) {
 				// before OKZLK touched down, then cancelled).
 				d = 0
 			case len(route) > 0 && !onFinalLined(v.Position, v.Heading, d, end):
-				d = math.Max(d, traffic.DistanceToGo(v.Position, route, end.Threshold))
+				d = math.Max(d, traffic.DistanceToGo(v.Position, route, thr))
 			}
 			if d > 3 {
 				t.forgetGoAround(v.Tail) // out again: another go-around may follow
@@ -316,7 +317,7 @@ func (t *towers) tick(now time.Time) {
 				case traffic.PhaseArriving:
 					if r, ok := runwayOf(l, arrRwy); ok {
 						u.Phase, u.Arrival = traffic.RunwayFinal, true
-						u.DistanceNM, u.GroundKts = calc.HaversineNM(a.Position.Lat, a.Position.Lon, end.Threshold.Lat, end.Threshold.Lon), a.GroundKts
+						u.DistanceNM, u.GroundKts = toLandingNM(a.Position, end), a.GroundKts
 						users[key{icao, r.Name()}] = append(users[key{icao, r.Name()}], u)
 					}
 				}
@@ -1125,9 +1126,16 @@ const (
 	onFinalFarDeg     = 20.0
 )
 
-// onFinalLined: at p, heading hdg, dNM from end's threshold, the arrival is
-// on end's final: close in (onFinalNear), or further out on the extended
-// centreline.
+// toLandingNM is how far p is from end's landing threshold (displaced or
+// not), in NM: an arrival's distance to go.
+func toLandingNM(p airport.LatLon, end airport.RunwayEnd) float64 {
+	t := end.LandingThreshold()
+	return calc.HaversineNM(p.Lat, p.Lon, t.Lat, t.Lon)
+}
+
+// onFinalLined: at p, heading hdg, dNM from end's landing threshold, the
+// arrival is on end's final: close in (onFinalNear), or further out on the
+// extended centreline.
 func onFinalLined(p airport.LatLon, hdg, dNM float64, end airport.RunwayEnd) bool {
 	if dNM <= onFinalNearNM {
 		return onFinalNear(p, hdg, dNM, end)
@@ -1135,21 +1143,23 @@ func onFinalLined(p airport.LatLon, hdg, dNM float64, end airport.RunwayEnd) boo
 	if dNM > onFinalFarNM || math.Abs(headingDiff(end.Heading, hdg)) > onFinalFarDeg {
 		return false
 	}
-	out := calc.BearingDegrees(end.Threshold.Lat, end.Threshold.Lon, p.Lat, p.Lon)
+	t := end.LandingThreshold()
+	out := calc.BearingDegrees(t.Lat, t.Lon, p.Lat, p.Lon)
 	if math.Abs(headingDiff(end.Heading+180, out)) > 90 {
 		return false // past the threshold
 	}
-	bLat, bLon := calc.DisplaceByHeading(end.Threshold.Lat, end.Threshold.Lon, end.Heading+180, 1852)
-	return math.Abs(calc.CrossTrackMeters(end.Threshold.Lat, end.Threshold.Lon, bLat, bLon, p.Lat, p.Lon)) <= onFinalFarCrossNM*1852
+	bLat, bLon := calc.DisplaceByHeading(t.Lat, t.Lon, end.Heading+180, 1852)
+	return math.Abs(calc.CrossTrackMeters(t.Lat, t.Lon, bLat, bLon, p.Lat, p.Lon)) <= onFinalFarCrossNM*1852
 }
 
-// onFinalNear: at p, heading hdg, dNM from end's threshold, the arrival is
-// lined up on end's final close in.
+// onFinalNear: at p, heading hdg, dNM from end's landing threshold, the
+// arrival is lined up on end's final close in.
 func onFinalNear(p airport.LatLon, hdg, dNM float64, end airport.RunwayEnd) bool {
 	if dNM > onFinalNearNM {
 		return false
 	}
-	from := calc.BearingDegrees(end.Threshold.Lat, end.Threshold.Lon, p.Lat, p.Lon)
+	t := end.LandingThreshold()
+	from := calc.BearingDegrees(t.Lat, t.Lon, p.Lat, p.Lon)
 	return math.Abs(headingDiff(end.Heading+180, from)) <= onFinalSectorDeg && math.Abs(headingDiff(end.Heading, hdg)) <= onFinalSectorDeg
 }
 

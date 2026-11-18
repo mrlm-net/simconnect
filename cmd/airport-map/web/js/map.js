@@ -128,6 +128,10 @@ function drawAirport() {
       primary: `${r.primaryNumber}/${r.primaryDesignator}`, secondary: `${r.secondaryNumber}/${r.secondaryDesignator}`,
     })).addTo(layers.runways);
     L.polyline([at(-hl + 40, 0), at(hl - 40, 0)], { className: 'm-rwy-cl', interactive: false }).addTo(layers.runways);
+    // A displaced landing threshold: a bar across the runway that far in from its end.
+    for (const [s, m] of [[-1, r.primary && r.primary.displacedM], [1, r.secondary && r.secondary.displacedM]]) {
+      if (m > 0) L.polyline([at(s * (hl - m), -hw), at(s * (hl - m), hw)], { className: 'm-rwy-thr', interactive: false }).addTo(layers.runways);
+    }
     for (const [s, label] of [[-1, rwyEnd(r.primaryNumber, r.primaryDesignator)], [1, rwyEnd(r.secondaryNumber, r.secondaryDesignator)]]) {
       L.marker(at(s * (hl + 70), 0), { interactive: false, keyboard: false, icon: L.divIcon({ className: 'rwy-tag', html: `<span>${esc(label)}</span>`, iconSize: [34, 20], iconAnchor: [17, 10] }) }).addTo(layers.runways);
     }
@@ -543,7 +547,8 @@ function drawFinal(seqs) {
     const end = runwayEndNamed(r.runway);
     if (!end || !r.sequence.length) continue;
     const back = (end.heading + 180) * Math.PI / 180;
-    const at = (nm) => offset(end.threshold.lat, end.threshold.lon, Math.sin(back) * nm * 1852, Math.cos(back) * nm * 1852);
+    const from = (nm) => nm * 1852 - (end.displacedM || 0); // from the landing threshold, displaced or not
+    const at = (nm) => offset(end.threshold.lat, end.threshold.lon, Math.sin(back) * from(nm), Math.cos(back) * from(nm));
     L.polyline([at(0), at(15)], { className: 'm-final', interactive: false }).addTo(layers.final);
     for (let nm = 1; nm <= 15; nm++) L.circleMarker(at(nm), { radius: nm % 5 ? 2 : 4, className: 'm-final-tick', interactive: false }).addTo(layers.final);
     r.sequence.forEach((e, i) => {

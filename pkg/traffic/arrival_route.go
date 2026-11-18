@@ -86,8 +86,9 @@ func (x exitReach) speeds() (td, decel float64) {
 	return TouchdownSpeedKts, RolloutDecel
 }
 
-// rollout is the distance from the threshold to where the aircraft has
-// slowed to exitKts.
+// rollout is the distance from the landing threshold to where the aircraft
+// has slowed to exitKts. An exit's Along is from the pavement end: compare
+// it less the end's DisplacedM (landingAlong).
 func (x exitReach) rollout(exitKts float64) float64 {
 	td, decel := x.speeds()
 	v0, v1 := td*knot, math.Min(exitKts, td)*knot
@@ -96,6 +97,15 @@ func (x exitReach) rollout(exitKts float64) float64 {
 		at = exitLightTouchdownMeters
 	}
 	return at + (v0*v0-v1*v1)/(2*decel)
+}
+
+// landingAlong is how far exit e is past the landing threshold of
+// runwayEnd: its Along (from the pavement end) less the end's DisplacedM.
+func landingAlong(g *airport.Graph, runwayEnd string, e airport.RunwayExit) float64 {
+	if _, end, ok := g.Layout.RunwayEnd(runwayEnd); ok && end.DisplacedM > 0 {
+		return e.Along - end.DisplacedM
+	}
+	return e.Along
 }
 
 // runwayCostPerM is what a meter of rollout costs in taxi-in meters:
@@ -213,7 +223,7 @@ func bestExit(g *airport.Graph, runwayEnd string, parking int, opts airport.Rout
 		lastErr   error = airport.ErrNoExit
 	)
 	for i, e := range exits {
-		if e.Along < reach.rollout(ExitSpeed(e)) && i < len(exits)-1 {
+		if landingAlong(g, runwayEnd, e) < reach.rollout(ExitSpeed(e)) && i < len(exits)-1 {
 			continue
 		}
 		r, err := g.RouteFromRunway(e, parking, opts)
@@ -394,7 +404,7 @@ func PlanArrival(g *airport.Graph, runwayEnd string, parking int, o ArrivalOptio
 	}
 	elev := convert.MetersToFeet(g.Layout.Altitude)
 	ground := groundAlt{feet: elev, agl: groundAGL}
-	t := end.Threshold
+	t := end.LandingThreshold()
 	back := math.Mod(end.Heading+180, 360)
 
 	p := &ArrivalPlan{Runway: rwy, End: end, Exit: x, Route: route, SpawnNm: spawnNm}
@@ -422,9 +432,10 @@ func PlanArrival(g *airport.Graph, runwayEnd string, parking int, o ArrivalOptio
 	// instead of crawling down the runway.
 	exitKts := ExitSpeed(x)
 	vx, v0 := exitKts*knot, TouchdownSpeedKts*knot
-	for s := TouchdownMeters; s < x.Along; s += RolloutSpacingMeters {
+	toExit := x.Along - end.DisplacedM // Along is from the pavement end, s from t
+	for s := TouchdownMeters; s < toExit; s += RolloutSpacingMeters {
 		lat, lon := calc.DisplaceByHeading(t.Lat, t.Lon, end.Heading, s)
-		v := math.Min(v0, math.Sqrt(vx*vx+2*RolloutDecel*(x.Along-s))) / knot
+		v := math.Min(v0, math.Sqrt(vx*vx+2*RolloutDecel*(toExit-s))) / knot
 		p.Waypoints = append(p.Waypoints, ground.waypoint(lat, lon, math.Max(v, exitKts)))
 	}
 	rn := route.Points[0]

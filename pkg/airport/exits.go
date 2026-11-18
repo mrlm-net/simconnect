@@ -62,7 +62,9 @@ type RunwayExit struct {
 	Node NodeID `json:"node"`
 	// Path runs from RunwayNode to Node.
 	Path []NodeID `json:"path"`
-	// Along is the distance from the landing threshold to RunwayNode, in meters.
+	// Along is the distance from the runway end's Threshold (the pavement
+	// end; the landing threshold unless displaced, RunwayEnd.DisplacedM) to
+	// RunwayNode, in meters.
 	Along float64 `json:"along"`
 	// Angle is the turn-off angle from the landing direction, 0–180°.
 	Angle float64 `json:"angle"`
@@ -80,7 +82,7 @@ type RunwayExit struct {
 }
 
 // RunwayExits returns the exits usable by aircraft landing on runwayEnd,
-// sorted by distance from the landing threshold. Exits turning back towards
+// sorted by distance from the threshold (Along). Exits turning back towards
 // the threshold (Angle > MaxExitAngle) are left out.
 func (g *Graph) RunwayExits(runwayEnd string) ([]RunwayExit, error) {
 	return g.turnoffs(runwayEnd, MaxExitAngle)
@@ -179,8 +181,8 @@ func (g *Graph) turnoffs(runwayEnd string, maxAngle float64) ([]RunwayExit, erro
 }
 
 // ExitFor returns the first exit at least rollout meters past the landing
-// threshold of runwayEnd, or the last exit when the rollout is longer than
-// every exit.
+// threshold of runwayEnd (a displaced one: Along at least rollout plus its
+// DisplacedM), or the last exit when the rollout is longer than every exit.
 func (g *Graph) ExitFor(runwayEnd string, rollout float64) (RunwayExit, error) {
 	exits, err := g.RunwayExits(runwayEnd)
 	if err != nil {
@@ -188,6 +190,9 @@ func (g *Graph) ExitFor(runwayEnd string, rollout float64) (RunwayExit, error) {
 	}
 	if len(exits) == 0 {
 		return RunwayExit{}, fmt.Errorf("%w for runway %s", ErrNoExit, runwayEnd)
+	}
+	if _, end, ok := g.Layout.RunwayEnd(runwayEnd); ok && end.DisplacedM > 0 {
+		rollout += end.DisplacedM
 	}
 	for _, e := range exits {
 		if e.Along >= rollout {

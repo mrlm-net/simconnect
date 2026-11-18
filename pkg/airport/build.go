@@ -85,6 +85,13 @@ type RawRunway struct {
 	// Surface is the SURFACE (SIMCONNECT_FACILITY_RUNWAY_SURFACE_TYPE); nil
 	// when not read (data captured before it was).
 	Surface *int32 `json:"surface,omitempty"`
+	// PrimaryDisplacedM and SecondaryDisplacedM displace each end's landing
+	// threshold that many meters in from its pavement end along the
+	// centreline; a take-off still starts at the pavement end. The sim does
+	// not send them (data repos fill them from the AIP or OSM); 0, absent,
+	// negative or not shorter than the runway: not displaced (#1560).
+	PrimaryDisplacedM   float32 `json:"primaryDisplacedM,omitempty"`
+	SecondaryDisplacedM float32 `json:"secondaryDisplacedM,omitempty"`
 }
 
 // RawParking is a TAXI_PARKING record: NAME, SUFFIX, NUMBER, TYPE, HEADING,
@@ -240,11 +247,22 @@ func buildRunway(i int, r RawRunway) Runway {
 		Hard:     hardSurface(r.Surface),
 		Primary: RunwayEnd{
 			Number: r.PrimaryNumber, Designator: pDes, Name: runwayEndName(r.PrimaryNumber, pDes),
-			Heading: hdg, Threshold: LatLon{Lat: pLat, Lon: pLon}, ILS: r.PrimaryILS, ILSRegion: r.PrimaryILSRegion,
+			Heading: hdg, Threshold: LatLon{Lat: pLat, Lon: pLon}, DisplacedM: displacedM(r.PrimaryDisplacedM, r.Length),
+			ILS: r.PrimaryILS, ILSRegion: r.PrimaryILSRegion,
 		},
 		Secondary: RunwayEnd{
 			Number: r.SecondaryNumber, Designator: sDes, Name: runwayEndName(r.SecondaryNumber, sDes),
-			Heading: math.Mod(hdg+180, 360), Threshold: LatLon{Lat: sLat, Lon: sLon}, ILS: r.SecondaryILS, ILSRegion: r.SecondaryILSRegion,
+			Heading: math.Mod(hdg+180, 360), Threshold: LatLon{Lat: sLat, Lon: sLon}, DisplacedM: displacedM(r.SecondaryDisplacedM, r.Length),
+			ILS: r.SecondaryILS, ILSRegion: r.SecondaryILSRegion,
 		},
 	}
+}
+
+// displacedM is a runway end's threshold displacement in meters: m when it
+// lies on the runway, 0 otherwise (none, negative or the whole length).
+func displacedM(m, length float32) float64 {
+	if m <= 0 || m >= length {
+		return 0
+	}
+	return float64(m)
 }
