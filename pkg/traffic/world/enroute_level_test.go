@@ -71,3 +71,57 @@ func TestFlownAlong(t *testing.T) {
 		t.Errorf("the route given was changed")
 	}
 }
+
+// TestClimbable: a plan's climb flown at the cruise speed is planned no
+// steeper than the AI flies it (offline, LKPR: OKILI, E545, at 7300 ft
+// with FL400 51 NM on, a 5000 fpm climb at 460 kt); a climb not finished
+// before the route turns down goes no higher than the point after it, one
+// not finished at its end levels at a level of its direction; a level way
+// and a heavy's slower climb as they are.
+func TestClimbable(t *testing.T) {
+	a := airport.LatLon{Lat: 49.7, Lon: 17.85}
+	at := func(nm float64) airport.LatLon {
+		lat, lon := calc.DisplaceByHeading(a.Lat, a.Lon, 270, nm*1852)
+		return airport.LatLon{Lat: lat, Lon: lon}
+	}
+	route := []traffic.RoutePoint{{Position: a, AltFt: 7300, Kts: 250}, {Position: at(51), AltFt: 40000, Kts: 460},
+		{Position: at(88), AltFt: 40000, Kts: 460}, {Position: at(113), AltFt: 31500, Kts: 280}}
+	r := climbable(route, "E545", 460)
+	for i := 1; i < len(r); i++ {
+		nm := calc.HaversineNM(r[i-1].Position.Lat, r[i-1].Position.Lon, r[i].Position.Lat, r[i].Position.Lon)
+		if fpm := (r[i].AltFt - r[i-1].AltFt) / (nm / r[i].Kts * 60); fpm > enrouteClimbMaxFpm+1 {
+			t.Errorf("leg %d: climbs at %.0f fpm, want %.0f at most", i, fpm, enrouteClimbMaxFpm)
+		}
+	}
+	if r[2].AltFt != 31500 {
+		t.Errorf("top of the climb at %.0f ft, want 31500 (no higher than the STAR entry after it)", r[2].AltFt)
+	}
+	// Ending in the climb: at the level of its direction below (westbound).
+	if r := climbable(route[:3], "E545", 460); r[2].AltFt != 34000 {
+		t.Errorf("climb to the route's end: %.0f ft, want FL340", r[2].AltFt)
+	}
+	if r[3] != route[3] || route[1].AltFt != 40000 {
+		t.Errorf("the descent changed, or the route given: %+v", r[3])
+	}
+	// A top it can reach, left downward 7 NM on (offline, LKPR: AUA909,
+	// E190 LOWW → LKPR): level at its STAR entry's altitude instead; a top
+	// flown level longer than the watch's look-ahead as it is.
+	peak := []traffic.RoutePoint{{Position: a, AltFt: 22780, Kts: 440}, {Position: at(34), AltFt: 32000, Kts: 440}, {Position: at(41), AltFt: 29454, Kts: 280}}
+	if r := climbable(peak, "E190", 440); r[1].AltFt != 29454 || r[2] != peak[2] {
+		t.Errorf("a top left 7 NM on: %.0f ft, then %.0f ft; want 29454 level to the entry", r[1].AltFt, r[2].AltFt)
+	}
+	cruise := []traffic.RoutePoint{{Position: a, AltFt: 22780, Kts: 440}, {Position: at(34), AltFt: 32000, Kts: 440}, {Position: at(84), AltFt: 32000, Kts: 440},
+		{Position: at(100), AltFt: 25000, Kts: 280}}
+	if r := climbable(cruise, "E190", 440); r[1] != cruise[1] || r[2] != cruise[2] {
+		t.Errorf("a cruise of 50 NM: %.0f ft, %.0f ft; want FL320 as planned", r[1].AltFt, r[2].AltFt)
+	}
+	level := []traffic.RoutePoint{{Position: a, AltFt: 35000, Kts: 450}, {Position: at(20), AltFt: 35000, Kts: 450}}
+	if r := climbable(level, "A320", 450); r[1] != level[1] {
+		t.Errorf("a level way changed: %+v", r[1])
+	}
+	// A B744 at 1600 fpm: 20 NM at 490 kt climb 3918 ft.
+	heavy := []traffic.RoutePoint{{Position: a, AltFt: 20000, Kts: 490}, {Position: at(20), AltFt: 30000, Kts: 490}, {Position: at(200), AltFt: 30000, Kts: 490}}
+	if r := climbable(heavy, "B744", 490); math.Abs(r[1].AltFt-(20000+20.0/490*60*1600)) > 50 || r[2].AltFt != 30000 {
+		t.Errorf("B744: %.0f ft 20 NM on, %.0f ft at the end; want %.0f, 30000", r[1].AltFt, r[2].AltFt, 20000+20.0/490*60*1600)
+	}
+}
