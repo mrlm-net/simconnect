@@ -4,5 +4,5 @@ go 1.27.4
 
 require (
 	github.com/mrlm-net/simconnect v0.76.0
-	github.com/mrlm-net/voice-goio v0.17.0
+	github.com/mrlm-net/voice-goio v0.18.2
 )
