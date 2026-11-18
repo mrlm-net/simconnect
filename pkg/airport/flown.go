@@ -152,7 +152,7 @@ func FlownRouteFor(req FlownRequest) (FlownRoute, error) {
 		}
 		b.legs(starLegs, b.last(), 10000*0.3048, req.ArrivalProcedures.MagVar, "star")
 	}
-	thr := arr.Threshold
+	thr := arr.LandingThreshold()
 	if ap != nil {
 		out.Approach, out.ApproachTransition = ap.Name, apTr
 		b.legs(apLegs, b.last(), req.Arrival.Altitude+600, req.ArrivalProcedures.MagVar, "approach")
@@ -550,7 +550,7 @@ func (b *flownBuilder) turnToward(hdg float64, target LatLon, radius float64, ph
 // threshold.
 func (b *flownBuilder) syntheticFinal(arr RunwayEnd, elevM float64) {
 	back := math.Mod(arr.Heading+180, 360)
-	thr := arr.Threshold
+	thr := arr.LandingThreshold()
 	join := displace(thr, back, FlownFinalNM*1852)
 	joinFt := elevM/0.3048 + FlownFinalNM*318
 	if len(b.pts) > 0 {

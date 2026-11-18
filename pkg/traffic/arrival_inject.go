@@ -482,7 +482,7 @@ func (c *ArrivalController) startInjectedApproach(startMeters float64) error {
 	// Approach lights on the first frame, once the sim has reported the
 	// aircraft's own logo and wing lights (see onApproachFrame).
 	c.approachLightsSet = false
-	c.approach = NewApproachMover(c.plan.End.Threshold, c.plan.End.Heading, startMeters, c.approachProfile())
+	c.approach = NewApproachMover(c.plan.End.LandingThreshold(), c.plan.End.Heading, startMeters, c.approachProfile())
 	c.approach.SetCrosswind(c.req.CrosswindKts)
 	c.approach.SetAimShift(TouchdownSpreadMeters * (2*c.rng.Float64() - 1))
 	c.approach.SetSideShift(TouchdownSideMeters * (2*c.rng.Float64() - 1))

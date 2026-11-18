@@ -173,7 +173,7 @@ func playerUsers(p *PlayerClearance, ua *traffic.TrackedAircraft, airports []str
 				continue
 			}
 			for _, end := range []airport.RunwayEnd{r.Primary, r.Secondary} {
-				d := calc.HaversineNM(ua.Position.Lat, ua.Position.Lon, end.Threshold.Lat, end.Threshold.Lon)
+				d := toLandingNM(ua.Position, end)
 				if overRunway(ua.Position, ua.Heading, end, r.Length) {
 					d = 0
 				} else if !onFinalNear(ua.Position, ua.Heading, d, end) || d > playerFinalNM {

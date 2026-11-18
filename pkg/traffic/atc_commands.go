@@ -292,7 +292,7 @@ func (c *ArrivalController) GoAround() error {
 	}
 	end := c.plan.End
 	join := math.Max(c.plan.SpawnNm, ProcedureJoinNm) * 1852
-	jp := NewApproachMover(end.Threshold, end.Heading, join, c.approachProfile()).Pose()
+	jp := NewApproachMover(end.LandingThreshold(), end.Heading, join, c.approachProfile()).Pose()
 	fieldFt := convert.MetersToFeet(c.req.Graph.Layout.Altitude)
 	joinFt := fieldFt + jp.HeightFt
 	circuitFt := math.Max(joinFt, fieldFt+GoAroundHeightFt)
@@ -323,7 +323,7 @@ func (c *ArrivalController) GoAround() error {
 			return err
 		}
 	}
-	t, hdg := end.Threshold, end.Heading
+	t, hdg := end.LandingThreshold(), end.Heading
 	left := c.goAroundCircuitSide(t, hdg, join/1852)
 	at := func(alongNm, sideNm float64) airport.LatLon {
 		return offsetHeading(offsetHeading(t, hdg, alongNm*1852), left, sideNm*1852)

@@ -2280,7 +2280,7 @@ func (cc *controlCenter) views() []ControlView {
 			// threshold and down the runway to where its taxi starts.
 			if len(v.AirRoute) == 0 && it.graph != nil {
 				if _, end, ok := it.graph.Layout.RunwayEnd(v.Runway); ok {
-					v.AirRoute = []airport.LatLon{end.Threshold}
+					v.AirRoute = []airport.LatLon{end.LandingThreshold()}
 					if len(v.Route) > 0 {
 						v.AirRoute = append(v.AirRoute, v.Route[0])
 					}
@@ -4725,7 +4725,7 @@ func (it *controlled) handoff(ev TaxiOrArrival) {
 					ac.Intercept, ac.Turn = traffic.HeadingSaid(h, mv), traffic.TurnTo(ev.arr.Heading, h)
 					if g, err := it.cc.graph(it.ICAO); err == nil {
 						if _, end, ok := g.Layout.RunwayEnd(it.view.Runway); ok {
-							ac.FromTouchdownNM = int(math.Round(calc.HaversineNM(ev.arr.Position.Lat, ev.arr.Position.Lon, end.Threshold.Lat, end.Threshold.Lon)))
+							ac.FromTouchdownNM = int(math.Round(toLandingNM(ev.arr.Position, end)))
 						}
 					}
 				}

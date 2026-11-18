@@ -185,7 +185,7 @@ type ArrivalEvent struct {
 	Heading     float64
 	GroundSpeed float64 // knots
 	OnGround    bool
-	// Touchdown is the distance past the threshold where the aircraft
+	// Touchdown is the distance past the landing threshold where the aircraft
 	// touched down, once it has.
 	Touchdown float64
 	// TouchdownFpm is the vertical speed just before touchdown (negative).
@@ -499,7 +499,7 @@ func (c *ArrivalController) Start(req ArrivalRequest) error {
 			return fmt.Errorf("%w: InjectApproach needs ArrivalWithInjector", ErrBadTaxiRequest)
 		}
 		// Appear exactly where the injected approach starts.
-		ap := NewApproachMover(plan.End.Threshold, plan.End.Heading, plan.SpawnNm*1852, approachProfileOf(req)).Pose()
+		ap := NewApproachMover(plan.End.LandingThreshold(), plan.End.Heading, plan.SpawnNm*1852, approachProfileOf(req)).Pose()
 		plan.Spawn.Latitude, plan.Spawn.Longitude = ap.Position.Lat, ap.Position.Lon
 		plan.Spawn.Altitude = convert.MetersToFeet(req.Graph.Layout.Altitude) + ap.HeightFt + convert.MetersToFeet(req.Aircraft.CGHeightM)
 		plan.Spawn.Airspeed = types.SIMCONNECT_DATA_INITPOSITION_AIRSPEED(ap.GroundSpeedKts)
@@ -514,7 +514,7 @@ func (c *ArrivalController) Start(req ArrivalRequest) error {
 			c.proc, c.procNext = proc, 0
 		} else if len(req.Procedure) > 0 {
 			join := math.Max(plan.SpawnNm, ProcedureJoinNm) * 1852
-			jp := NewApproachMover(plan.End.Threshold, plan.End.Heading, join, approachProfileOf(req)).Pose()
+			jp := NewApproachMover(plan.End.LandingThreshold(), plan.End.Heading, join, approachProfileOf(req)).Pose()
 			proc, err := PlanArrivalProcedure(req.Procedure, plan.End, join, convert.MetersToFeet(req.Graph.Layout.Altitude)+jp.HeightFt)
 			if err != nil {
 				return err
@@ -767,7 +767,7 @@ func (c *ArrivalController) onPosition(m arrivalMonitor) {
 	case ArrivalLanding:
 		switch {
 		case m.OnGround != 0 && c.airborne:
-			c.last.Touchdown, c.last.TouchdownFpm = past, c.lastVS
+			c.last.Touchdown, c.last.TouchdownFpm = past-c.plan.End.DisplacedM, c.lastVS
 			c.touchdownAt = c.now()
 			// MSFS AI switches its lights at its own state changes, touchdown
 			// among them: set the landing lights again once it has.
@@ -1231,7 +1231,7 @@ func (c *ArrivalController) VacateAt(x airport.RunwayExit) error {
 		if err != nil {
 			return err
 		}
-		if x.Along < reach.rollout(ExitSpeed(x)) && len(exits) > 0 && x.Node != exits[len(exits)-1].Node {
+		if landingAlong(g, c.plan.End.Name, x) < reach.rollout(ExitSpeed(x)) && len(exits) > 0 && x.Node != exits[len(exits)-1].Node {
 			return fmt.Errorf("%w: %s", ErrExitTooClose, x.Taxiway)
 		}
 	}

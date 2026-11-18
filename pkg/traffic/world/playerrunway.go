@@ -7,7 +7,6 @@ import (
 	"time"
 
 	"github.com/mrlm-net/simconnect/pkg/airport"
-	"github.com/mrlm-net/simconnect/pkg/calc"
 	"github.com/mrlm-net/simconnect/pkg/traffic"
 )
 
@@ -99,7 +98,7 @@ func (w *World) PlayerRunway(q PlayerQuery) RunwayAnswer {
 		_, end, _ := g.Layout.RunwayEnd(q.Runway)
 		at := st.core.userAt()
 		u.Phase, u.Arrival, u.Established = traffic.RunwayFinal, true, true
-		u.DistanceNM = calc.HaversineNM(at.Lat, at.Lon, end.Threshold.Lat, end.Threshold.Lon)
+		u.DistanceNM = toLandingNM(at, end)
 	} else {
 		u.Phase = traffic.RunwayHoldingShort
 	}

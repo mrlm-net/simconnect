@@ -164,7 +164,7 @@ func (c *ArrivalController) JoinFinal(p airport.LatLon) (nm float64, v Vector, e
 	}
 	n := len(c.corners)
 	align, join := c.corners[n-2], c.corners[n-1]
-	t := c.plan.End.Threshold
+	t := c.plan.End.LandingThreshold()
 	out := math.Mod(c.plan.End.Heading+180, 360)
 	fLat, fLon := calc.DisplaceByHeading(t.Lat, t.Lon, out, 30*1852)
 	alignNM := calc.HaversineNM(t.Lat, t.Lon, align.Latitude, align.Longitude)
@@ -259,7 +259,7 @@ func (c *ArrivalController) InterceptOnHeading(hdg float64) bool {
 	}
 	n := len(c.corners)
 	align, join := c.corners[n-2], c.corners[n-1]
-	t := c.plan.End.Threshold
+	t := c.plan.End.LandingThreshold()
 	out := math.Mod(c.plan.End.Heading+180, 360)
 	at, ok := courseMeets(pos, hdg, t, out)
 	if !ok {

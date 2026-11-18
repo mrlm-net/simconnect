@@ -7,6 +7,12 @@ This project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 ---
 
+## [0.177.0] - 2026-11-18
+
+### Added
+
+- `pkg/airport`: optional displaced landing thresholds. `RawRunway.PrimaryDisplacedM` / `SecondaryDisplacedM` (json `primaryDisplacedM` / `secondaryDisplacedM`, omitted when 0) become `RunwayEnd.DisplacedM`, and `RunwayEnd.LandingThreshold()` gives the displaced point (`Threshold` when not displaced). Landings fly their final, glide path, aim point and touchdown to it, plan the exit and `ExitFor` for the shorter landing distance, and arrivals' distance to go (sequence, runway free, runway change, player final) is measured to it; take-offs still start at the pavement end `Threshold`. The airport map draws the displaced threshold and the final from it. Zero keeps today's behaviour (#1560).
+
 ## [0.176.2] - 2026-11-18
 
 ### Changed

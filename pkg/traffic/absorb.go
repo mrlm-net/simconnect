@@ -322,7 +322,7 @@ func (c *ArrivalController) absorb(delay time.Duration, withinNM float64) (Absor
 			a.ExtraNM = 0
 		default:
 			base, legFrom, legTo, apexAt = c.dogLeg.extraNM, c.dogLeg.from, c.dogLeg.to, reuse
-			p := dogLegApex(legFrom, legTo, base+a.ExtraNM, c.plan.End.Threshold, c.plan.End.Heading)
+			p := dogLegApex(legFrom, legTo, base+a.ExtraNM, c.plan.End.LandingThreshold(), c.plan.End.Heading)
 			out[reuse].Latitude, out[reuse].Longitude = p.Lat, p.Lon
 		}
 	}
@@ -359,7 +359,7 @@ func (c *ArrivalController) absorb(delay time.Duration, withinNM float64) (Absor
 			// The side with more room: the apex farther from the final
 			// approach path, where arrivals join base and final (live, FINZX
 			// vectored toward them, #706).
-			apex := dogLegApex(from, to, a.ExtraNM, c.plan.End.Threshold, c.plan.End.Heading)
+			apex := dogLegApex(from, to, a.ExtraNM, c.plan.End.LandingThreshold(), c.plan.End.Heading)
 			// Out for MinDogLegOut at least, or no vector at all: speed, or the hold.
 			if out := calc.HaversineNM(from.Lat, from.Lon, apex.Lat, apex.Lon); out/math.Max(a.SpeedKts, speed) < MinDogLegOut.Hours() {
 				a.Left += time.Duration(a.ExtraNM / math.Max(a.SpeedKts, speed) * float64(time.Hour))
@@ -368,7 +368,7 @@ func (c *ArrivalController) absorb(delay time.Duration, withinNM float64) (Absor
 		}
 		if at > 0 {
 			from, to := pts[at-1], pts[at]
-			apex := dogLegApex(from, to, a.ExtraNM, c.plan.End.Threshold, c.plan.End.Heading)
+			apex := dogLegApex(from, to, a.ExtraNM, c.plan.End.LandingThreshold(), c.plan.End.Heading)
 			legFrom, legTo = from, to
 			ref := wps[final] // no STAR point left: the align point's
 			if at-1 < len(out) {
@@ -408,7 +408,7 @@ func (c *ArrivalController) absorb(delay time.Duration, withinNM float64) (Absor
 				break
 			}
 			extra = math.Min(2*want, extra+want-got)
-			p := dogLegApex(legFrom, legTo, base+extra, c.plan.End.Threshold, c.plan.End.Heading)
+			p := dogLegApex(legFrom, legTo, base+extra, c.plan.End.LandingThreshold(), c.plan.End.Heading)
 			plain[apexAt].Latitude, plain[apexAt].Longitude = p.Lat, p.Lon
 			out = roundedChain(pos, plain, MaxBankDeg(*c.aircraft()))
 		}
@@ -1307,7 +1307,7 @@ const (
 // shortcutSensible reports whether direct from pos to fix makes sense
 // (see the constants). c.mu held.
 func (c *ArrivalController) shortcutSensible(pos, fix airport.LatLon) bool {
-	thr := c.plan.End.Threshold
+	thr := c.plan.End.LandingThreshold()
 	if calc.HaversineNM(fix.Lat, fix.Lon, thr.Lat, thr.Lon) < ShortcutFixFromThresholdNM {
 		return false
 	}

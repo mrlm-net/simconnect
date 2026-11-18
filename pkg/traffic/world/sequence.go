@@ -898,9 +898,9 @@ func (q *sequences) tick(now time.Time) {
 		}
 		_, end, ok := g.Layout.RunwayEnd(rwy)
 		if ok {
-			thresholds[k] = end.Threshold
+			thresholds[k] = end.LandingThreshold()
 		}
-		return end.Threshold, ok
+		return end.LandingThreshold(), ok
 	}
 	// flying: route starts at the point it flies to (DistanceVia); else it
 	// is the planned route, found from where the aircraft is (DistanceToGo).

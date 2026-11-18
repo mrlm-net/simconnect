@@ -88,7 +88,10 @@ components:
         heading: { type: number, description: degrees true, take-off/landing direction }
         threshold:
           $ref: '#/components/schemas/LatLon'
-          description: Start of the runway surface; displaced thresholds not applied.
+          description: Start of the runway surface (pavement end), where a take-off starts.
+        displacedM:
+          type: number
+          description: 'Meters the landing threshold is displaced in from threshold along heading; absent when not displaced. Landings (approach, aim point, landing distance) use the displaced point.'
         ils: { type: string, description: ILS ident, absent without one }
         ilsRegion: { type: string }
 

@@ -61,7 +61,7 @@ func (it *controlled) finalNM() float64 {
 		if v.Runway != rwy || v.State != traffic.ArrivalApproaching.String() && v.State != traffic.ArrivalLanding.String() {
 			continue
 		}
-		d := calc.HaversineMeters(v.Position.Lat, v.Position.Lon, end.Threshold.Lat, end.Threshold.Lon) / 1852
+		d := toLandingNM(v.Position, end)
 		if d <= finalTrafficNM && (nm == 0 || d < nm) {
 			nm = d
 		}

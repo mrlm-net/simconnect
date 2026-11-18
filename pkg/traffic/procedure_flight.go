@@ -158,7 +158,7 @@ func (p *ArrivalProcedure) minJoin() float64 {
 // join point, at most ProcedureTopFt (unless a constraint is higher) and
 // within each point's constraints.
 func PlanArrivalProcedure(route []airport.NavPoint, end airport.RunwayEnd, joinMeters, joinFt float64) (*ArrivalProcedure, error) {
-	t, hdg := end.Threshold, end.Heading
+	t, hdg := end.LandingThreshold(), end.Heading
 	outbound := math.Mod(hdg+180, 360)
 	fLat, fLon := calc.DisplaceByHeading(t.Lat, t.Lon, outbound, 30*1852)
 	// On the final: out on the extended centreline, within a mile of it.
@@ -266,7 +266,7 @@ func (c *ArrivalController) watchJoin(pos airport.LatLon, m arrivalMonitor) {
 		return
 	}
 	wps := c.proc.Waypoints
-	thr := c.plan.End.Threshold
+	thr := c.plan.End.LandingThreshold()
 	// Where it appeared counts too while it flies to its first waypoint:
 	// the waypoints start after it (live, every arrival flagged at its STAR
 	// entry on its first frame).
@@ -328,7 +328,7 @@ func (c *ArrivalController) onProcedureFrame(m arrivalMonitor) {
 			c.note("go-around: gear up", client.SetDataOnSimObject(c.defBase+arrDefGear, c.objectID, types.SIMCONNECT_DATA_SET_FLAG_DEFAULT, 0, uint32(unsafe.Sizeof(gear)), unsafe.Pointer(&gear)))
 		}
 	}
-	t, far := c.plan.End.Threshold, c.proc.Join
+	t, far := c.plan.End.LandingThreshold(), c.proc.Join
 	along := calc.AlongTrackMeters(t.Lat, t.Lon, far.Lat, far.Lon, pos.Lat, pos.Lon)
 	cross := math.Abs(calc.CrossTrackMeters(t.Lat, t.Lon, far.Lat, far.Lon, pos.Lat, pos.Lon))
 	near := calc.HaversineMeters(pos.Lat, pos.Lon, far.Lat, far.Lon) < JoinCaptureMeters

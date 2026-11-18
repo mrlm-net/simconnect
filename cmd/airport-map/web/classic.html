@@ -1939,7 +1939,8 @@ function drawFinal() {
     const end = apEnd(r.runway);
     if (!end || !r.sequence.length) continue;
     const back = (end.heading + 180) * Math.PI / 180;
-    const at = (nm) => offset(end.threshold.lat, end.threshold.lon, Math.sin(back) * nm * 1852, Math.cos(back) * nm * 1852);
+    const from = (nm) => nm * 1852 - (end.displacedM || 0); // from the landing threshold, displaced or not
+    const at = (nm) => offset(end.threshold.lat, end.threshold.lon, Math.sin(back) * from(nm), Math.cos(back) * from(nm));
     L.polyline([at(0), at(15)], { renderer, color: '#fff', weight: 5, opacity: 0.7, interactive: false }).addTo(groups.approach);
     L.polyline([at(0), at(15)], { renderer, color: '#2d6cdf', weight: 2, dashArray: '6 6', interactive: false }).addTo(groups.approach);
     for (let nm = 1; nm <= 15; nm++) L.circleMarker(at(nm), { renderer, radius: nm % 5 ? 2 : 4, color: '#fff', weight: 1, fillColor: '#2d6cdf', fillOpacity: 1, interactive: false }).addTo(groups.approach);
