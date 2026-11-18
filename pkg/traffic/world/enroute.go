@@ -296,11 +296,24 @@ func cruiseLevelFt(ft, trackDeg float64) float64 {
 // spawnEnrouteOn creates e flying route (its first point where it appears).
 func (s *scheduler) spawnEnrouteOn(f traffic.ManagedFlight, e *enrouteAC, model string, route []traffic.RoutePoint, along string) error {
 	cc := s.cc
+	// Planned one at a time, until among the others (offline, LKPR at 60
+	// an hour: DLH1719 and THY1428 planned in the same second, neither
+	// seeing the other, met at FL370).
+	s.planMu.Lock()
+	planning := true
+	among := func() {
+		if planning {
+			planning = false
+			s.planMu.Unlock()
+		}
+	}
+	defer among()
 	if who := s.nearPoint(route[0].Position, route[0].AltFt); who != "" {
 		return fmt.Errorf("%w: %s near its position", traffic.ErrSpawnBlocked, who)
 	}
 	// Its way clear of the others at its level, else at another of its
 	// direction (enroute_level.go).
+	planned := s.cc.clock.Now()
 	r, met, ok := s.clearLevel(f.Callsign, route)
 	if !ok {
 		return fmt.Errorf("%w: its way meets %s at every level", traffic.ErrSpawnBlocked, met)
@@ -313,6 +326,14 @@ func (s *scheduler) spawnEnrouteOn(f traffic.ManagedFlight, e *enrouteAC, model 
 		}
 		s.cc.log.printf("%-6s schedule: at %s its way meets %s: %s", f.Callsign, flLog(route[0].AltFt), met, flLog(r[0].AltFt))
 	}
+	// Where it is now on the way it was planned clear on: the others were
+	// flown on from where they were when it was planned, it starts from
+	// its first point only now (offline: planned at 07:07:00, appearing at
+	// its first point 26 s later, BAW1153 came within 4.4 NM of KLM674
+	// planned 6.5 NM clear of it).
+	if late := s.cc.clock.Now().Sub(planned); late > 0 {
+		r = flownAlong(r, late.Hours()*legKts(r))
+	}
 	route = r
 	spawn, wps, err := traffic.EnrouteStart(route)
 	if err != nil {
@@ -323,6 +344,7 @@ func (s *scheduler) spawnEnrouteOn(f traffic.ManagedFlight, e *enrouteAC, model 
 		// Far from the viewer it costs the simulator nothing: flown here
 		// until it is near one (overflight_tiers.go).
 		s.virtualTrack(f, e, spawn, wps)
+		among()
 		s.cc.log.printf("%-6s schedule: %s %s → %s en route, %s, FL%03d along %s, %d waypoints, virtual", f.Callsign, f.Kind, orUnknown(f.Origin), orUnknown(f.Destination), f.Type,
 			int(math.Round(route[0].AltFt/100)), along, len(wps))
 		return nil
@@ -332,6 +354,7 @@ func (s *scheduler) spawnEnrouteOn(f traffic.ManagedFlight, e *enrouteAC, model 
 	e.reqID, e.pendingAt = s.freeEnrouteReq(), traffic.Now()
 	s.pending[e.reqID] = e
 	s.mu.Unlock()
+	among()
 	err = cc.do(func() error {
 		return cc.sim.SpawnEnroute(traffic.NonATCOpts{Model: title, Livery: livery, Tail: f.Callsign, Position: spawn}, e.reqID)
 	})
@@ -606,6 +629,35 @@ func greatCircleCrossing(fp *nav.FlightPlan, cc *controlCenter, kts float64) []t
 		lat, lon := calc.DisplaceByHeading(p.Lat, p.Lon, calc.BearingDegrees(p.Lat, p.Lon, to.Lat, to.Lon), 5*1852)
 		p = airport.LatLon{Lat: lat, Lon: lon}
 	}
+	return out
+}
+
+// flownAlong is route with its first point moved nm (NM) on along it, the
+// points passed dropped (two kept at least, the first no farther than the
+// one before the last); the first point keeps the level and speed of the
+// last point passed, else its own.
+func flownAlong(route []traffic.RoutePoint, nm float64) []traffic.RoutePoint {
+	if len(route) < 2 || nm <= 0 {
+		return route
+	}
+	first := route[0]
+	out := append([]traffic.RoutePoint(nil), route...)
+	for len(out) > 2 {
+		leg := calc.HaversineNM(first.Position.Lat, first.Position.Lon, out[1].Position.Lat, out[1].Position.Lon)
+		if nm < leg {
+			break
+		}
+		nm -= leg
+		first = out[1]
+		out = out[1:]
+	}
+	p, q := first.Position, out[1].Position
+	if leg := calc.HaversineNM(p.Lat, p.Lon, q.Lat, q.Lon); nm >= leg {
+		nm = leg / 2
+	}
+	lat, lon := calc.DisplaceByHeading(p.Lat, p.Lon, calc.BearingDegrees(p.Lat, p.Lon, q.Lat, q.Lon), nm*1852)
+	first.Position = airport.LatLon{Lat: lat, Lon: lon}
+	out[0] = first
 	return out
 }
 
