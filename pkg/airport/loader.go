@@ -373,7 +373,7 @@ func (s *loadState) add(part int, m *types.SIMCONNECT_RECV_FACILITY_DATA) {
 	case partParking:
 		switch m.Type {
 		case types.SIMCONNECT_FACILITY_DATA_TAXI_PARKING:
-			s.raw.Parking = setAt(s.raw.Parking, i, *engine.CastDataAs[RawParking](data))
+			s.raw.Parking = setAt(s.raw.Parking, i, engine.CastDataAs[rawParkingWire](data).raw())
 			if s.parkingByID == nil {
 				s.parkingByID = map[uint32]int{}
 			}

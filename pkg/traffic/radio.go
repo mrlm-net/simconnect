@@ -9,6 +9,7 @@ import (
 	"strings"
 	"sync"
 	"time"
+	"unicode"
 )
 
 // Radio (#415): what ATC says, as structured transmissions instead of log
@@ -405,7 +406,7 @@ func phrase(cs string, in Intent, p map[string]string) string {
 		return s
 	case IntentTaxi:
 		if p[ParamStand] != "" {
-			return fmt.Sprintf("%s, taxi to stand %s%s%s", cs, p[ParamStand], via, holdShortSaid(p)) // CAP 413 4.68
+			return fmt.Sprintf("%s, taxi to stand %s%s%s", cs, standSaid(p[ParamStand]), via, holdShortSaid(p)) // CAP 413 4.68
 		}
 		// To the runway and hold short of it, as the project uses (the user's
 		// choice over Doc 4444's "taxi to holding point"): an intersection is
@@ -2051,6 +2052,29 @@ func spokenSpeed(s string) string {
 		return s
 	}
 	return s + " knots"
+}
+
+// standSaid is a stand's label (ParamStand) as written in the text: in
+// the normal tokens a voice library spells. A part with a digit is an
+// identifier, in capitals ("C22" "charlie two two", "1b" as "1B" "one
+// bravo"); a part of letters only keeps its case, so a word stays a word
+// ("TBA South Pen") and capitals are spelled ("HS" in "HS 2"). A hyphen
+// stays ("H17-1" "hotel one seven one") and any other mark between parts
+// becomes a space ("H17/1" as "H17 1"). The sim's labels (letters and
+// digits) are written as they are (#1556).
+func standSaid(s string) string {
+	parts := strings.Fields(strings.Map(func(r rune) rune {
+		if r == '-' || unicode.IsLetter(r) || unicode.IsDigit(r) {
+			return r
+		}
+		return ' '
+	}, s))
+	for i, p := range parts {
+		if strings.ContainsFunc(p, unicode.IsDigit) {
+			parts[i] = strings.ToUpper(p)
+		}
+	}
+	return strings.Join(parts, " ")
 }
 
 // WithHoldShort is taxi clearance t with the runways the route crosses to

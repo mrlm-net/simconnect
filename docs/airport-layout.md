@@ -99,6 +99,8 @@ Runways expose both ends (`Primary`, `Secondary`) with name, heading and thresho
 
 Parking labels combine `NAME`, `NUMBER` and `SUFFIX`: `GATE_C` + 22 → `C22`, `S_PARKING` + 22 + suffix `GATE_A` → `S22A`. Labels are usually but not guaranteed unique, which is why `ParkingByLabel` returns every match.
 
+A stand whose real name does not fit those fields ("H17-1", "FDX6", "1B A380", a bare "C") carries it as free text in `label` (`RawParking.Label`, `Parking.LabelText`; the sim never sends one, data from outside it does). When set, `Label()` returns it, so it is the name shown on the map, in World snapshots and logs, said on the radio ("taxi to stand H17-1"), and the key of the per-stand tables (stand rules, custom pushes, jetway helpers). `ComposedLabel()` keeps the name made of the sim's fields, and `ParkingByLabel` falls back to it when no label matches, so the sim's or GSX's name for the stand still finds it. On the radio a label is written in capitals with a hyphen kept and other marks as spaces (`1b` → `1B`, `H17/1` → `H17 1`), the tokens a voice library spells letter by letter and digit by digit. Without `label` nothing changes.
+
 ### Stands: size, conflicts, airlines
 
 ```go

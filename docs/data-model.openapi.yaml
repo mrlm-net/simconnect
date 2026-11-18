@@ -110,6 +110,12 @@ components:
           type: array
           items: { type: string }
           description: Airline codes (ICAO or IATA as the scenery defines); absent = any airline.
+        label:
+          type: string
+          description: >-
+            The stand's real name as free text ("H17-1", "FDX6", "1B A380") when it does not fit
+            name, number and suffix; shown and said instead of the composed name. Absent = the
+            name composed from name, number and suffix ("C22").
 
     TaxiPoint:
       type: object

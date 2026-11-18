@@ -504,6 +504,7 @@ function rwyEnd(num, des) {
   return n + (RWY_DESIG[des] || '');
 }
 function parkingLabel(p) {
+  if (p.label && p.label.trim()) return p.label.trim();
   let prefix = PARKING_NAMES[p.name];
   if (prefix === undefined) prefix = p.name >= 12 && p.name <= 37 ? String.fromCharCode(65 + p.name - 12) : `?${p.name}`;
   if (prefix === 'GATE' || prefix === 'P') prefix = '';

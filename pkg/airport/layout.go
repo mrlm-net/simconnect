@@ -100,12 +100,28 @@ type Parking struct {
 	// Airlines are the codes of the airlines the stand is assigned to (ICAO
 	// or IATA, as the scenery defines them); empty for any airline.
 	Airlines []string `json:"airlines,omitempty"`
+	// LabelText is the stand's real name as free text ("H17-1", "FDX6",
+	// "1B A380"), for stands whose name does not fit Name, Number and
+	// Suffix; "" (the sim's data) names the stand from those. Label
+	// returns it when set (#1556).
+	LabelText string `json:"label,omitempty"`
 }
 
-// Label returns the parking spot's short name as shown to pilots: a gate
-// letter or compass prefix, the number and a suffix letter, e.g. "C22", "S22",
-// "22". Labels are not guaranteed to be unique within an airport.
+// Label returns the parking spot's short name as shown to pilots and said
+// on the radio: LabelText when set, else ComposedLabel ("C22", "S22",
+// "22"). Labels are not guaranteed to be unique within an airport.
 func (p Parking) Label() string {
+	if s := strings.TrimSpace(p.LabelText); s != "" {
+		return s
+	}
+	return p.ComposedLabel()
+}
+
+// ComposedLabel returns the name made of the sim's parking fields: a gate
+// letter or compass prefix, the number and a suffix letter, e.g. "C22",
+// "S22", "22"; the name the sim and add-ons such as GSX use, whatever
+// LabelText says.
+func (p Parking) ComposedLabel() string {
 	return parkingPrefix(p.Name) + strconv.FormatUint(uint64(p.Number), 10) + gateLetter(p.Suffix)
 }
 
@@ -200,11 +216,21 @@ func (l *Layout) PathEndpoints(p TaxiPath) (start, end LatLon, ok bool) {
 }
 
 // ParkingByLabel returns every parking spot whose Label matches label,
-// ignoring case.
+// ignoring case. When none does, the spots whose ComposedLabel matches: a
+// stand with a LabelText is still found by the sim's name for it (a GSX
+// gate, an older saved name).
 func (l *Layout) ParkingByLabel(label string) []Parking {
 	var out []Parking
 	for _, p := range l.Parking {
 		if strings.EqualFold(p.Label(), label) {
+			out = append(out, p)
+		}
+	}
+	if out != nil {
+		return out
+	}
+	for _, p := range l.Parking {
+		if strings.TrimSpace(p.LabelText) != "" && strings.EqualFold(p.ComposedLabel(), label) {
 			out = append(out, p)
 		}
 	}
