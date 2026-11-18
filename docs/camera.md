@@ -118,6 +118,36 @@ The length is the way at the cruise plus one ramp, at most `MaxStretch`. Poses a
 
 `camera.Pan(name, eye, from, to, fromFov, toFov, d)` turns a camera standing at `eye` from one world point to another, eased; `PanLength` is long enough to stay under `PanRate` (4°/s).
 
+### Observer in a host app
+
+A host app with its own spotter, one that never calls `StartSpotting`, gets the same one-observer moves from `camera.Observer`. The World's spotting decides each cut or travel with it too.
+
+```go
+obs := camera.Observer{TravelMaxM: 1000} // CutM 300, SpeedMps 15, MarginM 15 by default
+way := obs.Plan(camera.Leg{
+	From: pose, Have: havePose, // the camera now; Have false for the first shot
+	To: spot, Aim: aim, Size: span * 1.05,
+	D: 30 * time.Second, // the spot shot
+})
+switch way.Kind {
+case camera.MoveCut, camera.MoveTravel:
+	for _, s := range way.Shots { /* play them one after another */ }
+case camera.MoveTooFar:
+	// not gone to: pick another subject or spot
+}
+```
+
+- **Cut:** the spot's shot starts within `CutM` of the eye (default 300 m, at most `TravelMaxM`). On a rail the shot starts abeam the subject, so that point counts, not the spot's eye. `Shots` is the spot shot alone (`Spot.Follow`, not joined).
+- **Travel:** the spot's eye is within `TravelMaxM`. `Shots` is the travel (`Spot.TravelTo` from `From`, at `SpeedMps`, kept to 10–20 m/s, and `MarginM`) and the spot shot joined to it, on the same aim. The travel ends exactly at the spot's eye, so going into the spot shot is not a cut. `Travel` is the travel's length.
+- **Too far:** farther, no shots.
+- **No pose:** `Have` false, or an eye that is not a world point, is a cut. The zero `Observer` (`TravelMaxM` 0) always cuts, as a spotter did before.
+
+`Way.M` is the way in metres on the ground. `Decide(have, startM, eyeM)` gives the move from the distances alone, and `Seconds(have, d)` about how long a travel over `d` takes, to choose a subject before building any shot. `Shots(kind, leg)` builds the shots of a move already decided. The travel takes `Leg.Move` (`TravelAuto` by default; the World uses `TravelRise` over an apron).
+
+There is no ground or building data. The travel's only clearance is `MarginM` above the higher of its two ends, so give each spot a height that clears what is around it.
+
+Keep the pose the camera ends on (`Way.Shots`' last pose, or the Director's) as `From` for the next leg. A `From` aimed at a world point turns to the subject slowly; any other target is let go of at once.
+
 `World.Spots(icao)` (`GET /api/camera/spots?icao=`) lists an airport's spots, generated from its data: `threshold:<end>`, `touchdown:<end>` (on a rail), `approach:<end>`, `holding:<end>` and `apron:<lowest stand>`. A low one keeps clear of the runways, taxiways and stands, and a spot with no clear place is left out. `World.PlaySpot` (`POST /api/camera/spot`) plays one on any aircraft: `id` (-1 the player) or `tail`, with `sec`, `share` and `lock`. In a scene, `"spot": "touchdown:24"` on a shot, or `"touchdown"` for the aircraft's own runway.
 
 `spots.json` in `DataDir` changes them by airport, local winning per value; a name not generated adds a spot:
