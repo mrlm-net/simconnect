@@ -7,6 +7,12 @@ This project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 ---
 
+## [0.176.2] - 2026-11-18
+
+### Changed
+
+- Airport map: voice-goio v0.17.0 → v0.18.2, so stand and gate names are spelled on the radio ("H17-1", "FDX6", a bare "A"), including the real stand names from v0.176.0 (voice-goio #54).
+
 ## [0.176.1] - 2026-11-18
 
 ### Fixed
