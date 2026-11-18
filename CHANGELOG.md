@@ -7,6 +7,12 @@ This project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 ---
 
+## [0.178.0] - 2026-11-18
+
+### Added
+
+- `pkg/camera`: `Observer{CutM, TravelMaxM, SpeedMps, MarginM}` plans a camera's move to its next spot as one drone, for a host app with its own spotter. `Observer.Plan(Leg{From, Have, To, Aim, Size, D, Move}) Way` gives `Kind` (`MoveCut` within `CutM`, a rail spot measured from where its shot starts; `MoveTravel` within `TravelMaxM`; `MoveTooFar`), the way in metres, the travel's length and the shots to play: the spot shot, or the travel ending at the spot's eye with the spot shot joined to it. `Decide`, `Seconds` and `Shots` give the parts. Defaults: cut 300 m, cruise 15 m/s kept to 10–20, margin 15 m; the zero `Observer` always cuts. There is no ground data, so `MarginM` above the higher end is the only clearance. The World's spotting observer now decides with it, unchanged (docs/camera.md, "Observer in a host app").
+
 ## [0.177.1] - 2026-11-18
 
 ### Fixed

@@ -16,6 +16,9 @@ import (
 // airport. A cut far away makes the simulator load the scenery and models
 // there, and they pop in after it; flown there, they load along the way.
 //
+// The cut, travel or too far of each move is camera.Observer's, the one a
+// host app's own spotter uses.
+//
 //   - Every shot starts from where the camera is. The first of a spotting is
 //     a cut from wherever the camera was.
 //   - A cut goes at most CutM: the area is loaded, it reads as a new angle.
@@ -32,10 +35,7 @@ import (
 
 const (
 	// DefaultSpotCutM is how far a cut goes with the observer, CutM not set.
-	DefaultSpotCutM = 300.0
-	// spotTravelSpeedMin and spotTravelSpeedMax keep the drone slow.
-	spotTravelSpeedMin = 10.0
-	spotTravelSpeedMax = 20.0
+	DefaultSpotCutM = camera.DefaultObserverCutM
 	// spotEarlySec: a landing is gone to this long before the travel to its
 	// spot would be too late, and spotEarlyMin before its touchdown at the
 	// least, when the drone is on another aircraft.
@@ -111,21 +111,40 @@ type spotLook struct {
 	sweep bool
 }
 
-// observerFor is the observer of req (TravelMaxM > 0), its defaults set.
+// observerFor is the observer of req (TravelMaxM > 0), its defaults set
+// (camera.Observer's).
 func observerFor(req SpottingRequest) (observer, bool) {
 	if req.TravelMaxM <= 0 {
 		return observer{}, false
 	}
-	o := observer{cutM: req.CutM, travelMaxM: req.TravelMaxM, speed: req.TravelSpeed}
-	if o.cutM <= 0 {
-		o.cutM = DefaultSpotCutM
+	c := camera.Observer{CutM: req.CutM, TravelMaxM: req.TravelMaxM, SpeedMps: req.TravelSpeed}.WithDefaults()
+	return observer{cutM: c.CutM, travelMaxM: c.TravelMaxM, speed: c.SpeedMps}, true
+}
+
+// plan is the observer's camera.Observer, which decides each move.
+func (o *observer) plan() camera.Observer {
+	return camera.Observer{CutM: o.cutM, TravelMaxM: o.travelMaxM, SpeedMps: o.speed}
+}
+
+// way is the move to a spot whose shot starts at slat, slon and whose eye
+// is at lat, lon, and the way, metres (camera.Observer.Decide).
+func (o *observer) way(slat, slon, lat, lon float64) (camera.MoveKind, float64) {
+	if !o.havePose {
+		return camera.MoveCut, 0
 	}
-	o.cutM = min(o.cutM, o.travelMaxM)
-	if o.speed <= 0 {
-		o.speed = camera.DefaultTravelSpeed
-	}
-	o.speed = max(spotTravelSpeedMin, min(spotTravelSpeedMax, o.speed))
-	return o, true
+	return o.plan().Decide(true, o.eyeTo(slat, slon), o.eyeTo(lat, lon))
+}
+
+// cutTo says a shot starting at lat, lon is a cut, not a travel.
+func (o *observer) cutTo(lat, lon float64) bool {
+	k, _ := o.way(lat, lon, lat, lon)
+	return k == camera.MoveCut
+}
+
+// inReach says the drone goes to a point d metres away, cut or flown.
+func (o *observer) inReach(d float64) bool {
+	k, _ := o.plan().Decide(true, d, d)
+	return k != camera.MoveTooFar
 }
 
 // eyeTo is how far the camera is from p, metres on the ground.
@@ -135,10 +154,7 @@ func (o *observer) eyeTo(lat, lon float64) float64 {
 
 // travelSec is how long the drone takes over d metres (0: a cut).
 func (o *observer) travelSec(d float64) float64 {
-	if !o.havePose || d <= o.cutM {
-		return 0
-	}
-	return d/o.speed + camera.TravelRamp.Seconds()
+	return o.plan().Seconds(o.havePose, d)
 }
 
 // spotStart is where a spot's camera starts on t: on a rail, abeam it.
@@ -215,14 +231,10 @@ func (s *spotter) spotNear(t *Traffic, kts float64, event, end string) (CameraSp
 		if d > reach {
 			continue
 		}
-		way := 0.0
-		if s.havePose {
-			slat, slon := spotStart(c, t)
-			if cut := s.eyeTo(slat, slon); cut <= s.cutM {
-				way = cut
-			} else if way = s.eyeTo(c.Lat, c.Lon); way > s.travelMaxM {
-				continue // too far to go
-			}
+		slat, slon := spotStart(c, t)
+		move, way := s.way(slat, slon, c.Lat, c.Lon)
+		if move == camera.MoveTooFar {
+			continue // too far to go
 		}
 		sec := s.travelSec(way)
 		if event == "landing" && sec > 0 && sec > tta {
@@ -320,7 +332,7 @@ func (s *spotter) observe(now time.Time, list []Traffic) *spotCut {
 			}
 			s.spot, s.cutAt, s.hop = spot, now, false
 			slat, slon := spotStart(spot, p)
-			travel := s.havePose && s.eyeTo(slat, slon) > s.cutM
+			travel := !s.cutTo(slat, slon)
 			return &spotCut{spot: spot.Name, t: *p, event: ev, travel: travel}
 		}
 		if sub == nil {
@@ -337,7 +349,7 @@ func (s *spotter) observe(now time.Time, list []Traffic) *spotCut {
 		if spot, _, ok := s.spotNear(sub, s.seen[sub.ObjectID].kts, "landing", s.end); ok && spot.Name != s.spot.Name {
 			s.hop, s.spot, s.cutAt = false, spot, now
 			slat, slon := spotStart(spot, sub)
-			return &spotCut{spot: spot.Name, t: *sub, event: s.event, travel: s.eyeTo(slat, slon) > s.cutM}
+			return &spotCut{spot: spot.Name, t: *sub, event: s.event, travel: !s.cutTo(slat, slon)}
 		}
 		if c := s.pull(now, list); c != nil {
 			return c
@@ -400,12 +412,12 @@ func (s *spotter) pull(now time.Time, list []Traffic) *spotCut {
 			goal = c
 		}
 	}
-	if goal.Name == "" || s.eyeTo(goal.Lat, goal.Lon) <= s.cutM || goal.Name == s.spot.Name {
+	if goal.Name == "" || s.cutTo(goal.Lat, goal.Lon) || goal.Name == s.spot.Name {
 		return nil // a cut away, or there
 	}
 	var hop CameraSpot
 	left := s.eyeTo(goal.Lat, goal.Lon) - spotHopGain
-	if left+spotHopGain <= s.travelMaxM {
+	if s.inReach(left + spotHopGain) {
 		// In reach: flown to in time, early enough to see it come in.
 		if soonest > s.travelSec(left+spotHopGain)+spotPullLead {
 			return nil
@@ -416,7 +428,7 @@ func (s *spotter) pull(now time.Time, list []Traffic) *spotCut {
 		if hop.Name != "" {
 			break
 		}
-		if c.Name == s.spot.Name || s.eyeTo(c.Lat, c.Lon) > s.travelMaxM {
+		if c.Name == s.spot.Name || !s.inReach(s.eyeTo(c.Lat, c.Lon)) {
 			continue
 		}
 		if d := calc.HaversineMeters(c.Lat, c.Lon, goal.Lat, goal.Lon); d < left {
@@ -433,7 +445,7 @@ func (s *spotter) pull(now time.Time, list []Traffic) *spotCut {
 	}
 	s.spot, s.cutAt, s.hop = hop, now, true
 	slat, slon := spotStart(hop, in)
-	return &spotCut{spot: hop.Name, at: &hop, t: *in, event: "landing", travel: s.eyeTo(slat, slon) > s.cutM}
+	return &spotCut{spot: hop.Name, at: &hop, t: *in, event: "landing", travel: !s.cutTo(slat, slon)}
 }
 
 // waypoint is a point in the air travelMaxM from the drone towards goal
@@ -459,7 +471,7 @@ func (s *spotter) lookRound(now time.Time, list []Traffic) *spotCut {
 	for i := range list {
 		t := &list[i]
 		d := s.eyeTo(t.Latitude, t.Longitude)
-		if d > s.travelMaxM || !spotOnGround(t) || len(s.req.Kinds) > 0 && !slices.Contains(s.req.Kinds, spotKind(t)) {
+		if !s.inReach(d) || !spotOnGround(t) || len(s.req.Kinds) > 0 && !slices.Contains(s.req.Kinds, spotKind(t)) {
 			continue
 		}
 		if t.User {
@@ -556,22 +568,21 @@ func (m *cameraMan) observerShots(s *spotter, cut *spotCut, list []Traffic) ([]c
 	}
 	s.aimAt = now
 	sec := time.Duration(spotShotSec * float64(time.Second))
-	switch {
-	case cut.again:
+	if cut.again {
 		return []camera.Shot{cs.Follow(s.aim, size, sec, true)}, "join", 0
-	case cut.travel:
-		from := s.pose
-		if p, ok := placedTarget(from, list); ok {
-			from.Target = p
-		}
-		move := camera.TravelAuto
-		if spot.Kind == "apron" {
-			move = camera.TravelRise // over the apron
-		}
-		tr := cs.TravelTo(s.aim, size, camera.Travel{From: from, Move: move, SpeedMps: s.speed})
-		return []camera.Shot{tr, cs.Follow(s.aim, size, sec, true)}, "travel", tr.Length()
 	}
-	return []camera.Shot{cs.Follow(s.aim, size, sec, false)}, "cut", 0
+	leg := camera.Leg{From: s.pose, Have: s.havePose, To: cs, Aim: s.aim, Size: size, D: sec}
+	if !cut.travel {
+		return s.plan().Shots(camera.MoveCut, leg), "cut", 0
+	}
+	if p, ok := placedTarget(leg.From, list); ok {
+		leg.From.Target = p
+	}
+	if spot.Kind == "apron" {
+		leg.Move = camera.TravelRise // over the apron
+	}
+	shots := s.plan().Shots(camera.MoveTravel, leg)
+	return shots, "travel", shots[0].Length()
 }
 
 // lookShots are a look round from where the camera is.
