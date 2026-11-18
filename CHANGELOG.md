@@ -7,6 +7,12 @@ This project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 ---
 
+## [0.176.0] - 2026-11-18
+
+### Added
+
+- Parking stands take an optional free-text label (`label` in the layout JSON, `RawParking.Label`, `Parking.LabelText`) for real names that do not fit the sim's name, number and suffix, such as "H17-1", "FDX6" or "1B A380". When set, `Parking.Label()` returns it, so it is the stand name on the airport map, in World snapshots and logs, in the per-stand tables and on the radio, where it is written in tokens a voice library spells. `Parking.ComposedLabel()` keeps the sim's name, and `ParkingByLabel` falls back to it when no label matches. Layouts without labels read, write and behave exactly as before. (#1556)
+
 ## [0.175.0] - 2026-11-17
 
 ### Added

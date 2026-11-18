@@ -441,6 +441,10 @@ func (a *StandAllocator) pierLoad() func(int) float64 {
 	l := a.g.Layout
 	pier := func(i int) string {
 		s := strings.ToUpper(l.Parking[i].Label())
+		if l.Parking[i].LabelText != "" {
+			// A free-text label ("H17-1", "1B A380"): its leading letters.
+			return s[:len(s)-len(strings.TrimLeftFunc(s, func(r rune) bool { return r >= 'A' && r <= 'Z' }))]
+		}
 		return strings.TrimRightFunc(s, func(r rune) bool { return r >= '0' && r <= '9' })
 	}
 	total, held := map[string]int{}, map[string]int{}

@@ -61,7 +61,7 @@ func RequestClearance(station, cs, stand, info, destination string) Transmission
 	if destination != "" {
 		req += " to " + destination
 	}
-	return pilotTx(PosDelivery, cs, IntentRequestClearance, p, fmt.Sprintf("%s, stand %s%s, %s", text, stand, withInfo(info), req))
+	return pilotTx(PosDelivery, cs, IntentRequestClearance, p, fmt.Sprintf("%s, stand %s%s, %s", text, standSaid(stand), withInfo(info), req))
 }
 
 // RequestPushback is a departure ready on its stand, its first call to
@@ -95,7 +95,7 @@ func firstCall(in Intent, station, cs, stand, info, req string) Transmission {
 		text = station + ", " + cs
 	}
 	if stand != "" {
-		text += ", stand " + stand
+		text += ", stand " + standSaid(stand)
 	}
 	return pilotTx(PosGround, cs, in, p, text+withInfo(info)+", "+req)
 }
@@ -132,7 +132,7 @@ func RequestWeather(pos Position, cs string) Transmission {
 // "Ruzyne Ground, CSA123, stand B9, request delay on stand, about 10
 // minutes, waiting for passengers".
 func RequestStandDelay(station, cs, stand string, minutes int, why string) Transmission {
-	text := fmt.Sprintf("%s, stand %s, request delay on stand, about %d minutes", cs, stand, minutes)
+	text := fmt.Sprintf("%s, stand %s, request delay on stand, about %d minutes", cs, standSaid(stand), minutes)
 	if why != "" {
 		text += ", " + why
 	}
@@ -224,7 +224,7 @@ func RequestTaxiFrom(cs, stand string) Transmission {
 	if stand == "" {
 		return RequestTaxi(cs)
 	}
-	return pilotTx(PosGround, cs, IntentRequestTaxi, map[string]string{ParamStand: stand}, cs+", stand "+stand+", request taxi")
+	return pilotTx(PosGround, cs, IntentRequestTaxi, map[string]string{ParamStand: stand}, cs+", stand "+standSaid(stand)+", request taxi")
 }
 
 // HoldingShortReport is a crew stopped short of a runway it is to cross,
@@ -429,7 +429,7 @@ func Readback(t Transmission) (Transmission, bool) {
 		}
 	case IntentTaxi:
 		if p[ParamStand] != "" {
-			s = "Taxi to stand " + p[ParamStand]
+			s = "Taxi to stand " + standSaid(p[ParamStand])
 		} else {
 			s = fmt.Sprintf("Taxi to and hold short of runway %s%s", p[ParamRunway], strings.Replace(entryOf(p), " ", " at ", 1))
 		}

@@ -3,6 +3,7 @@ package airport
 import (
 	"errors"
 	"math"
+	"strings"
 
 	"github.com/mrlm-net/simconnect/pkg/calc"
 	"github.com/mrlm-net/simconnect/pkg/convert"
@@ -87,8 +88,7 @@ type RawRunway struct {
 }
 
 // RawParking is a TAXI_PARKING record: NAME, SUFFIX, NUMBER, TYPE, HEADING,
-// RADIUS, BIAS_X, BIAS_Z. All fields are 4 bytes, so the struct matches the
-// wire layout.
+// RADIUS, BIAS_X, BIAS_Z, plus an optional Label the sim does not send.
 type RawParking struct {
 	Name    int32   `json:"name"`
 	Suffix  int32   `json:"suffix"`
@@ -98,6 +98,29 @@ type RawParking struct {
 	Radius  float32 `json:"radius"`
 	BiasX   float32 `json:"biasX"`
 	BiasZ   float32 `json:"biasZ"`
+	// Label is the stand's real name as free text ("H17-1", "1B A380"),
+	// from data outside the sim (the AIP, OSM); "" names the stand from
+	// Name, Number and Suffix. Parking.LabelText (#1556).
+	Label string `json:"label,omitempty"`
+}
+
+// rawParkingWire is the TAXI_PARKING record as the sim sends it: all
+// fields 4 bytes, so the struct matches the wire layout.
+type rawParkingWire struct {
+	Name    int32
+	Suffix  int32
+	Number  uint32
+	Type    int32
+	Heading float32
+	Radius  float32
+	BiasX   float32
+	BiasZ   float32
+}
+
+// raw is the record as a RawParking, without a label.
+func (w rawParkingWire) raw() RawParking {
+	return RawParking{Name: w.Name, Suffix: w.Suffix, Number: w.Number, Type: w.Type,
+		Heading: w.Heading, Radius: w.Radius, BiasX: w.BiasX, BiasZ: w.BiasZ}
 }
 
 // RawTaxiPoint is a TAXI_POINT record: TYPE, ORIENTATION, BIAS_X, BIAS_Z.
@@ -152,17 +175,18 @@ func BuildLayout(raw RawAirport) (*Layout, error) {
 	}
 	for i, p := range raw.Parking {
 		l.Parking = append(l.Parking, Parking{
-			Index:    i,
-			Name:     types.SIMCONNECT_FACILITY_TAXI_PARKING_NAME(p.Name),
-			Suffix:   types.SIMCONNECT_FACILITY_TAXI_PARKING_NAME(p.Suffix),
-			Number:   p.Number,
-			Type:     types.SIMCONNECT_FACILITY_TAXI_PARKING_TYPE(p.Type),
-			Heading:  float64(p.Heading),
-			Radius:   float64(p.Radius),
-			BiasX:    float64(p.BiasX),
-			BiasZ:    float64(p.BiasZ),
-			Position: offset(p.BiasX, p.BiasZ),
-			Airlines: raw.ParkingAirlines[i],
+			Index:     i,
+			Name:      types.SIMCONNECT_FACILITY_TAXI_PARKING_NAME(p.Name),
+			Suffix:    types.SIMCONNECT_FACILITY_TAXI_PARKING_NAME(p.Suffix),
+			Number:    p.Number,
+			Type:      types.SIMCONNECT_FACILITY_TAXI_PARKING_TYPE(p.Type),
+			Heading:   float64(p.Heading),
+			Radius:    float64(p.Radius),
+			BiasX:     float64(p.BiasX),
+			BiasZ:     float64(p.BiasZ),
+			Position:  offset(p.BiasX, p.BiasZ),
+			Airlines:  raw.ParkingAirlines[i],
+			LabelText: strings.TrimSpace(p.Label),
 		})
 	}
 	for i, t := range raw.TaxiPoints {
