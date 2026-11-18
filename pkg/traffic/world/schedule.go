@@ -49,6 +49,11 @@ type scheduler struct {
 	waitMu   sync.Mutex
 	waitSaid map[string]waitNote
 
+	// planMu: one en route flight planned clear of the others at a time,
+	// until it is among them (pending or a virtual track), so two
+	// appearing at once each see the other (enroute.go).
+	planMu sync.Mutex
+
 	mu      sync.Mutex
 	density float64
 	// overPerHour: the overflights in the peak hour at density 1 (0:

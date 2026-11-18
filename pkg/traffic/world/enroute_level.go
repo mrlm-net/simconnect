@@ -10,7 +10,7 @@ import (
 )
 
 // En route traffic is planned clear of the others before it appears: its
-// way across, at its cruise level, is flown ahead enrouteLookAhead against
+// way across, at its cruise level, is flown ahead (wayLookAhead) against
 // everyone's planned ways, and where it would meet one it is given another
 // level of its direction (the user, live: DLH1050 and THY1880 created in
 // the same second at FL400 on converging tracks, "they'll cross both at
@@ -18,8 +18,45 @@ import (
 // Where it appears was all that was looked at.
 
 // enrouteLookAhead: how far ahead an en route flight's way is flown against
-// the others before it appears.
-const enrouteLookAhead = 20 * time.Minute
+// the others before it appears, at least: its whole way and enrouteLookPast
+// on when that is longer, up to enrouteLookAheadMax. An overflight takes
+// 30 min and more across the area and out (offline, LKPR at 60 an hour:
+// BAW1799, planned 20 min ahead, met DLH298 22 min after it appeared,
+// leaving the area). Past its way's end it flies on a few minutes more
+// before it is removed, and the conflict watch looks 5 min past that
+// (offline, LZKZ: UAE1710 planned clear of RYR226 to 8.8 NM at the end of
+// its way, predicted 4.4 NM 5 min on from its last minute).
+const (
+	enrouteLookAhead    = 20 * time.Minute
+	enrouteLookPast     = 10 * time.Minute
+	enrouteLookAheadMax = 50 * time.Minute
+)
+
+// enrouteBufferNM: a way is planned clear with this to spare on the lateral
+// minima, a prediction off by a little not a conflict once flown (offline,
+// LKPR: BAW904 planned 5.05 NM from QTR1311, the conflict watch's 5.0 NM
+// four minutes before; as climbOpts).
+const enrouteBufferNM = 1.0
+
+// wayLookAhead is how far ahead route is flown against the others: the
+// time it takes along its legs (each at the speed of the point it heads
+// for) and enrouteLookPast, within enrouteLookAhead and enrouteLookAheadMax.
+func wayLookAhead(route []traffic.RoutePoint) time.Duration {
+	var hours float64
+	for i := 1; i < len(route); i++ {
+		a, b := route[i-1], route[i]
+		kts := b.Kts
+		if kts <= 0 {
+			kts = a.Kts
+		}
+		if kts <= 0 {
+			continue
+		}
+		hours += calc.HaversineNM(a.Position.Lat, a.Position.Lon, b.Position.Lat, b.Position.Lon) / kts
+	}
+	d := time.Duration(hours*float64(time.Hour)) + enrouteLookPast
+	return min(max(d, enrouteLookAhead), enrouteLookAheadMax)
+}
 
 // enrouteLevelSteps are the levels tried after the planned one, in feet off
 // it: the same direction's levels (2000 ft apart), lower first.
@@ -29,7 +66,7 @@ var enrouteLevelSteps = []float64{-2000, 2000, -4000, 4000}
 const enrouteTopFt = 41000.0
 
 // clearLevel is route with its cruise level moved where it meets nobody
-// within enrouteLookAhead, and the one it would meet at the planned level
+// along its way (wayLookAhead), and the one it would meet at the planned level
 // ("" none); ok false when no level is clear.
 func (s *scheduler) clearLevel(callsign string, route []traffic.RoutePoint) ([]traffic.RoutePoint, string, bool) {
 	if len(route) < 2 {
@@ -69,33 +106,57 @@ func atLevel(route []traffic.RoutePoint, cruise, ft float64) []traffic.RoutePoin
 	return out
 }
 
+// legKts is the speed route's first leg is flown at, as its way is
+// predicted: the speed of the point it heads for, as MSFS AI flies a leg
+// (enrouteChain), else its first point's. An arrival appearing below FL100
+// at 250 kt flies on at its cruise speed: predicted at 250 kt all the way,
+// OKILI, climbing out of 7300 ft at 460 kt, was planned 15 NM and more
+// from SWR1395 head-on at FL350, which it met in 4 min (offline, LKPR).
+func legKts(route []traffic.RoutePoint) float64 {
+	if len(route) > 1 && route[1].Kts > 0 {
+		return route[1].Kts
+	}
+	if len(route) > 0 {
+		return route[0].Kts
+	}
+	return 0
+}
+
 // meetsAlong names who of others a flight appearing at route's first point
-// and flying it would meet (ConflictOptions with each one's plan); "" none.
+// and flying it would meet (ConflictOptions with each one's plan, over its
+// way's look-ahead, with enrouteBufferNM to spare), the soonest; "" none.
 func meetsAlong(callsign string, route []traffic.RoutePoint, others []traffic.TrackedAircraft, plans map[string][]traffic.RoutePoint) string {
 	if len(others) == 0 {
 		return ""
 	}
 	p0, p1 := route[0], route[1]
-	me := traffic.TrackedAircraft{Observation: traffic.Observation{Tail: callsign, Position: p0.Position, AltFt: p0.AltFt, GroundKts: p0.Kts,
+	me := traffic.TrackedAircraft{Observation: traffic.Observation{Tail: callsign, Position: p0.Position, AltFt: p0.AltFt, GroundKts: legKts(route),
 		Heading: calc.BearingDegrees(p0.Position.Lat, p0.Position.Lon, p1.Position.Lat, p1.Position.Lon)}, Phase: traffic.PhaseEnroute, Ours: true}
-	all := append([]traffic.TrackedAircraft{me}, others...)
 	opts := conflictOpts
-	opts.LookAhead = enrouteLookAhead
+	opts.LookAhead = wayLookAhead(route)
+	opts.MinNM, opts.TerminalNM = sepMinNM+enrouteBufferNM, sepTerminalNM+enrouteBufferNM
 	opts.Profile = func(a traffic.TrackedAircraft) []traffic.RoutePoint {
 		if a.Tail == callsign {
 			return route
 		}
 		return plans[a.Tail]
 	}
-	for _, c := range traffic.PredictConflicts(all, opts) {
-		switch callsign {
-		case c.A:
-			return c.B
-		case c.B:
-			return c.A
+	// Pair by pair: the others among themselves are not looked at.
+	who, soonest := "", time.Duration(math.MaxInt64)
+	for _, o := range others {
+		for _, c := range traffic.PredictConflicts([]traffic.TrackedAircraft{me, o}, opts) {
+			if c.In >= soonest {
+				continue
+			}
+			switch callsign {
+			case c.A:
+				who, soonest = c.B, c.In
+			case c.B:
+				who, soonest = c.A, c.In
+			}
 		}
 	}
-	return ""
+	return who
 }
 
 // plannedTraffic is everyone airborne but callsign, and the planned way
@@ -165,7 +226,7 @@ func (s *scheduler) plannedTraffic(callsign string) ([]traffic.TrackedAircraft, 
 		}
 		seen[e.f.Callsign] = true
 		p0, p1 := e.route[0], e.route[1]
-		out = append(out, traffic.TrackedAircraft{Observation: traffic.Observation{Tail: e.f.Callsign, Position: p0.Position, AltFt: p0.AltFt, GroundKts: p0.Kts,
+		out = append(out, traffic.TrackedAircraft{Observation: traffic.Observation{Tail: e.f.Callsign, Position: p0.Position, AltFt: p0.AltFt, GroundKts: legKts(e.route),
 			Heading: calc.BearingDegrees(p0.Position.Lat, p0.Position.Lon, p1.Position.Lat, p1.Position.Lon)}, Phase: traffic.PhaseEnroute, Ours: true})
 		plans[e.f.Callsign] = e.route
 	}

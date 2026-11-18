@@ -7,6 +7,12 @@ This project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 ---
 
+## [0.176.1] - 2026-11-18
+
+### Fixed
+
+- Overflights and other en route flights are now planned clear of each other for their whole way, so the conflict watch no longer has to separate two overflights. At 60 overflights an hour the watch fired between two of them in most runs of the test bed (LKPR, EGLL, LZKZ), each time because the level was planned wrongly. Five causes are fixed. The way was flown only 20 minutes ahead, but an overflight takes 30 minutes and more to cross the area and leave it. It is now flown for its whole length plus 10 minutes, between 20 and 50 minutes. That covers the minutes it flies on before it is removed and the watch's own 5-minute look-ahead. A way was accepted with no margin (5.05 NM from another aircraft was clear), so it is now planned with 1 NM to spare, as climbs are. Two flights planned in the same second did not see each other, so en route flights are now planned one at a time until each is among the traffic. A flight started from its first point once planning had finished, while the others had flown on from where they were when planning began, so it now starts where it would be by then. Its first leg is also predicted at the speed of the point it heads for, as the AI flies it, not at the speed it appears at (250 kt below FL100).
+
 ## [0.176.0] - 2026-11-18
 
 ### Added
