@@ -364,3 +364,61 @@ func TestCircuitNoExtendInTheTurn(t *testing.T) {
 		t.Errorf("in its turn in: extended: %+v, %v", a, err)
 	}
 }
+
+// TestCircuitNoExtendInTheTurnExtended: extended once past the threshold,
+// its route starts at its rounded turn in, with no straight before it; in
+// that turn the downwind is not extended again (live-like, OKQCH turned back
+// out of its base turn the long way round and never reported base).
+func TestCircuitNoExtendInTheTurnExtended(t *testing.T) {
+	g := lkprGraph(t)
+	p := ProfileFor("C172")
+	c, err := NewCircuit(g.Layout, "24", CircuitConfig{}, p)
+	if err != nil {
+		t.Fatal(err)
+	}
+	ec := &eventClient{}
+	ctl := NewArrivalController(NewFleet(ec), ArrivalWithInjector(NewInjector(ec)))
+	st, _ := g.Layout.ParkingIndex("C22")
+	if err := ctl.Start(ArrivalRequest{Graph: g, Runway: "24", Parking: st, Model: "Asobo PassiveAircraft C172", Tail: "OKABD",
+		InjectApproach: true, Circuit: &c}); err != nil {
+		t.Fatal(err)
+	}
+	go func() {
+		for range ctl.Events() {
+		}
+	}()
+	ctl.Handle(assignedMsg(DefaultArrivalRequestBase, 78))
+	entry, _ := c.JoinDownwind()
+	ctl.Handle(arrivalPositionMsg(DefaultArrivalRequestBase+arrReqMonitor, 78, entry.Position, entry.AltFt, 0, CircuitKts(p), false))
+	dw, _ := c.Point(LegDownwind)
+	away := c.heading + 180
+	lat, lon := calc.DisplaceByHeading(dw.Position.Lat, dw.Position.Lon, away, 1000)
+	ctl.mu.Lock()
+	ctl.last.Position, ctl.last.Heading = airport.LatLon{Lat: lat, Lon: lon}, away
+	ctl.procNext = -1
+	ctl.mu.Unlock()
+	if a, err := ctl.AbsorbDelay(time.Minute); err != nil || a.ExtraNM <= 0 {
+		t.Fatalf("on the downwind past the threshold: not extended: %+v %v", a, err)
+	}
+	ctl.mu.Lock()
+	wps := ctl.proc.Waypoints
+	if len(wps) < 2 {
+		ctl.mu.Unlock()
+		t.Fatal("no route")
+	}
+	if leg := calc.BearingDegrees(wps[0].Latitude, wps[0].Longitude, wps[1].Latitude, wps[1].Longitude); math.Abs(headingDiff(leg, away)) < 5 {
+		ctl.mu.Unlock()
+		t.Skip("the route starts with a straight: nothing to show")
+	}
+	// A third of the way round from the first point of its turn in.
+	ctl.last.Position = airport.LatLon{Lat: wps[0].Latitude + (wps[1].Latitude-wps[0].Latitude)/3, Lon: wps[0].Longitude + (wps[1].Longitude-wps[0].Longitude)/3}
+	ctl.last.Heading = away - 15
+	if c.Side == CircuitRight {
+		ctl.last.Heading = away + 15
+	}
+	ctl.procNext = 1
+	ctl.mu.Unlock()
+	if a, err := ctl.AbsorbDelay(time.Minute); !errors.Is(err, ErrNotOnProcedure) {
+		t.Errorf("in its turn in after an extension: extended again: %+v, %v", a, err)
+	}
+}

@@ -158,7 +158,12 @@ func (c *ArrivalController) absorbInCircuit(delay time.Duration) (Absorption, er
 
 // circuitTurnIn is the distance along the runway (as baseAlong, the corner)
 // where its rounded turn in starts: the end of the route's last straight along
-// the downwind, which is further from the corner than a turn radius. c.mu held.
+// the downwind, which is further from the corner than a turn radius. A route
+// set on the downwind (extended there) starts at that turn's first point, the
+// straight to it flown from where the aircraft was and not in the route: its
+// first point on the downwind's line, the next one inside it, is where the
+// turn starts all the same (else extended again in its turn, it turned back
+// and flew no base at all). c.mu held.
 func (c *ArrivalController) circuitTurnIn(baseAlong float64) float64 {
 	ci := c.req.Circuit
 	thr, _ := ci.Point(LegRunway)
@@ -167,6 +172,19 @@ func (c *ArrivalController) circuitTurnIn(baseAlong float64) float64 {
 		return at
 	}
 	wps := c.proc.Waypoints
+	if len(wps) >= 2 {
+		inward := ci.heading + 90
+		if ci.Side == CircuitRight {
+			inward = ci.heading - 90
+		}
+		first := airport.LatLon{Lat: wps[0].Latitude, Lon: wps[0].Longitude}
+		next := airport.LatLon{Lat: wps[1].Latitude, Lon: wps[1].Longitude}
+		out := alongHeading(thr.Position, inward+180, first)
+		if along := alongHeading(thr.Position, ci.heading, first); along < 0 &&
+			math.Abs(out-ci.DownwindNM*1852) < circuitOnLineM && alongHeading(thr.Position, inward+180, next) < out-circuitOnLineM {
+			at = along
+		}
+	}
 	for i := 0; i+1 < len(wps); i++ {
 		leg := calc.BearingDegrees(wps[i].Latitude, wps[i].Longitude, wps[i+1].Latitude, wps[i+1].Longitude)
 		if math.Abs(headingDiff(leg, ci.heading+180)) < circuitStraightDeg {
@@ -179,13 +197,19 @@ func (c *ArrivalController) circuitTurnIn(baseAlong float64) float64 {
 // circuitStraightDeg: a leg within this of the downwind's heading is on it.
 const circuitStraightDeg = 5.0
 
+// circuitOnLineM: a route's point this near the downwind's line is on it.
+const circuitOnLineM = 50.0
+
 // BaseCallLeadM: the controller calls the base turn this far before the
-// aircraft reaches it, so the crew turns there.
+// aircraft starts it (its rounded turn in, circuitTurnIn), so the crew turns
+// there, and a downwind held on (HoldDownwind) is still on its straight.
 const BaseCallLeadM = 400.0
 
 // BaseDue reports, once, that a VFR arrival whose downwind was extended
 // with "I'll call your base" (InstrExtendCallBase) has reached its base
-// turn: the controller says InstrTurnBase now.
+// turn: the controller says InstrTurnBase now. Due BaseCallLeadM before the
+// turn in starts, not before the corner: the turn starts up to a turn's
+// radius before it, and held on there it turned back out of its base (#1314).
 func (c *ArrivalController) BaseDue() bool {
 	c.mu.Lock()
 	defer c.mu.Unlock()
@@ -196,7 +220,7 @@ func (c *ArrivalController) BaseDue() bool {
 	thr, _ := ci.Point(LegRunway)
 	base, _ := ci.Point(LegBase)
 	baseAlong := alongHeading(thr.Position, ci.heading, base.Position) - c.tromboneNM*1852
-	if alongHeading(thr.Position, ci.heading, c.last.Position) > baseAlong+BaseCallLeadM {
+	if alongHeading(thr.Position, ci.heading, c.last.Position) > c.circuitTurnIn(baseAlong)+BaseCallLeadM {
 		return false
 	}
 	c.baseCall = false
