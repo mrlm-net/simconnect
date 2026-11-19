@@ -596,7 +596,13 @@ func (s *scheduler) spawnWith(f traffic.ManagedFlight, pre *planned, model strin
 		}
 	}()
 	if req.Runway == "active" {
-		req.Runway = cc.pickRunway(g, !f.Departure(), req.Stand)
+		// One its aircraft can use and its stand reaches (#1561).
+		m, _, _ := strings.Cut(req.Model, liverySep)
+		rwy, err := cc.pickRunwayFor(g, !f.Departure(), req.Stand, m)
+		if err != nil {
+			return err
+		}
+		req.Runway = rwy
 	}
 	// The flight plan from or to the other end, else the runway's procedure.
 	req.Other = f.Destination

@@ -3,6 +3,7 @@ package world
 import (
 	"github.com/mrlm-net/simconnect/pkg/airport"
 	"github.com/mrlm-net/simconnect/pkg/calc"
+	"github.com/mrlm-net/simconnect/pkg/nav"
 	"github.com/mrlm-net/simconnect/pkg/traffic"
 )
 
@@ -75,9 +76,33 @@ func crossAlong(l *airport.Layout, end string, r airport.Runway) (float64, bool)
 	return x, true
 }
 
+// besideTrailNM: a take-off or landing on a runway close beside another
+// waits for one of ours on that one to be past its far end and this far
+// from it, a radar separation (the two climb out the same way).
+const besideTrailNM = 3.0
+
+// besideAlong: runway r runs beside end's runway closer than parallels may
+// be used apart (nav.ParallelSegregatedM: one runway as far as separation
+// goes), and the point a use of end's must pass, as a crossing's: its far
+// end (then besideTrailNM from it as well, crossBlocked) (#1561: LKTB's
+// grass 08/26 65 m beside 09/27, used by a light aircraft from the GA
+// stands while 27 is in use); false when it does not. The runways in use
+// are never two such (nav: ParallelNone below that).
+func besideAlong(l *airport.Layout, end string, r airport.Runway) (float64, bool) {
+	own, ok := runwayOf(l, end)
+	if !ok || own.Name() == r.Name() {
+		return 0, false
+	}
+	if s := nav.RunwaySpacingM(own, r); s <= 0 || s >= nav.ParallelSegregatedM {
+		return 0, false
+	}
+	return own.Length, true
+}
+
 // crossBlocked names one of uses on a runway crossing rwy at l, not past
 // the crossing yet, that a take-off (landing: false, a landing) on rwy
-// waits for; "" none.
+// waits for; "" none. One on a runway close beside rwy (besideAlong)
+// counts until it is past the far end and besideTrailNM from it.
 func crossBlocked(l *airport.Layout, rwy string, uses []crossUse, takeoff bool) string {
 	r, ok := runwayOf(l, rwy)
 	if !ok {
@@ -88,6 +113,11 @@ func crossBlocked(l *airport.Layout, rwy string, uses []crossUse, takeoff bool) 
 			continue
 		}
 		x, ok := crossAlong(l, u.end, r)
+		beside := false
+		if !ok {
+			x, ok = besideAlong(l, u.end, r)
+			beside = ok
+		}
 		if !ok {
 			continue
 		}
@@ -97,6 +127,9 @@ func crossBlocked(l *airport.Layout, rwy string, uses []crossUse, takeoff bool) 
 			from, to = to, from
 		}
 		if calc.AlongTrackMeters(from.Lat, from.Lon, to.Lat, to.Lon, u.pos.Lat, u.pos.Lon) < x+crossPastM {
+			return u.tail
+		}
+		if beside && calc.HaversineMeters(to.Lat, to.Lon, u.pos.Lat, u.pos.Lon) < besideTrailNM*1852 {
 			return u.tail
 		}
 	}

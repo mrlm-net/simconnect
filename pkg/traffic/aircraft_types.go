@@ -30,16 +30,19 @@ var (
 
 // Flap schedules as percent of the handle travel: the detent's index over
 // the last detent's (an A320's 1+F is 1 of 4, a 737's flaps 5 is 3 of 8).
+// The short-field take-off (#1566) takes each family's higher take-off
+// setting: Airbus 3, 737 15, 777 20, 787 15, 747 20, E-Jet 4, CRJ 20,
+// Q400 15; the ATR has the one.
 var (
-	flapsAirbus = FlapSchedule{TakeoffPct: 25, ApproachPct: 75, LandingPct: 100}      // 0 1 2 3 FULL: 1+F, 3, FULL
-	flaps737    = FlapSchedule{TakeoffPct: 37.5, ApproachPct: 62.5, LandingPct: 87.5} // 0 1 2 5 10 15 25 30 40: 5, 15, 30
-	flaps777    = FlapSchedule{TakeoffPct: 50, ApproachPct: 66.7, LandingPct: 100}    // 0 1 5 15 20 25 30: 15, 20, 30
-	flaps787    = FlapSchedule{TakeoffPct: 22.2, ApproachPct: 77.8, LandingPct: 100}  // 0 1 5 10 15 17 18 20 25 30: 5, 20, 30
-	flaps747    = FlapSchedule{TakeoffPct: 60, ApproachPct: 80, LandingPct: 100}      // 0 1 5 10 20 25 30: 10/20, 25, 30
-	flapsEJet   = FlapSchedule{TakeoffPct: 33.3, ApproachPct: 50, LandingPct: 100}    // 0 1 2 3 4 5 FULL: 2, 3, FULL
-	flapsCRJ    = FlapSchedule{TakeoffPct: 40, ApproachPct: 60, LandingPct: 100}      // 0 1 8 20 30 45: 8, 20, 45
-	flapsATR    = FlapSchedule{TakeoffPct: 50, ApproachPct: 50, LandingPct: 100}      // 0 15 30: 15, 15, 30
-	flapsQ400   = FlapSchedule{TakeoffPct: 25, ApproachPct: 75, LandingPct: 100}      // 0 5 10 15 35: 5, 15, 35
+	flapsAirbus = FlapSchedule{TakeoffPct: 25, ApproachPct: 75, LandingPct: 100, TakeoffDetent: "1+F", ShortTakeoffPct: 75, ShortTakeoffDetent: "3"}       // 0 1 2 3 FULL: 1+F, 3, FULL
+	flaps737    = FlapSchedule{TakeoffPct: 37.5, ApproachPct: 62.5, LandingPct: 87.5, TakeoffDetent: "5", ShortTakeoffPct: 62.5, ShortTakeoffDetent: "15"} // 0 1 2 5 10 15 25 30 40: 5, 15, 30
+	flaps777    = FlapSchedule{TakeoffPct: 50, ApproachPct: 66.7, LandingPct: 100, TakeoffDetent: "15", ShortTakeoffPct: 66.7, ShortTakeoffDetent: "20"}   // 0 1 5 15 20 25 30: 15, 20, 30
+	flaps787    = FlapSchedule{TakeoffPct: 22.2, ApproachPct: 77.8, LandingPct: 100, TakeoffDetent: "5", ShortTakeoffPct: 44.4, ShortTakeoffDetent: "15"}  // 0 1 5 10 15 17 18 20 25 30: 5, 20, 30
+	flaps747    = FlapSchedule{TakeoffPct: 60, ApproachPct: 80, LandingPct: 100, TakeoffDetent: "10", ShortTakeoffPct: 66.7, ShortTakeoffDetent: "20"}     // 0 1 5 10 20 25 30: 10/20, 25, 30
+	flapsEJet   = FlapSchedule{TakeoffPct: 33.3, ApproachPct: 50, LandingPct: 100, TakeoffDetent: "2", ShortTakeoffPct: 66.7, ShortTakeoffDetent: "4"}     // 0 1 2 3 4 5 FULL: 2, 3, FULL
+	flapsCRJ    = FlapSchedule{TakeoffPct: 40, ApproachPct: 60, LandingPct: 100, TakeoffDetent: "8", ShortTakeoffPct: 60, ShortTakeoffDetent: "20"}        // 0 1 8 20 30 45: 8, 20, 45
+	flapsATR    = FlapSchedule{TakeoffPct: 50, ApproachPct: 50, LandingPct: 100, TakeoffDetent: "15"}                                                      // 0 15 30: 15, 15, 30
+	flapsQ400   = FlapSchedule{TakeoffPct: 25, ApproachPct: 75, LandingPct: 100, TakeoffDetent: "5", ShortTakeoffPct: 75, ShortTakeoffDetent: "15"}        // 0 5 10 15 35: 5, 15, 35
 )
 
 // knownTypes are the types ProfileFor resolves, matched against the

@@ -1,6 +1,7 @@
 package world
 
 import (
+	"cmp"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -474,6 +475,10 @@ type ControlView struct {
 	// (number, leader, spacing); nil when not sequenced.
 	Sequence *traffic.SequenceEntry `json:"sequence,omitempty"`
 	Done     bool                   `json:"done"`
+	// Takeoff is a departure's take-off configuration for its runway
+	// (#1566): flaps detent and percent, thrust (derate or full), short-field
+	// and a runway-limited weight; omitted until its taxi out starts.
+	Takeoff *traffic.TakeoffConfig `json:"takeoff,omitempty"`
 }
 
 type controlCenter struct {
@@ -1093,17 +1098,22 @@ func (cc *controlCenter) spawn(g *airport.Graph, r SpawnRequest) (*controlled, e
 	if cc.forgetTower != nil && r.Tail != "" && r.adopt == 0 {
 		cc.forgetTower(r.Tail)
 	}
+	if r.Model == "" {
+		r.Model = "FSLTL A320 Air France SL"
+	}
+	model, livery, _ := strings.Cut(r.Model, liverySep)
 	if auto {
-		r.Runway = cc.pickRunway(g, r.Kind == "arrival", r.Stand)
+		// One its aircraft can use (#1561).
+		rwy, err := cc.pickRunwayFor(g, r.Kind == "arrival", r.Stand, model)
+		if err != nil {
+			return nil, err
+		}
+		r.Runway = rwy
 	}
 	cc.mu.Lock()
 	cc.next++
 	n := cc.next
 	cc.mu.Unlock()
-	if r.Model == "" {
-		r.Model = "FSLTL A320 Air France SL"
-	}
-	model, livery, _ := strings.Cut(r.Model, liverySep)
 	// Airframe of the type: wheelbase (where the tug connects), span (stands).
 	ac := traffic.ProfileFor(model)
 	prof := ac.Motion
@@ -1155,7 +1165,14 @@ func (cc *controlCenter) spawn(g *airport.Graph, r SpawnRequest) (*controlled, e
 		return nil, err
 	}
 	if auto && r.Kind != "arrival" {
-		r.Runway = cc.runwayFor(g, false, r.Stand)
+		// One its stand reaches and its aircraft can use (#1561), or why
+		// none: not the router's hold-short message later.
+		rwy, err := cc.runwayForModel(g, false, r.Stand, model)
+		if err != nil {
+			alloc.ReleaseOwner(r.Tail)
+			return nil, err
+		}
+		r.Runway = rwy
 	}
 	started := false
 	defer func() {
@@ -1747,6 +1764,9 @@ func (it *controlled) update(ev TaxiOrArrival) {
 		v.State, v.HoldingShortOf, v.AtLimit, v.LimitNode = e.State.String(), e.HoldingShortOf, e.AtLimit, int(e.LimitNode)
 		v.HoldAt, v.ClearedPast = holdPointsView(it.graph, e.HoldAt, e.ClearedPast)
 		v.TaxiRemainingM = e.Remaining
+		if e.Takeoff != nil {
+			v.Takeoff = e.Takeoff
+		}
 		if e.State != traffic.TaxiHoldingShort {
 			it.heldShortAt = time.Time{}
 		} else if it.heldShortAt.IsZero() {
@@ -2620,7 +2640,16 @@ func registerControl(mux *http.ServeMux, st *state) {
 		// A departure without its stand yet and no flight plan: spawn picks
 		// the parallel nearest the stand it assigns.
 		if (req.Runway == "" || strings.EqualFold(req.Runway, "active")) && (req.Kind == "arrival" || req.Stand >= 0 || req.Other != "") {
-			req.Runway = cc.pickRunway(g, req.Kind == "arrival", req.Stand)
+			m, _, _ := strings.Cut(req.Model, liverySep)
+			if m == "" {
+				m = "FSLTL A320 Air France SL" // spawn's default
+			}
+			rwy, err := cc.pickRunwayFor(g, req.Kind == "arrival", req.Stand, m)
+			if err != nil {
+				http.Error(w, err.Error(), http.StatusUnprocessableEntity)
+				return
+			}
+			req.Runway = rwy
 		}
 		if req.Other != "" {
 			p, err := planFor(r.Context(), st, g, req)
@@ -3155,19 +3184,145 @@ func (cc *controlCenter) activeRunway(g *airport.Graph, arrival bool) string {
 // parallels in use together, the one nearest the stand (a negative stand:
 // the first).
 func (cc *controlCenter) runwayFor(g *airport.Graph, arrival bool, stand int) string {
+	r, err := cc.runwayForModel(g, arrival, stand, "")
+	if err != nil {
+		// None it reaches: the nearest in use, as ever.
+		return nav.Nearest(g.Layout, cc.runwaysInUse(g, arrival), g.Layout.Parking[stand].Position).Name
+	}
+	return r
+}
+
+// runwayForModel is runwayFor for a flight in model (#1561): of the
+// runways in use, those its aircraft can use (suitedEnds: an airliner not
+// on a grass strip, the long enough ones first; all of them when none
+// is); a departure from a stand, one its stand reaches, else another open
+// runway its aircraft can use and its stand reaches (the end nearest the
+// direction in use first). None: "" and why ("stand 26 reaches no runway
+// in use (09, 27)"). An empty model suits every runway.
+func (cc *controlCenter) runwayForModel(g *airport.Graph, arrival bool, stand int, model string) (string, error) {
 	ends := cc.runwaysInUse(g, arrival)
 	if len(ends) == 0 {
-		return ""
+		return "", nil
 	}
+	usable := firstSuited(g, ends, model)
 	if stand < 0 || stand >= len(g.Layout.Parking) {
-		return ends[0].Name
+		if len(usable) > 0 {
+			return usable[0].Name, nil
+		}
+		return ends[0].Name, nil
 	}
-	if !arrival && len(ends) > 1 {
-		if r := cc.balancedDeparture(g, ends, stand); r != "" {
-			return r
+	at := g.Layout.Parking[stand].Position
+	if arrival {
+		if len(usable) == 0 {
+			usable = ends
+		}
+		return nav.Nearest(g.Layout, usable, at).Name, nil
+	}
+	reaches := func(e airport.RunwayEnd) bool {
+		_, err := g.RouteToRunway(stand, e.Name, airport.RouteOptions{})
+		return err == nil
+	}
+	long, short := suitedEnds(g, ends, model)
+	for _, set := range [][]airport.RunwayEnd{long, short} {
+		if len(set) > 1 {
+			if r := cc.balancedDeparture(g, set, stand); r != "" {
+				return r, nil
+			}
+		}
+		if len(set) == 0 {
+			continue
+		}
+		// The one nearest the stand, as before, when it reaches it.
+		near := nav.Nearest(g.Layout, set, at)
+		if reaches(near) {
+			return near.Name, nil
+		}
+		for _, e := range set {
+			if e.Name != near.Name && reaches(e) {
+				return e.Name, nil
+			}
 		}
 	}
-	return nav.Nearest(g.Layout, ends, g.Layout.Parking[stand].Position).Name
+	// Another open runway its aircraft can use and its stand reaches: the
+	// end nearest the direction in use (a light aircraft on the grass
+	// strip beside the paved runway in use, LKTB 26 beside 27).
+	shut := nav.RunwayLimits{Closed: cc.core.closed(g.Layout.ICAO)}
+	var others []airport.RunwayEnd
+	for _, r := range g.Layout.Runways {
+		for _, e := range []airport.RunwayEnd{r.Primary, r.Secondary} {
+			if !shut.ClosedEnd(e.Name) && !slices.ContainsFunc(ends, func(u airport.RunwayEnd) bool { return u.Name == e.Name }) {
+				others = append(others, e)
+			}
+		}
+	}
+	turn := func(e airport.RunwayEnd) float64 { return math.Abs(math.Mod(e.Heading-ends[0].Heading+540, 360) - 180) }
+	olong, oshort := suitedEnds(g, others, model)
+	for _, set := range [][]airport.RunwayEnd{olong, oshort} {
+		slices.SortStableFunc(set, func(a, b airport.RunwayEnd) int { return cmp.Compare(turn(a), turn(b)) })
+		for _, e := range set {
+			if reaches(e) {
+				return e.Name, nil
+			}
+		}
+	}
+	label := fmt.Sprint(stand)
+	if l := g.Layout.Parking[stand].Label(); l != "" {
+		label = l
+	}
+	why := fmt.Sprintf("stand %s reaches no runway in use (%s)", label, strings.Join(nav.Names(ends), ", "))
+	if len(usable) == 0 {
+		why = fmt.Sprintf("no runway in use (%s) for its %s at stand %s", strings.Join(nav.Names(ends), ", "), traffic.ProfileFor(model).Type, label)
+	}
+	// One it reaches but cannot use: said (LKTB 26, grass, for an A320).
+	for _, r := range g.Layout.Runways {
+		if traffic.RunwaySuits(model, r) || shut.ClosedEnd(r.Primary.Name) && shut.ClosedEnd(r.Secondary.Name) {
+			continue
+		}
+		if reaches(r.Primary) || reaches(r.Secondary) {
+			why += fmt.Sprintf("; it reaches %s, %s, not for its %s", r.Name(), r.Surface, traffic.ProfileFor(model).Type)
+			break
+		}
+	}
+	return "", fmt.Errorf("%w: %s", airport.ErrNoRoute, why)
+}
+
+// runwayOfEnd is the runway of end name at g's airport (zero: not known).
+func runwayOfEnd(g *airport.Graph, name string) airport.Runway {
+	r, _, _ := g.Layout.RunwayEnd(name)
+	return r
+}
+
+// suitedEnds are the ends of ends whose runway an aircraft of model can
+// use (#1561, traffic.RunwaySuits: no airliner on a grass strip), in two
+// sets: long, as long as its take-off run (traffic.RunwayLongEnough), and
+// short, the others (the airport's choice still: the run is figured at
+// its maximum weight). An empty model: every end long.
+func suitedEnds(g *airport.Graph, ends []airport.RunwayEnd, model string) (long, short []airport.RunwayEnd) {
+	if model == "" {
+		return slices.Clone(ends), nil
+	}
+	elev := g.Layout.Altitude / 0.3048
+	for _, e := range ends {
+		r := runwayOfEnd(g, e.Name)
+		switch {
+		case !traffic.RunwaySuits(model, r):
+		case traffic.RunwayLongEnough(model, r, elev):
+			long = append(long, e)
+		default:
+			short = append(short, e)
+		}
+	}
+	return long, short
+}
+
+// firstSuited is the long set of suitedEnds when it has any, else the
+// short one, else nil.
+func firstSuited(g *airport.Graph, ends []airport.RunwayEnd, model string) []airport.RunwayEnd {
+	long, short := suitedEnds(g, ends, model)
+	if len(long) > 0 {
+		return long
+	}
+	return short
 }
 
 // departureQueueM: each departure already on the ground for a runway counts
@@ -3242,9 +3397,23 @@ func (w *World) DepartureRunway(icao, stand string) string {
 // nearest of parallels used together; an arrival without a stand yet, the
 // one with the fewest arrivals in its sequence.
 func (cc *controlCenter) pickRunway(g *airport.Graph, arrival bool, stand int) string {
+	r, _ := cc.pickRunwayFor(g, arrival, stand, "")
+	return r
+}
+
+// pickRunwayFor is pickRunway for a flight in model: a runway its aircraft
+// can use and, a departure, its stand reaches (runwayForModel); an error
+// says why there is none. An empty model: pickRunway, never an error.
+func (cc *controlCenter) pickRunwayFor(g *airport.Graph, arrival bool, stand int, model string) (string, error) {
 	ends := cc.runwaysInUse(g, arrival)
 	if len(ends) < 2 || !arrival || stand >= 0 {
-		return cc.runwayFor(g, arrival, stand)
+		if model == "" {
+			return cc.runwayFor(g, arrival, stand), nil
+		}
+		return cc.runwayForModel(g, arrival, stand, model)
+	}
+	if usable := firstSuited(g, ends, model); len(usable) > 0 {
+		ends = usable
 	}
 	var seqs map[string][]traffic.SequenceEntry
 	if cc.sequencesAt != nil {
@@ -3265,7 +3434,7 @@ func (cc *controlCenter) pickRunway(g *airport.Graph, arrival bool, stand int) s
 			best = e.Name
 		}
 	}
-	return best
+	return best, nil
 }
 
 // runwaysInUse are the runway ends in use for departures or arrivals at

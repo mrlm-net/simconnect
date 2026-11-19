@@ -233,6 +233,9 @@ type TaxiEvent struct {
 	StoppedBy string
 	// Lights is the light state the sim reports.
 	Lights Lights
+	// Takeoff is the take-off configuration chosen for the runway (flaps,
+	// thrust, weight; #1566), once the taxi out starts; nil before.
+	Takeoff *TakeoffConfig `json:",omitempty"`
 	// Err is set for TaxiFailed and for non-fatal warnings such as ErrTaxiStuck.
 	Err error
 }
@@ -342,6 +345,11 @@ type TaxiController struct {
 	holdingCrossing bool
 	alignDist       float64
 	takeoff         *TakeoffMover
+	// toConfig is the take-off configuration chosen for the runway
+	// (chooseTakeoff, #1566), toProfile the take-off flown in it; nil, zero
+	// before.
+	toConfig        *TakeoffConfig
+	toProfile       TakeoffProfile
 	gearUp          bool
 	gearUpAt        float64         // this crew's gear-up height above the runway (ft), drawn at the first airborne frame
 	gearDownSent    time.Time       // last "gear down" re-sent after lift-off (GearHoldEvery)
@@ -527,7 +535,7 @@ func (c *TaxiController) Start(req TaxiRequest) error {
 		c.padNode = node
 	}
 	req.Options.OwnStands = append(slices.Clone(req.Options.OwnStands), req.Parking) // not an obstacle to itself
-	route, err := req.Graph.RouteToRunwayEntry(req.Parking, req.Runway, req.Entry, req.Options)
+	route, err := departureRoute(req)
 	if err != nil {
 		return err
 	}
@@ -899,26 +907,84 @@ func (req TaxiRequest) takeoffRun() float64 {
 }
 
 // entryLongEnough refuses an intersection departure (TaxiRequest.Entry)
-// whose runway ahead is shorter than the aircraft needs: RequiredTakeoffRun
-// at the airport's elevation and temperature.
+// whose runway ahead of the entry is shorter than the aircraft needs:
+// RequiredTakeoffRun at the airport's elevation and temperature. A
+// full-length departure (Entry "") is not refused: departureRoute sends
+// it to the full-length entry when its holding point is too far in
+// (#1571), and where that is the most there is, its take-off
+// configuration is the crew's (#1566).
 func entryLongEnough(req TaxiRequest, route *airport.Route) error {
 	if req.Entry == "" || len(route.Nodes) == 0 {
 		return nil
 	}
-	entries, err := req.Graph.RunwayEntries(req.Runway)
-	if err != nil {
-		return nil
-	}
-	last := route.Nodes[len(route.Nodes)-1]
-	for _, e := range entries {
-		if !e.HeldAt(last) && e.Node != last {
-			continue
+	if left, _, ok := runwayAhead(req, route.Nodes[len(route.Nodes)-1]); ok {
+		if need := req.takeoffRun(); left < need {
+			return fmt.Errorf("%w: runway %s at %s leaves %.0f m, the aircraft needs %.0f m", ErrEntryTooShort, req.Runway, req.Entry, left, need)
 		}
-		need := req.takeoffRun()
-		if e.Remaining < need {
-			return fmt.Errorf("%w: runway %s at %s leaves %.0f m, the aircraft needs %.0f m", ErrEntryTooShort, req.Runway, req.Entry, e.Remaining, need)
-		}
-		return nil
 	}
 	return nil
+}
+
+// runShort: route joins req's runway more than FullLengthMeters in from
+// the threshold, with less runway left ahead than the aircraft needs.
+func runShort(req TaxiRequest, route *airport.Route) bool {
+	if route == nil || len(route.Nodes) == 0 {
+		return false
+	}
+	left, from, ok := runwayAhead(req, route.Nodes[len(route.Nodes)-1])
+	return ok && from > airport.FullLengthMeters && left < req.takeoffRun()
+}
+
+// runwayAhead is the runway left ahead (m) of a departure holding at node
+// last for req's runway end, and how far in from the threshold it joins:
+// its entry's, else the holding point's own place along the runway; false
+// when last is not one of that runway's holding points or entries.
+func runwayAhead(req TaxiRequest, last airport.NodeID) (left, from float64, ok bool) {
+	if entries, err := req.Graph.RunwayEntries(req.Runway); err == nil {
+		for _, e := range entries {
+			if e.HeldAt(last) || e.Node == last {
+				return e.Remaining, e.FromThreshold, true
+			}
+		}
+	}
+	rwy, end, okEnd := req.Graph.Layout.RunwayEnd(req.Runway)
+	if last < 0 || int(last) >= len(req.Graph.Nodes) || !okEnd {
+		return 0, 0, false
+	}
+	h := req.Graph.Nodes[last].HoldShort
+	if h == nil || h.Runway != rwy.Index {
+		return 0, 0, false
+	}
+	from = h.FromPrimary
+	if end.Name == rwy.Secondary.Name {
+		from = rwy.Length - h.FromPrimary
+	}
+	return rwy.Length - from, from, true
+}
+
+// departureRoute is req's route from its stand to its runway
+// (RouteToRunwayEntry). A full-length departure (Entry "") routed to a
+// holding point that leaves it too little runway goes to the end's
+// full-length entry instead, when there is one (#1571: TNCM 10, an A350
+// sent to B, 280 m in, past A at the threshold).
+func departureRoute(req TaxiRequest) (*airport.Route, error) {
+	route, err := req.Graph.RouteToRunwayEntry(req.Parking, req.Runway, req.Entry, req.Options)
+	if err != nil || req.Entry != "" || !runShort(req, route) {
+		return route, err
+	}
+	entries, eerr := req.Graph.RunwayEntries(req.Runway)
+	if eerr != nil || len(entries) == 0 || entries[0].Taxiway == "" || !req.Graph.ThresholdEntry(req.Runway) {
+		return route, nil
+	}
+	full, ferr := req.Graph.RouteToRunwayEntry(req.Parking, req.Runway, entries[0].Taxiway, req.Options)
+	if ferr != nil || len(full.Nodes) == 0 {
+		return route, nil
+	}
+	had, _, _ := runwayAhead(req, route.Nodes[len(route.Nodes)-1])
+	if left, _, ok := runwayAhead(req, full.Nodes[len(full.Nodes)-1]); !ok || left <= had {
+		return route, nil
+	}
+	// Still a full-length departure, not one at that entry.
+	full.Entry = ""
+	return full, nil
 }

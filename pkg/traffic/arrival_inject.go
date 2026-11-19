@@ -126,6 +126,7 @@ func (c *ArrivalController) takeover(m arrivalMonitor, pos airport.LatLon, onRun
 	axis := offsetHeading(stopNose, c.standHeading, -axisM)
 	pts := []airport.LatLon{nose}
 	hold, clear, onRwy := 0.0, 0.0, localDist(nose, route[0])
+	exitAt := 0.0 // the exit's first node off the runway; clear the same, but after a backtrack
 	var holds []holdOnPath
 	// Keep the route up to its last point before the stand axis start: the
 	// final stretch onto the stand is replaced by the axis. (Earlier points
@@ -143,7 +144,10 @@ func (c *ArrivalController) takeover(m arrivalMonitor, pos airport.LatLon, onRun
 			hold = math.Max(0, d-c.plan.VacateBackMeters)
 		}
 		if i == len(c.plan.Exit.Path)-1 {
-			clear = d // the exit's first node off the runway surface
+			exitAt = d
+		}
+		if i == c.plan.ClearAt() {
+			clear = d // the first node off the runway surface for good
 		}
 		if hs := c.req.Graph.Nodes[c.plan.Route.Nodes[i]].HoldShort; hs != nil && hs.Runway != c.plan.Runway.Index {
 			holds = append(holds, holdOnPath{runway: hs.Runway, index: i, node: c.plan.Route.Nodes[i], dist: d})
@@ -195,7 +199,14 @@ func (c *ArrivalController) takeover(m arrivalMonitor, pos airport.LatLon, onRun
 		if hold > clear {
 			fast = math.Min(fast, hold)
 		}
-		path.LimitRange(math.Max(onRwy-rolloutExitLeadM, 0), fast, exitKts, math.Min(math.Max(even, rolloutMinDecel), ro.BrakeDecel))
+		if c.plan.Backtrack && clear > exitAt {
+			// Turning round off the exit and back along the runway at
+			// BacktrackKts (#1563), the exit speed only to the exit.
+			path.LimitRange(math.Max(onRwy-rolloutExitLeadM, 0), exitAt, exitKts, math.Min(math.Max(even, rolloutMinDecel), ro.BrakeDecel))
+			path.LimitRange(exitAt, fast, BacktrackKts, ro.BrakeDecel)
+		} else {
+			path.LimitRange(math.Max(onRwy-rolloutExitLeadM, 0), fast, exitKts, math.Min(math.Max(even, rolloutMinDecel), ro.BrakeDecel))
+		}
 		// Then to taxi speed, planned firmly so it does not reach back over
 		// the rollout.
 		path.LimitRange(fast, path.Length(), prof.CruiseKts, ro.BrakeDecel)

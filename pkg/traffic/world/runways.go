@@ -283,6 +283,11 @@ func (t *towers) tick(now time.Time) {
 		default:
 			continue
 		}
+		if u.Arrival {
+			if p := it.arr.Plan(); p != nil && p.Backtrack {
+				u.Backtracks = true // back along the runway to its way off (#1563)
+			}
+		}
 		if c, ok := crossUseOf(it.ICAO, u, v.Position, it.dep != nil, t.givenTakeoff(v.Tail)); ok {
 			cross = append(cross, c)
 		}
@@ -516,13 +521,16 @@ func (t *towers) lineUpBehind(rc *traffic.RunwayController, icao, rwy string, li
 			delete(t.behind, dep) // gone, or no longer holding short
 			continue
 		}
-		phase, there := traffic.RunwayPhase(0), false
+		phase, there, back := traffic.RunwayPhase(0), false, false
 		for _, u := range list {
 			if u.Callsign == b.arrival {
-				phase, there = u.Phase, true
+				phase, there, back = u.Phase, true, u.Backtracks
 			}
 		}
 		passed := !there || phase != traffic.RunwayFinal
+		if there && back {
+			passed = false // it comes back along the runway: once it is off (#1563)
+		}
 		if b.departing {
 			// Behind a departure: once it is airborne, or from the full
 			// length once it is well into its roll and away (from an
@@ -556,7 +564,7 @@ func (t *towers) lineUpBehind(rc *traffic.RunwayController, icao, rwy string, li
 				if g, err := t.cc.graph(it.ICAO); err == nil {
 					l = g.Layout
 				}
-				passed = phase == traffic.RunwayRolling && l != nil && lead.AlongM > alongRunway(l, rwy, at)+traffic.IntersectionPassed(dep)
+				passed = !back && phase == traffic.RunwayRolling && l != nil && lead.AlongM > alongRunway(l, rwy, at)+traffic.IntersectionPassed(dep)
 			}
 		}
 		if passed && !b.cross {

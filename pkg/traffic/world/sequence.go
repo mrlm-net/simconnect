@@ -905,6 +905,7 @@ func (q *sequences) tick(now time.Time) {
 	// flying: route starts at the point it flies to (DistanceVia); else it
 	// is the planned route, found from where the aircraft is (DistanceToGo).
 	fixesOf := map[string][]traffic.FixAhead{} // named fixes ahead: merge points (#788)
+	occOf := map[string]time.Duration{}        // a backtrack after landing (#1563)
 	fed := map[string]bool{}
 	add := func(icao, rwy, cs, model string, p airport.LatLon, kts float64, route []airport.LatLon, flying, fixed, extendable bool) {
 		t, ok := threshold(icao, rwy)
@@ -921,7 +922,7 @@ func (q *sequences) tick(now time.Time) {
 		fed[cs] = true
 		prof := traffic.ProfileFor(model)
 		feed[key{icao, rwy}] = append(feed[key{icao, rwy}], traffic.ApproachAircraft{Callsign: cs, Wake: traffic.WakeFor(model),
-			DistanceToGoNM: dtg, GroundKts: kts, FinalKts: prof.Approach.ApproachKts, Fixed: fixed, Extendable: extendable, Fixes: fixesOf[cs]})
+			DistanceToGoNM: dtg, GroundKts: kts, FinalKts: prof.Approach.ApproachKts, Fixed: fixed, Extendable: extendable, Fixes: fixesOf[cs], RunwayOccupancy: occOf[cs]})
 	}
 	// Controlled arrivals, airborne.
 	q.cc.mu.Lock()
@@ -949,6 +950,9 @@ func (q *sequences) tick(now time.Time) {
 		}
 		if p == (airport.LatLon{}) {
 			continue
+		}
+		if pl := it.arr.Plan(); pl != nil && pl.Backtrack {
+			occOf[v.Tail] = traffic.RunwayOccupancyIn(traffic.WakeFor(v.Model), true, traffic.RunwayDry) + traffic.BacktrackOccupancy(pl.BacktrackMeters())
 		}
 		// On its procedure: what it still flies (dog-legs, a go-around's
 		// circuit); on the final (flown by injection, or MSFS AI without a

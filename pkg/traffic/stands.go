@@ -788,8 +788,14 @@ func (a *StandAllocator) TaxiIn(runwayEnd string, stand int) float64 {
 		return l
 	}
 	l = -1
-	if _, r, err := bestExit(a.g, runwayEnd, stand, airport.RouteOptions{}, exitReach{}); err == nil && r != nil {
+	if x, r, err := bestExit(a.g, runwayEnd, stand, airport.RouteOptions{}, exitReach{}); err == nil && r != nil {
 		l = r.Length
+		// Back along the runway (#1563): after every stand a taxiway reaches.
+		if rwy, _, ok := a.g.Layout.RunwayEnd(runwayEnd); ok {
+			if _, back := backtrackClear(a.g, r, x, rwy); back {
+				l += StandBacktrackPenaltyMeters
+			}
+		}
 	}
 	a.taxiInMu.Lock()
 	if a.taxiIn == nil {

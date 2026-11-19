@@ -364,15 +364,13 @@ type TakeoffConditions struct {
 
 // RequiredTakeoffRun is the runway an aircraft needs ahead of it to take off
 // (e.g. from an intersection): the distance to 35 ft flown by the
-// TakeoffMover with this profile, lengthened for the conditions (about 10%
-// per 1000 ft of elevation and 1% per °C above ISA) and by the certification
-// margin TakeoffRunMargin. Computed, so it follows the aircraft's figures.
+// TakeoffMover, lengthened for the conditions (about 10% per 1000 ft of
+// elevation and 1% per °C above ISA) and by the certification margin
+// TakeoffRunMargin. Computed, so it follows the aircraft's figures. It is
+// the shortest take-off the type can make (#1566): short-field at the
+// lowest weight it goes to (ShortFieldTakeoff at TakeoffMinWeightShare);
+// a runway that long or longer gets a configuration that fits
+// (ChooseTakeoff), a shorter one is not one it departs from.
 func RequiredTakeoffRun(p TakeoffProfile, c TakeoffConditions) float64 {
-	m := NewTakeoffMover(airport.LatLon{}, 0, 0, p)
-	pose := m.Pose()
-	for i := 0; i < 20*300 && pose.HeightFt < 35; i++ {
-		pose = m.Step(0.05)
-	}
-	factor := 1 + 0.10*math.Max(0, c.ElevationFt)/1000 + 0.01*math.Max(0, c.ISADeviationC)
-	return pose.Distance * factor * TakeoffRunMargin
+	return takeoffRunNormal(ShortFieldTakeoff(p, TakeoffMinWeightShare), c)
 }

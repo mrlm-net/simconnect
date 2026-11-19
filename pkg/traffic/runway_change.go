@@ -166,7 +166,7 @@ func (c *TaxiController) changeRoute(runway, entry string, departure []airport.N
 // planFromStand plans the departure from its stand again for req (rwy, end
 // its runway): the route, and how it leaves the stand. c.mu is held.
 func (c *TaxiController) planFromStand(req TaxiRequest, rwy airport.Runway, end airport.RunwayEnd) error {
-	route, err := req.Graph.RouteToRunwayEntry(req.Parking, req.Runway, req.Entry, req.Options)
+	route, err := departureRoute(req)
 	if err != nil {
 		return err
 	}

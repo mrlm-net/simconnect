@@ -83,6 +83,9 @@ func (c *TaxiController) profile() MotionProfile {
 }
 
 func (c *TaxiController) takeoffProfile() TakeoffProfile {
+	if c.toConfig != nil {
+		return c.toProfile // chosen for the runway (#1566)
+	}
 	return withDefaults(c.req.Takeoff, DefaultTakeoffProfile())
 }
 
@@ -392,8 +395,10 @@ func (c *TaxiController) onDepartureFrame(m taxiMonitor) {
 		if c.moveAt.IsZero() && c.tugClear() && c.enginesReady(now) && c.gate(c.taxiCleared) {
 			// Taxi light on, then release the brakes TaxiLightDelay later.
 			c.setInjectedLights(LightsTaxi, "lights taxi")
-			// Take-off flaps set after engine start, while taxiing out.
-			to := c.aircraft().Flaps.TakeoffPct
+			// Take-off flaps set after engine start, while taxiing out: the
+			// configuration for the runway ahead of the entry (#1566).
+			c.chooseTakeoff(c.plannedTakeoffRun())
+			to := c.toConfig.FlapsPct
 			c.flaps = surfaceRamp{target: to, rate: to / (FlapsSetSeconds * f(c.timing.flaps))}
 			c.moveAt = now.Add(time.Duration(float64(TaxiLightDelay) * f(c.timing.taxiLight)))
 		}
@@ -1828,6 +1833,7 @@ const rollOnMeters = 40.0
 // startTakeoff hands over from the ground mover to the take-off.
 func (c *TaxiController) startTakeoff() {
 	pose := c.mover.Pose()
+	c.chooseTakeoffAt(pose.Position) // for the runway ahead (#1566)
 	c.takeoff = NewTakeoffMover(pose.Position, c.end.Heading, pose.GroundSpeedKts, c.takeoffProfile())
 	c.takeoff.FromHeading(pose.Heading)
 	c.mover = nil
@@ -1837,7 +1843,7 @@ func (c *TaxiController) startTakeoff() {
 	c.takeoffPhase, c.flapsUpNoted = TakeoffRoll, false
 	c.setInjectedLights(lightsTakeoff, "lights take-off (landing)")
 	// Take-off thrust: heard spooling up (left alone, the engines idle).
-	c.note("take-off thrust", c.inj.SetThrottle(c.objectID, c.aircraft().EngineCount(), TakeoffThrottlePct))
+	c.note("take-off thrust", c.inj.SetThrottle(c.objectID, c.aircraft().EngineCount(), c.takeoffThrottlePct()))
 	c.setState(TaxiDeparting, nil)
 }
 
@@ -1880,13 +1886,13 @@ func (c *TaxiController) onTakeoffFrame() {
 	}
 	// Past the acceleration altitude the flaps follow the speed schedule:
 	// all out at the climb speed, up at the clean speed.
-	if fl, tp := c.aircraft().Flaps, c.takeoffProfile(); pose.HeightFt > fl.RetractFt && c.flaps.target > 0 {
-		to := fl.TakeoffPct * tp.FlapsShare(pose.GroundSpeedKts)
+	if fl, tp, tf := c.aircraft().Flaps, c.takeoffProfile(), c.takeoffFlapsPct(); pose.HeightFt > fl.RetractFt && c.flaps.target > 0 {
+		to := tf * tp.FlapsShare(pose.GroundSpeedKts)
 		if to < c.flaps.target {
-			if c.flaps.target == fl.TakeoffPct {
+			if c.flaps.target == tf {
 				c.seq.add(now, "acceleration: flaps retracting", pose.HeightFt, pose.GroundSpeedKts)
 			}
-			c.flaps.target, c.flaps.rate = to, fl.TakeoffPct/(FlapsRetractClimbSeconds*f(c.timing.flaps))
+			c.flaps.target, c.flaps.rate = to, tf/(FlapsRetractClimbSeconds*f(c.timing.flaps))
 		}
 	}
 	if !c.flapsUpNoted && c.takeoffPhase == TakeoffAirborne && c.flaps.target == 0 && c.flaps.pct == 0 {

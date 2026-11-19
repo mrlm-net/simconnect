@@ -57,6 +57,10 @@ type RunwayUser struct {
 	// (a crossing, other traffic). Traffic using the other end of the
 	// runway holds a take-off or a landing toward it (see Decide).
 	End string
+	// Backtracks: an arrival that, after its landing roll, turns round and
+	// taxis back along the runway to leave it (#1563): no departure lines up
+	// behind it, and the runway is its until it is off.
+	Backtracks bool
 	// GoingAround: an arrival climbing out ahead of the runway after its
 	// go-around (RunwayAirborne): no take-off below it (live, TVS648
 	// released behind EZY1672 going around on 06, 4.1 NM and 996 ft).
@@ -767,7 +771,8 @@ func (r *RunwayController) Decide(now time.Time, users []RunwayUser) RunwayClear
 			// goes once that one is off the runway — live, TVS1124 lined up
 			// behind CSA1232 and LOT775 behind it had to go around.
 			// Never behind one landing toward it from the other end.
-			if number == 1 && nextArrName != "" && nextArrUser.Established && len(out.LineUpBehind) == 0 && interval(u) == "" && nextArrUser.End == u.End &&
+			// Nor behind one backtracking toward it after landing (#1563).
+			if number == 1 && nextArrName != "" && nextArrUser.Established && len(out.LineUpBehind) == 0 && interval(u) == "" && nextArrUser.End == u.End && !nextArrUser.Backtracks &&
 				r.behindRoom(nextArr, nextArrUser, thenArr, u) {
 				out.LineUpBehind[u.Callsign] = nextArrName
 			}

@@ -88,7 +88,7 @@ func (cc *controlCenter) checkRunways(now time.Time) {
 			switch {
 			case v.Done:
 			case it.dep != nil && !slices.Contains(deps, v.Runway):
-				cc.changeDepartureRunway(g, it, cc.runwayFor(g, false, stand))
+				cc.changeDepartureRunway(g, it, cc.departureRunwayFor(g, it, stand))
 			case it.arr != nil && !slices.Contains(arrs, v.Runway):
 				if cc.changeArrivalRunway(g, it, cc.runwayFor(g, true, stand)) {
 					rejoined = append(rejoined, it)
@@ -180,12 +180,30 @@ func sameFix(list []airport.Procedure, old string) *airport.Procedure {
 	return nil
 }
 
+// departureRunwayFor is the runway departure it from stand takes after a
+// change of the runways in use: one its aircraft can use and its stand
+// reaches (runwayForModel, #1561); none, the nearest in use (runwayFor).
+func (cc *controlCenter) departureRunwayFor(g *airport.Graph, it *controlled, stand int) string {
+	it.mu.Lock()
+	model, _, _ := strings.Cut(it.view.Model, liverySep)
+	it.mu.Unlock()
+	if r, err := cc.runwayForModel(g, false, stand, model); err == nil && r != "" {
+		return r
+	}
+	return cc.runwayFor(g, false, stand)
+}
+
 // changeDepartureRunway re-clears a departure to runway: the SID, the
-// taxi route from where it is, said by the position working it.
+// taxi route from where it is, said by the position working it. The
+// runway it has already (a light aircraft kept on its grass strip): as it
+// is.
 func (cc *controlCenter) changeDepartureRunway(g *airport.Graph, it *controlled, runway string) {
 	it.mu.Lock()
-	oldSID, pos := it.view.Procedure, it.atc
+	oldSID, pos, own := it.view.Procedure, it.atc, it.view.Runway
 	it.mu.Unlock()
+	if runway == "" || strings.EqualFold(runway, own) {
+		return
+	}
 	var pts []airport.NavPoint
 	sid := ""
 	if oldSID != "" && cc.procedures != nil {
@@ -505,7 +523,7 @@ func (cc *controlCenter) changeOverdue(g *airport.Graph, items []*controlled, de
 			cc.mu.Unlock()
 			if changeOverdueNow(by, ok, changed, now) {
 				cc.log.printf("%-6s runway change: past the changeover, to the new runway", it.Tail)
-				cc.changeDepartureRunway(g, it, cc.runwayFor(g, false, stand))
+				cc.changeDepartureRunway(g, it, cc.departureRunwayFor(g, it, stand))
 			}
 			break
 		}

@@ -4,6 +4,7 @@ import (
 	"errors"
 	"math"
 	"slices"
+	"time"
 
 	"github.com/mrlm-net/simconnect/pkg/airport"
 	"github.com/mrlm-net/simconnect/pkg/calc"
@@ -249,9 +250,142 @@ func bestExit(g *airport.Graph, runwayEnd string, parking int, opts airport.Rout
 		}
 	}
 	if bestRoute == nil {
+		// None past the rollout reaches the stand (#1567): one braking
+		// firmly that does, before a backtrack.
+		if x, r, ok := firmExit(g, runwayEnd, exits, parking, opts, reach); ok {
+			return x, r, nil
+		}
+		if x, r, ok := backtrackExit(g, runwayEnd, exits, parking, opts, reach); ok {
+			return x, r, nil
+		}
 		return airport.RunwayExit{}, nil, lastErr
 	}
 	return best, bestRoute, nil
+}
+
+// firmExitDecel: braking (m/s²) an exit short of the planned rollout is
+// still made with, when no later exit reaches the stand (#1567): an
+// airliner's firm braking, not its limit.
+const firmExitDecel = 2.5
+
+// firmExit is bestExit's next try when no exit past the rollout reaches
+// the stand: the cheapest exit that does, reached braking at
+// firmExitDecel (the planned rollout's braking otherwise); false none.
+func firmExit(g *airport.Graph, runwayEnd string, exits []airport.RunwayExit, parking int, opts airport.RouteOptions, reach exitReach) (airport.RunwayExit, *airport.Route, bool) {
+	td, decel := reach.speeds()
+	decel = math.Max(decel, firmExitDecel)
+	at := exitTouchdownMeters
+	if reach.light() {
+		at = exitLightTouchdownMeters
+	}
+	var (
+		best      airport.RunwayExit
+		bestRoute *airport.Route
+		bestCost  = math.Inf(1)
+	)
+	for _, e := range exits {
+		v0, v1 := td*knot, math.Min(ExitSpeed(e), td)*knot
+		if landingAlong(g, runwayEnd, e) < at+(v0*v0-v1*v1)/(2*decel) {
+			continue
+		}
+		r, err := g.RouteFromRunway(e, parking, opts)
+		if err != nil {
+			continue
+		}
+		c := exitCost(e, r, reach.runwayCostPerM())
+		for _, x := range r.RunwayCrossings {
+			c += airport.DefaultRunwayCrossingPenalty
+			if rwy, _, ok := g.Layout.RunwayEnd(runwayEnd); ok && x == rwy.Name() {
+				c += exitCrossBackPenalty
+			}
+		}
+		if c < bestCost {
+			best, bestRoute, bestCost = e, r, c
+		}
+	}
+	return best, bestRoute, bestRoute != nil
+}
+
+// backtrackExit is bestExit's way to a stand no exit reaches by taxiways
+// (#1563: TNCM 10, no parallel taxiway to stands 0–20): back along the
+// landing runway, turning round off an exit (a turning bay) or at its end,
+// to an exit that does. Never one that turns on the spot (TurnsBack) or
+// runs along another runway; the cheapest of those past the rollout.
+func backtrackExit(g *airport.Graph, runwayEnd string, exits []airport.RunwayExit, parking int, opts airport.RouteOptions, reach exitReach) (airport.RunwayExit, *airport.Route, bool) {
+	rwy, _, ok := g.Layout.RunwayEnd(runwayEnd)
+	if !ok {
+		return airport.RunwayExit{}, nil, false
+	}
+	opts.UseRunwayPaths = true
+	var (
+		best      airport.RunwayExit
+		bestRoute *airport.Route
+		bestCost  = math.Inf(1)
+	)
+	for i, e := range exits {
+		if landingAlong(g, runwayEnd, e) < reach.rollout(ExitSpeed(e)) && i < len(exits)-1 {
+			continue
+		}
+		r, err := g.RouteFromRunway(e, parking, opts)
+		if err != nil || g.TurnsBack(r) {
+			continue
+		}
+		if _, ok := backtrackClear(g, r, e, rwy); !ok {
+			continue
+		}
+		c := exitCost(e, r, reach.runwayCostPerM()) + float64(len(r.RunwayCrossings))*airport.DefaultRunwayCrossingPenalty
+		if c < bestCost {
+			best, bestRoute, bestCost = e, r, c
+		}
+	}
+	return best, bestRoute, bestRoute != nil
+}
+
+// backtrackClear: route r from exit x backtracks along runway rwy (a
+// RUNWAY path after leaving it by x), and the route point where it is off
+// rwy's surface for good; false when it does not backtrack, or runs along
+// another runway.
+func backtrackClear(g *airport.Graph, r *airport.Route, x airport.RunwayExit, rwy airport.Runway) (int, bool) {
+	start := len(x.Path) - 1
+	back := false
+	for i := start; i < len(r.Edges); i++ {
+		if r.Edges[i].Type != types.SIMCONNECT_FACILITY_TAXI_PATH_TYPE_RUNWAY {
+			continue
+		}
+		if !onRunwaySurface(rwy, r.Points[i]) || !onRunwaySurface(rwy, r.Points[i+1]) {
+			return 0, false
+		}
+		back = true
+	}
+	if !back {
+		return 0, false
+	}
+	clear := start
+	for i := start; i < len(r.Points); i++ {
+		if onRunwaySurface(rwy, r.Points[i]) {
+			clear = i + 1
+		}
+	}
+	return min(clear, len(r.Points)-1), true
+}
+
+// onRunwaySurface reports whether p lies on runway r's surface.
+func onRunwaySurface(r airport.Runway, p airport.LatLon) bool {
+	a, b := r.Primary.Threshold, r.Secondary.Threshold
+	along := calc.AlongTrackMeters(a.Lat, a.Lon, b.Lat, b.Lon, p.Lat, p.Lon)
+	off := math.Abs(calc.CrossTrackMeters(a.Lat, a.Lon, b.Lat, b.Lon, p.Lat, p.Lon))
+	return along >= -1 && along <= r.Length+1 && off <= r.Width/2+1
+}
+
+// backtrackHold is the hold-short node for runway rwy route r passes at
+// or after its point from (the way off a backtrack), -1 none.
+func backtrackHold(g *airport.Graph, r *airport.Route, from int, rwy airport.Runway) airport.NodeID {
+	for i := from; i < len(r.Nodes)-2; i++ {
+		if hs := g.Nodes[r.Nodes[i]].HoldShort; hs != nil && hs.Runway == rwy.Index {
+			return r.Nodes[i]
+		}
+	}
+	return -1
 }
 
 // Exit choice weights: meters of taxi-in equivalent per degree of turn above
@@ -362,7 +496,48 @@ type ArrivalPlan struct {
 	VacateBackMeters float64
 	// Stop is where the aircraft stops on the stand (StandStop).
 	Stop airport.LatLon
+	// Backtrack: Route turns round off Exit (a turning bay, or the runway's
+	// end) and taxis back along the landing runway to leave it further
+	// back (#1563: no taxiway reaches the stand from any exit). The runway
+	// stays taken until it is off it, at Route point ClearIndex.
+	Backtrack  bool
+	ClearIndex int
 }
+
+// ClearAt is the Route point where the aircraft is off the landing
+// runway's surface: Exit's first taxiway node, or after a backtrack
+// ClearIndex.
+func (p *ArrivalPlan) ClearAt() int {
+	if p.Backtrack && p.ClearIndex > 0 {
+		return p.ClearIndex
+	}
+	return len(p.Exit.Path) - 1
+}
+
+// BacktrackMeters is how far the aircraft taxis on the runway after
+// leaving it by Exit (Backtrack): to ClearAt; 0 none.
+func (p *ArrivalPlan) BacktrackMeters() float64 {
+	if !p.Backtrack || p.Route == nil {
+		return 0
+	}
+	m := 0.0
+	for i := len(p.Exit.Path); i <= p.ClearAt() && i < len(p.Route.Points); i++ {
+		m += localDist(p.Route.Points[i-1], p.Route.Points[i])
+	}
+	return m
+}
+
+// BacktrackOccupancy is the extra time the runway stays taken by a
+// backtrack of meters at BacktrackKts, its turn round included.
+func BacktrackOccupancy(meters float64) time.Duration {
+	if meters <= 0 {
+		return 0
+	}
+	return time.Duration((meters/(BacktrackKts*knot) + backtrackTurnSeconds) * float64(time.Second))
+}
+
+// backtrackTurnSeconds: turning round for a backtrack, slowing and on.
+const backtrackTurnSeconds = 30.0
 
 // PlanArrival builds the waypoint chain from spawnNm out on final for
 // runwayEnd to the parking spot:
@@ -442,13 +617,21 @@ func PlanArrival(g *airport.Graph, runwayEnd string, parking int, o ArrivalOptio
 	p.Waypoints = append(p.Waypoints, ground.waypoint(rn.Lat, rn.Lon, exitKts))
 
 	// Roll clear of the runway to the vacate stop, then taxi-in from there.
-	p.VacateIndex, p.VacateBackMeters = vacateShort(g, route, x, vacateIndex(g, route, x, rwy))
+	// After a backtrack the stop is behind the way off the runway, not the
+	// exit turned round on.
+	vacx, maxKts := x, ExitSpeed(x)
+	if clear, ok := backtrackClear(g, route, x, rwy); ok {
+		p.Backtrack, p.ClearIndex = true, clear
+		vacx.Path, vacx.HoldShort = route.Nodes[:clear+1], backtrackHold(g, route, clear, rwy)
+		maxKts = math.Min(maxKts, BacktrackKts)
+	}
+	p.VacateIndex, p.VacateBackMeters = vacateShort(g, route, vacx, vacateIndex(g, route, vacx, rwy))
 	toStop := slices.Clone(route.Points[:p.VacateIndex+1])
 	if p.VacateBackMeters > 0 {
 		toStop[len(toStop)-1] = pointBack(toStop, p.VacateBackMeters)
 	}
 	p.Waypoints = append(p.Waypoints, groundLegs(thin(simplify(toStop), MinWaypointSpacingMeters), ground, legOptions{
-		maxKts: ExitSpeed(x), endKts: VacateStopKts, endMeters: 40,
+		maxKts: maxKts, endKts: VacateStopKts, endMeters: 40,
 	})...)
 	in, err := taxiIn(g, route, ground, o.NoseOffset, o.StandSide, p.VacateIndex)
 	if err != nil {
