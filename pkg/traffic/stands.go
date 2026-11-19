@@ -526,7 +526,10 @@ func (a *StandAllocator) rank(stands []int, runwayEnd string, offBlock time.Time
 	}
 	sort.SliceStable(out, func(x, y int) bool { return cost[out[x]] < cost[out[y]] })
 	// Not always the very best: the stands nearly as close (as a stand
-	// controller allocates, or a schedule's gates) in random order first.
+	// controller allocates, or a schedule's gates) in random order first,
+	// the least penalised of them first as without a runway. A draw alone
+	// put a fuller pier's stand ahead of an emptier one's, and LKPR's first
+	// eight gates went seven to C now and then (TestStandsSpreadOverPiers).
 	if a.spread > 0 && len(out) > 1 {
 		limit := cost[out[0]]*(1+a.spread) + StandSpreadMeters
 		n := 0
@@ -536,6 +539,7 @@ func (a *StandAllocator) rank(stands []int, runwayEnd string, offBlock time.Time
 		a.mu.Lock()
 		a.rng.Shuffle(n, func(x, y int) { out[x], out[y] = out[y], out[x] })
 		a.mu.Unlock()
+		sort.SliceStable(out[:n], func(x, y int) bool { return pen[out[x]] < pen[out[y]] })
 	}
 	return out
 }

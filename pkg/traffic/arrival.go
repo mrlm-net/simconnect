@@ -1237,6 +1237,10 @@ func (c *ArrivalController) VacateAt(x airport.RunwayExit) error {
 
 // exitTight is why x does not fit the aircraft (airport.Graph.ExitTight, or
 // no way on from it fits), "" when it does. c.mu held.
+//
+// The way on is the exit's fault only when the planned exit has one that
+// fits: a stand reached tight from every exit (a narrow apron) is tight
+// whichever exit is named, so it refuses none of them.
 func (c *ArrivalController) exitTight(x airport.RunwayExit) string {
 	g, req := c.req.Graph, c.req
 	opts := req.Options
@@ -1244,9 +1248,11 @@ func (c *ArrivalController) exitTight(x airport.RunwayExit) string {
 		opts.HalfSpan = half
 	}
 	why := g.ExitTight(x, c.plan.End.Heading, opts)
-	if why == "" {
+	if why == "" && x.Node != c.plan.Exit.Node {
 		if r, err := g.RouteFromRunway(x, req.Parking, opts); err == nil && r.Tight {
-			why = "no way on from it fits"
+			if cur, err := g.RouteFromRunway(c.plan.Exit, req.Parking, opts); err != nil || !cur.Tight {
+				why = "no way on from it fits"
+			}
 		}
 	}
 	return why
