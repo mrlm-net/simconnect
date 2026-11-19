@@ -122,6 +122,24 @@ type Parking struct {
 	// Suffix; "" (the sim's data) names the stand from those. Label
 	// returns it when set (#1556).
 	LabelText string `json:"label,omitempty"`
+	// RescueVehicles makes a vehicle depot a fire station: the number of
+	// rescue and firefighting vehicles it sends to a crash or fire (a
+	// layout builder sets it, e.g. from the airport's RFF category). 0 is
+	// not given: with no station given, the old default crew is sent
+	// (#1587). FireStations lists the depots that have one.
+	RescueVehicles int `json:"rescueVehicles,omitempty"`
+}
+
+// FireStations are the vehicle depots with a RescueVehicles count, by
+// parking index; none when the layout gives no count (#1587).
+func (l *Layout) FireStations() []int {
+	var out []int
+	for _, i := range l.VehicleDepots() {
+		if l.Parking[i].RescueVehicles > 0 {
+			out = append(out, i)
+		}
+	}
+	return out
 }
 
 // Label returns the parking spot's short name as shown to pilots and said

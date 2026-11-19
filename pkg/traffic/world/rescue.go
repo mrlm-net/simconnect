@@ -1,7 +1,9 @@
 package world
 
 import (
+	"fmt"
 	"math"
+	"sort"
 	"strings"
 	"sync"
 	"time"
@@ -108,9 +110,9 @@ type rescueCrews struct {
 }
 
 // rescueTitles are the vehicles of a crew: an ambulance for a medical, else
-// rescueFireTrucks fire trucks (GSX's by preference); none when the
+// n fire trucks (GSX's by preference); none when the
 // simulator offers none.
-func (cc *controlCenter) rescueTitles(medical bool) []string {
+func (cc *controlCenter) rescueTitles(medical bool, n int) []string {
 	cc.mu.Lock()
 	titles := cc.groundTitles
 	cc.mu.Unlock()
@@ -153,9 +155,9 @@ func (cc *controlCenter) rescueTitles(medical bool) []string {
 		}
 	}
 	if len(gsx) > 0 {
-		return pick(gsx, rescueFireTrucks)
+		return pick(gsx, n)
 	}
-	return pick(stock, rescueFireTrucks)
+	return pick(stock, n)
 }
 
 // rescueName is a's name among those with priority (as priorityClose).
@@ -290,13 +292,16 @@ func (cc *controlCenter) sendRescue(name string, a traffic.TrackedAircraft, medi
 		return
 	}
 	rwy := cc.rescueRunway(name, a.User, a.Airport)
-	titles := cc.rescueTitles(medical)
-	if rwy == "" || len(titles) == 0 {
-		cc.log.printf("%-6s rescue: none to send (runway %q, %d vehicles offered)", name, rwy, len(titles))
+	var legs []rescueLeg
+	if rwy != "" {
+		legs = cc.rescuePlan(g.Layout, rwy, medical)
+	}
+	if rwy == "" || len(legs) == 0 {
+		cc.log.printf("%-6s rescue: none to send (runway %q, %d vehicles offered)", name, rwy, len(legs))
 		return
 	}
-	spots := traffic.RescueStandby(g.Layout, rwy, len(titles))
-	if len(spots) < len(titles) {
+	spots := traffic.RescueStandby(g.Layout, rwy, len(legs))
+	if len(spots) < len(legs) {
 		cc.log.printf("%-6s rescue: runway %s unknown at %s", name, rwy, a.Airport)
 		return
 	}
@@ -306,14 +311,21 @@ func (cc *controlCenter) sendRescue(name string, a traffic.TrackedAircraft, medi
 		return
 	}
 	c := &rescueCrew{tail: name, icao: a.Airport, runway: rwy, medical: medical, defBase: defBase, target: a}
-	for i, title := range titles {
-		t := traffic.NewSimObjectRescue(cc.client, cc.inj, title, reqBase+uint32(i))
+	stations := map[airport.LatLon]bool{}
+	var prev *traffic.SimObjectRescue
+	for i, leg := range legs {
+		t := traffic.NewSimObjectRescue(cc.client, cc.inj, leg.title, reqBase+uint32(i))
 		t.Layout = g.Layout
+		if leg.depot != nil {
+			t.Depot, t.After = leg.depot, prev
+			stations[*leg.depot] = true
+		}
 		if err := t.Standby(spots[i]); err != nil {
-			cc.log.printf("%-6s rescue: %s: %v", name, title, err)
+			cc.log.printf("%-6s rescue: %s: %v", name, leg.title, err)
 			continue
 		}
 		c.trucks = append(c.trucks, t)
+		prev = t
 	}
 	if len(c.trucks) == 0 {
 		cc.ids.Release(defBase)
@@ -326,7 +338,72 @@ func (cc *controlCenter) sendRescue(name string, a traffic.TrackedAircraft, medi
 	if medical {
 		what = "ambulance"
 	}
-	cc.log.printf("%-6s rescue: %d %s to standby beside %s %s", name, len(c.trucks), what, a.Airport, rwy)
+	from := ""
+	if len(stations) > 0 {
+		from = fmt.Sprintf(" from %d fire station(s)", len(stations))
+	}
+	cc.log.printf("%-6s rescue: %d %s%s to standby beside %s %s", name, len(c.trucks), what, from, a.Airport, rwy)
+}
+
+// rescueLeg is one vehicle of a crew: its title and the fire station it
+// leaves from (nil: the depot nearest its standby point).
+type rescueLeg struct {
+	title string
+	depot *airport.LatLon
+}
+
+// rescueMaxVehicles caps a crew at its block of request IDs.
+const rescueMaxVehicles = int(controlIDBlock)
+
+// rescuePlan is the crew for an aircraft landing on rwy (#1587). Without
+// fire stations in the layout (no depot with RescueVehicles), as before:
+// rescueFireTrucks fire trucks, or an ambulance for a medical. With them,
+// for a crash or fire each station sends all its vehicles (the station
+// nearest the landing threshold first, capped at rescueMaxVehicles); for
+// a medical the nearest station sends the reduced set: an ambulance, or
+// one fire truck when the simulator offers no ambulance.
+func (cc *controlCenter) rescuePlan(l *airport.Layout, rwy string, medical bool) []rescueLeg {
+	stations := l.FireStations()
+	var legs []rescueLeg
+	if len(stations) == 0 {
+		for _, t := range cc.rescueTitles(medical, rescueFireTrucks) {
+			legs = append(legs, rescueLeg{title: t})
+		}
+		return legs
+	}
+	if _, end, ok := l.RunwayEnd(rwy); ok {
+		at := func(i int) float64 {
+			p := l.Parking[i].Position
+			return calc.HaversineMeters(p.Lat, p.Lon, end.Threshold.Lat, end.Threshold.Lon)
+		}
+		sort.SliceStable(stations, func(i, j int) bool { return at(stations[i]) < at(stations[j]) })
+	}
+	depot := func(i int) *airport.LatLon {
+		p := l.Parking[i].Position
+		return &p
+	}
+	if medical {
+		titles := cc.rescueTitles(true, 1)
+		if len(titles) == 0 {
+			titles = cc.rescueTitles(false, 1)
+		}
+		for _, t := range titles {
+			legs = append(legs, rescueLeg{title: t, depot: depot(stations[0])})
+		}
+		return legs
+	}
+	total := 0
+	for _, s := range stations {
+		total += l.Parking[s].RescueVehicles
+	}
+	titles := cc.rescueTitles(false, min(total, rescueMaxVehicles))
+	for _, s := range stations {
+		for k := 0; k < l.Parking[s].RescueVehicles && len(titles) > 0; k++ {
+			legs = append(legs, rescueLeg{title: titles[0], depot: depot(s)})
+			titles = titles[1:]
+		}
+	}
+	return legs
 }
 
 // rescueHome sends c's vehicles home. cc.rescue.mu held.

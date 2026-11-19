@@ -7,6 +7,17 @@ This project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 ---
 
+## [0.185.0] - 2026-11-19
+
+### Added
+
+- Fire stations in the airport layout (#1587): a vehicle depot's new `rescueVehicles` (`RawParking.RescueVehicles`, `Parking.RescueVehicles`, JSON `rescueVehicles`, omitted when 0) is its number of rescue and firefighting vehicles, set by a layout builder (for example from the airport's RFF category); `Layout.FireStations()` lists the depots that have one. The World's rescue crews use it: for any emergency but a medical every fire station sends all its vehicles (at most 10 a crew), the station nearest the landing threshold first, each to its own standby point beside the runway (more than 3 spread from a fifth to four fifths of its length); a medical gets an ambulance from the nearest station, or one fire truck there when the simulator offers no ambulance. Without a count on any depot nothing changes: 2 fire trucks (an ambulance for a medical) from the depot nearest their standby points (#1587).
+- `traffic.SimObjectRescue.Depot` (the station it leaves from and goes home to; nil the nearest depot, as before) and `After` (the vehicle leaving before it): vehicles from one station appear one after another, each once the one before is `RescueDepotGapMeters` (30 m) on its way, never on top of one another; `Waiting()` reports one still at the station (#1587).
+
+### Changed
+
+- `traffic.RescueStandby` gives any number of standby points: up to 3 as before (a third, half, two thirds of the runway), more spread evenly from a fifth to four fifths (#1587).
+
 ## [0.184.0] - 2026-11-19
 
 ### Added

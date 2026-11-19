@@ -109,6 +109,9 @@ type RawParking struct {
 	// from data outside the sim (the AIP, OSM); "" names the stand from
 	// Name, Number and Suffix. Parking.LabelText (#1556).
 	Label string `json:"label,omitempty"`
+	// RescueVehicles is a vehicle depot's fire and rescue vehicle count,
+	// set by a layout builder; 0 not given. Parking.RescueVehicles (#1587).
+	RescueVehicles int `json:"rescueVehicles,omitempty"`
 }
 
 // rawParkingWire is the TAXI_PARKING record as the sim sends it: all
@@ -182,18 +185,19 @@ func BuildLayout(raw RawAirport) (*Layout, error) {
 	}
 	for i, p := range raw.Parking {
 		l.Parking = append(l.Parking, Parking{
-			Index:     i,
-			Name:      types.SIMCONNECT_FACILITY_TAXI_PARKING_NAME(p.Name),
-			Suffix:    types.SIMCONNECT_FACILITY_TAXI_PARKING_NAME(p.Suffix),
-			Number:    p.Number,
-			Type:      types.SIMCONNECT_FACILITY_TAXI_PARKING_TYPE(p.Type),
-			Heading:   float64(p.Heading),
-			Radius:    float64(p.Radius),
-			BiasX:     float64(p.BiasX),
-			BiasZ:     float64(p.BiasZ),
-			Position:  offset(p.BiasX, p.BiasZ),
-			Airlines:  raw.ParkingAirlines[i],
-			LabelText: strings.TrimSpace(p.Label),
+			Index:          i,
+			Name:           types.SIMCONNECT_FACILITY_TAXI_PARKING_NAME(p.Name),
+			Suffix:         types.SIMCONNECT_FACILITY_TAXI_PARKING_NAME(p.Suffix),
+			Number:         p.Number,
+			Type:           types.SIMCONNECT_FACILITY_TAXI_PARKING_TYPE(p.Type),
+			Heading:        float64(p.Heading),
+			Radius:         float64(p.Radius),
+			BiasX:          float64(p.BiasX),
+			BiasZ:          float64(p.BiasZ),
+			Position:       offset(p.BiasX, p.BiasZ),
+			Airlines:       raw.ParkingAirlines[i],
+			LabelText:      strings.TrimSpace(p.Label),
+			RescueVehicles: max(0, p.RescueVehicles),
 		})
 	}
 	for i, t := range raw.TaxiPoints {
