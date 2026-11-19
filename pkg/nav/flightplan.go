@@ -324,16 +324,19 @@ func Plan(req FlightPlanRequest, g *AirwayGraph) (*FlightPlan, error) {
 		arrElev = runwayAltitude(req.Arrival.Layout, arrEnd.Name, arrElev)
 	}
 
-	// Procedures: the SID and arrival pair with the shortest path.
+	// Procedures: the SID and arrival pair with the shortest path. Their
+	// runway fixes on the runway ends, not the centre (#1573).
 	sids := []sidOption{{}}
 	if p := req.Departure.Procedures; p != nil {
-		if o := sidOptions(p, depRwy, depDER, depElev); len(o) > 0 {
+		placed, _ := p.AtRunwayEnds(req.Departure.Layout)
+		if o := sidOptions(&placed, depRwy, depDER, depElev); len(o) > 0 {
 			sids = o
 		}
 	}
 	arrs := []arrivalOption{{}}
 	if p := req.Arrival.Procedures; p != nil {
-		if o := arrivalOptions(p, arrRwy, req.Approach, req.ApproachTransition, fp.note); len(o) > 0 {
+		placed, _ := p.AtRunwayEnds(req.Arrival.Layout)
+		if o := arrivalOptions(&placed, arrRwy, req.Approach, req.ApproachTransition, fp.note); len(o) > 0 {
 			arrs = o
 		}
 	}

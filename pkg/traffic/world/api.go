@@ -224,6 +224,9 @@ func (w *World) LoadFile(path string) (string, error) {
 		return "", fmt.Errorf("%s: %w", path, err)
 	}
 	w.st.cache.Put(l)
+	w.st.mu.Lock()
+	w.st.placeRunwayFixesLocked(l.ICAO) // procedures loaded first
+	w.st.mu.Unlock()
 	if fi, err := os.Stat(path); err == nil {
 		w.st.mu.Lock()
 		w.st.fetched[l.ICAO] = fi.ModTime().UTC()
@@ -254,6 +257,7 @@ func (w *World) LoadProceduresFile(path string) (string, error) {
 		w.st.procedures = map[string]airport.Procedures{}
 	}
 	w.st.procedures[p.ICAO] = p
+	w.st.placeRunwayFixesLocked(p.ICAO)
 	w.st.mu.Unlock()
 	return p.ICAO, nil
 }

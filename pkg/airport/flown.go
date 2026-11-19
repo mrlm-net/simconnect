@@ -86,6 +86,8 @@ func FlownRouteFor(req FlownRequest) (FlownRoute, error) {
 	if req.Departure == nil || req.Arrival == nil {
 		return FlownRoute{}, fmt.Errorf("airport: flown route needs both airports")
 	}
+	req.DepartureProcedures, _ = req.DepartureProcedures.AtRunwayEnds(req.Departure)
+	req.ArrivalProcedures, _ = req.ArrivalProcedures.AtRunwayEnds(req.Arrival)
 	dep, ok := req.Departure.runwayEnd(req.DepartureRunway)
 	if !ok {
 		return FlownRoute{}, fmt.Errorf("%w: %s at %s", ErrUnknownRunway, req.DepartureRunway, req.Departure.ICAO)

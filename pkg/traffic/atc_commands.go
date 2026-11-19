@@ -302,7 +302,7 @@ func (c *ArrivalController) GoAround() error {
 	// The published missed approach where known: its points (none when it
 	// climbs straight ahead for vectors, as at LKPR) at its altitude, which
 	// the circuit keeps too; then round the circuit onto the final.
-	missed, circuitFt := missedWaypoints(c.req.MissedApproach, circuitFt)
+	missed, circuitFt := missedWaypoints(climbOutMissed(c.req.MissedApproach, end.LandingThreshold(), end.Heading, c.goAroundClimbNM()*1852), circuitFt)
 	if lim := c.req.Airport; lim != nil && lim.GoAroundFt > circuitFt {
 		circuitFt = lim.GoAroundFt // the airport's own (LKPR 5000 ft)
 		for i := range missed {
@@ -362,6 +362,11 @@ func (c *ArrivalController) GoAround() error {
 	}
 	c.approach = nil
 	c.proc, c.procNext, c.circuit, c.tromboneNM = &ArrivalProcedure{Waypoints: wps, Join: joinAt, JoinMeters: join}, 0, true, 0
+	// Its circuit is flown at the approach speed: what a merge behind
+	// another plans from, not the STAR's 250 kt (#1573: DLH299 told 190 kt
+	// to lose 1m20s while it flew 180 already, the conflict watch then
+	// turning it away from AFR971).
+	c.procSpeed = ProcedureApproachSpeedKts
 	c.newApproach(circuitFt)
 	c.flyingProc, c.blend, c.gaGearUp = true, joinBlend{}, false
 	c.monitorEvery(types.SIMCONNECT_PERIOD_SECOND)
@@ -397,6 +402,35 @@ func (c *ArrivalController) FinalSlowGain() time.Duration {
 
 // missedWaypoints are the points of a published missed approach at its
 // highest altitude (at least minFt), and that altitude.
+// climbOutMissedCrossM: a missed approach point this close to the
+// extended centreline is on the climb straight ahead.
+const climbOutMissedCrossM = 0.5 * 1852
+
+// climbOutMissed is missed with its points straight ahead of the threshold
+// t (along heading hdg) but short of the go-around's climb-out (climbM, as
+// goAroundClimbNM) put at the climb-out's end: never a turn inside the VFR
+// circuit. A missed approach that climbs straight ahead from the runway
+// fix on a leg without an end (LKPR: FM from RW06) ends where its drawing
+// stops, 5 km from the runway fix: 2.7 NM from the threshold once the
+// fix is there, not at the runway's centre (#1573). The points stay as
+// many (their names go with them).
+func climbOutMissed(missed []airport.NavPoint, t airport.LatLon, hdg, climbM float64) []airport.NavPoint {
+	ahead := offsetHeading(t, hdg, 10*1852)
+	end := offsetHeading(t, hdg, climbM)
+	out := make([]airport.NavPoint, 0, len(missed))
+	for _, n := range missed {
+		if n.Position != (airport.LatLon{}) {
+			along := alongHeading(t, hdg, n.Position)
+			cross := calc.CrossTrackMeters(t.Lat, t.Lon, ahead.Lat, ahead.Lon, n.Position.Lat, n.Position.Lon)
+			if along >= 0 && along < climbM && math.Abs(cross) < climbOutMissedCrossM {
+				n.Position = end
+			}
+		}
+		out = append(out, n)
+	}
+	return out
+}
+
 func missedWaypoints(missed []airport.NavPoint, minFt float64) ([]types.SIMCONNECT_DATA_WAYPOINT, float64) {
 	top := minFt
 	for _, n := range missed {

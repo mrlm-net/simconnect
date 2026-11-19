@@ -237,6 +237,13 @@ func (c *ArrivalController) absorb(delay time.Duration, withinNM float64) (Absor
 		out = append(out, w)
 	}
 	stretched := false
+	// Round its circuit back to the final after a go-around: the others
+	// it follows meet it where it turns base, so its downwind is extended
+	// however far on that is, and never a dog-leg off its climb-out or
+	// crosswind (#1573: DLH299 at LKPR 06 sent off its upwind on "heading
+	// 130" and round a loop, its downwind ahead and the meeting at its base
+	// turn, past "within").
+	circuitBack := c.circuit && c.req.Circuit == nil
 	baseAt, apexAt := -1, -1          // the new base turn, the dog-leg's apex (in out)
 	var legFrom, legTo airport.LatLon // the leg the dog-leg stretches
 	// A longer downwind, the way a controller extends it: on along the
@@ -255,12 +262,15 @@ func (c *ArrivalController) absorb(delay time.Duration, withinNM float64) (Absor
 		short := c.tromboneNM == 0 && x < math.Max(a.SpeedKts, speed)*MinDownwindVector.Hours()
 		if x > 0.2 {
 			ext, k, f, ok := extendDownwindAt(pos, out, wps[final], wps[final+1], x)
-			if ok && withinNM > 0 && cum[min(f+1, len(cum)-1)] > withinNM+downwindMeetSlackNM {
+			if ok && withinNM > 0 && !circuitBack && cum[min(f+1, len(cum)-1)] > withinNM+downwindMeetSlackNM {
 				ok = false
 			}
 			if ok && short {
 				a.Left += time.Duration(a.ExtraNM / math.Max(a.SpeedKts, speed) * float64(time.Hour))
 				a.ExtraNM, ok = 0, false
+			}
+			if ok && circuitBack {
+				widenGoAroundDownwind(ext, k+1, wps[final], wps[final+1])
 			}
 			if ok {
 				out, c.tromboneNM, stretched, baseAt = ext, c.tromboneNM+x, true, k+1
@@ -332,7 +342,7 @@ func (c *ArrivalController) absorb(delay time.Duration, withinNM float64) (Absor
 	// One dog-leg an approach as a rule: given one already (flown, or
 	// re-planned away), another only for SecondDogLegFrom or more (live,
 	// OKBZM: out and back for 12 s, then out again); less is left to speed.
-	if a.ExtraNM > 0 && !stretched && reuse < 0 && c.dogLegs > 0 && extraFor(a, speed) < SecondDogLegFrom {
+	if a.ExtraNM > 0 && !stretched && reuse < 0 && (circuitBack || c.dogLegs > 0 && extraFor(a, speed) < SecondDogLegFrom) {
 		a.Left += extraFor(a, speed)
 		a.ExtraNM = 0
 	}
@@ -1444,4 +1454,31 @@ func (c *ArrivalController) keepReach(plain []types.SIMCONNECT_DATA_WAYPOINT) {
 	if a.Latitude != b.Latitude || a.Longitude != b.Longitude {
 		c.reachFirst = false
 	}
+}
+
+// goAroundWidenNM: how much wider than GoAroundOffsetNm a go-around's
+// extended downwind runs (widenGoAroundDownwind).
+const goAroundWidenNM = 1.5
+
+// widenGoAroundDownwind moves the end of a go-around's extended downwind
+// (ext[at]) out to GoAroundOffsetNm+goAroundWidenNM off the final (align,
+// join): the arrivals it follows turn base inside it there, coming down
+// to the final beside it (#1573, offline LKPR 24: AFR971 leaving 6000 ft
+// on its base 2.9 NM from DLH299 on its downwind at 5000). Once: an end
+// that far out already stays.
+func widenGoAroundDownwind(ext []types.SIMCONNECT_DATA_WAYPOINT, at int, align, join types.SIMCONNECT_DATA_WAYPOINT) {
+	if at < 0 || at >= len(ext) {
+		return
+	}
+	d := ext[at]
+	x := calc.CrossTrackMeters(join.Latitude, join.Longitude, align.Latitude, align.Longitude, d.Latitude, d.Longitude)
+	more := (GoAroundOffsetNm+goAroundWidenNM)*1852 - math.Abs(x)
+	if more <= 0 {
+		return
+	}
+	hdg := calc.BearingDegrees(join.Latitude, join.Longitude, align.Latitude, align.Longitude) + 90
+	if x < 0 {
+		hdg += 180
+	}
+	ext[at].Latitude, ext[at].Longitude = calc.DisplaceByHeading(d.Latitude, d.Longitude, math.Mod(hdg, 360), more)
 }

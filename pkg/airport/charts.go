@@ -82,6 +82,7 @@ const chartVectorsMeters = 9000.0
 
 // Charts builds the chart of l's procedures p.
 func Charts(l *Layout, p Procedures) ChartSet {
+	p, _ = p.AtRunwayEnds(l)
 	out := ChartSet{SIDs: []ChartProc{}, STARs: []ChartProc{}, Approaches: []ChartProc{}, Fixes: []ChartFix{}}
 	fixes := map[string]*ChartFix{}
 	addFixes := func(legs []Leg) {
