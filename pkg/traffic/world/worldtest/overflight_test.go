@@ -192,6 +192,9 @@ func runOverflights(t *testing.T, root, icao string, hours int, run overflightRu
 	if testing.Verbose() && os.Getenv("WORLDTEST_LOG") != "" {
 		o.World.Output = os.Stderr
 	}
+	if run.keepClear {
+		o.World.Airspaces = bedAirspaces(root) // the terminal airspace (#1486)
+	}
 	h, err := Start(o)
 	if err != nil {
 		t.Fatal(err)
@@ -214,6 +217,7 @@ func runOverflights(t *testing.T, root, icao string, hours int, run overflightRu
 	end := start.Truncate(time.Hour).Add(time.Duration(hours) * time.Hour) // whole hours
 	centre := airport.LatLon{Lat: h.Layout.Latitude, Lon: h.Layout.Longitude}
 	m.crossing = newCrossingMetrics(h, centre)
+	m.crossing.terminal(root, h.Layout.Altitude/0.3048)
 
 	over := map[string]bool{}  // the overflights' call signs
 	wrong := map[string]bool{} // flew a level of the other direction
@@ -410,7 +414,9 @@ func runOverflights(t *testing.T, root, icao string, hours int, run overflightRu
 		}
 	}
 
-	// Per hour: planned (by the time each enters the area), entered (created).
+	// Per hour: planned (by the time each enters the area), entered (created);
+	// the transits (#1485) are not the generator's overflights.
+	transit := m.crossing.transitSet()
 	cfg := traffic.DefaultScheduleConfig()
 	hf := fnv.New64a()
 	var names []string
@@ -429,6 +435,9 @@ func runOverflights(t *testing.T, root, icao string, hours int, run overflightRu
 	for hr := start.Truncate(time.Hour); hr.Before(end); hr = hr.Add(time.Hour) {
 		x := overflightHour{at: hr, mean: traffic.OverflightRate(cfg, traffic.OverflightOptions{Centre: centre, RadiusNM: 100, PerHour: rateOf(m.perHour, run), Exclude: []string{icao}, Flows: run.flows}, hr)}
 		for _, cs := range names {
+			if transit[cs] {
+				continue
+			}
 			f, enter := m.planned[cs], m.enter0[cs]
 			if enter.Before(hr) || !enter.Before(hr.Add(time.Hour)) {
 				continue
@@ -526,7 +535,7 @@ func (m *overflightMetrics) report(t *testing.T) {
 	if m.tiers != nil {
 		m.tiers.report(&b, m)
 	}
-	m.crossing.report(&b)
+	m.crossing.report(&b, m)
 	t.Log(b.String())
 }
 

@@ -15,6 +15,18 @@ func (r overflightRun) traffic() world.OverflightTraffic {
 	if r.flows {
 		o.OverflightFlows = &on
 	}
+	if r.routes {
+		o.OverflightRoutes = &on
+	}
+	if r.transits {
+		o.Transits = &on
+	}
+	if r.keepClear {
+		o.CrossingKeepClear = &on
+	}
+	if r.radio {
+		o.OverflightRadio = &on
+	}
 	return o
 }
 

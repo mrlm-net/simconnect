@@ -1127,6 +1127,8 @@ func runOn(ctx context.Context, st *state, client engine.Client, stream <-chan e
 				lastPos[id] = fix{lat: t.Lat, lon: t.Lon, at: now, altFt: t.AltFt, vs: vs}
 				if uint32(d.DwEntryNumber) <= 1 {
 					scan = scan[:0] // a new scan
+					// Its positions' time (scanTime).
+					cc.core.scanFrom.Store(cc.clock.Now().UnixNano())
 				}
 				// Named, and an invisible jetway helper (#572) left out, as the
 				// scan ends (trafficNames.fill): the scan still ends on a

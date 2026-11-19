@@ -200,6 +200,7 @@ func (cc *controlCenter) checkStaffed(now time.Time) {
 // /api/stations/staffed (a []StaffedStation, replacing it; with ?as= a
 // player's own, SetStaffedBy).
 func registerStaffed(mux *http.ServeMux, w *World) {
+	registerEnrouteInstruct(mux, w) // en-route aircraft (#1487)
 	mux.HandleFunc("GET /api/stations/staffed", func(rw http.ResponseWriter, r *http.Request) {
 		writeJSON(rw, w.Staffed())
 	})

@@ -82,6 +82,12 @@ func (s *scheduler) clearLevel(callsign string, route []traffic.RoutePoint) ([]t
 			continue
 		}
 		r := atLevel(route, cruise, ft)
+		if tma, ok := s.keepsClear(callsign, r); !ok {
+			if step == 0 {
+				first = tma + " terminal airspace" // crossing traffic keeps clear of it (#1486)
+			}
+			continue
+		}
 		who := meetsAlong(callsign, r, others, plans)
 		if who == "" {
 			return r, first, true

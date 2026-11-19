@@ -168,14 +168,17 @@ func (s *scheduler) spawnEnroute(f traffic.ManagedFlight) error {
 		if dist > entry-15 {
 			return fmt.Errorf("only %.0f NM before its STAR entry: it appears there", entry-dist)
 		}
+	} else if s.isTransit(f.Callsign) {
+		return s.spawnTransit(f, e, model, fp, kts) // on its climb or descent (#1485)
 	} else {
 		// Across the area on its great circle, as it was picked and timed
 		// (traffic.Overflights): upper airspace is free route (Prague FIR
 		// since February 2021), flown direct, not along the airways, whose
 		// shortest path sent Doha–Amsterdam round by Poland and left the
 		// south-east side with none (the user, live: nothing from the
-		// Vienna side).
-		if gc := greatCircleCrossing(fp, cc, kts); len(gc) >= 2 {
+		// Vienna side). With the route structure (#1484): along the
+		// airways where the area has no free route at its level.
+		if gc := s.freeRouteCrossing(fp, f, kts); len(gc) >= 2 {
 			// On from its entry by the time since it was due there.
 			if !f.Enter.IsZero() {
 				gc = flownOn(gc, cc.clock.Now().Sub(f.Enter).Hours()*kts)
@@ -309,7 +312,9 @@ func (s *scheduler) spawnEnrouteOn(f traffic.ManagedFlight, e *enrouteAC, model 
 		}
 	}
 	defer among()
-	// Its climbs as the AI flies them, before its way is planned clear.
+	// Its strategic offset (#1484), its climbs as the AI flies them,
+	// before its way is planned clear.
+	route = s.lateralSpread(f, e, route)
 	route = climbable(route, f.Type, e.cruiseKts)
 	if who := s.nearPoint(route[0].Position, route[0].AltFt); who != "" {
 		return fmt.Errorf("%w: %s near its position", traffic.ErrSpawnBlocked, who)
@@ -317,7 +322,7 @@ func (s *scheduler) spawnEnrouteOn(f traffic.ManagedFlight, e *enrouteAC, model 
 	// Its way clear of the others at its level, else at another of its
 	// direction (enroute_level.go).
 	planned := s.cc.clock.Now()
-	r, met, ok := s.clearLevel(f.Callsign, route)
+	r, met, ok := s.clearWay(f, route)
 	if !ok {
 		return fmt.Errorf("%w: its way meets %s at every level", traffic.ErrSpawnBlocked, met)
 	}
