@@ -148,6 +148,22 @@ There is no ground or building data. The travel's only clearance is `MarginM` ab
 
 Keep the pose the camera ends on (`Way.Shots`' last pose, or the Director's) as `From` for the next leg. A `From` aimed at a world point turns to the subject slowly; any other target is let go of at once.
 
+A spotter that drives the camera itself, with no `Aim` or `Spot`, flies a `TravelPath`: the same flight as `Spot.TravelTo`, which uses it too. Its ends are live. Each `At` takes the eye and the look point now, so an eye creeping along a rail and a moving subject are followed with no jump, and the drone lands exactly on the latest eye at `Length`.
+
+```go
+tp := camera.NewTravelPath(pose, eye, look, obs) // the way and time planned to this eye
+for el := time.Duration(0); !tp.Done(el); el += frame {
+	eye, look = railEye(), subject() // live, World points
+	p := tp.At(el, eye, look)
+	p.FovDeg = tp.Lens(el, myFov) // from the start's lens to yours
+	show(p)
+}
+```
+
+- `NewTravelPath(from, toEye, toLook, obs)` flies at the `Observer`'s cruise and margin (kept to its limits), `TravelAuto` from a subject standing. `Travel{From: pose, Move: camera.TravelDolly, LookVelMps: v}.Path(toEye, toLook)` picks the move or gives the subject's velocity (east, north, up).
+- The way and the time come from `from`'s eye and the first `toEye`. When the eye moves, the path shifts by its move times the share of the way flown, so the drone flies a little faster or slower than the cruise.
+- The view turns from `from`'s target to the look over at least 3 s, at most `TravelTurnRate`, then stays on the look. Call `At` in time order.
+
 `World.Spots(icao)` (`GET /api/camera/spots?icao=`) lists an airport's spots, generated from its data: `threshold:<end>`, `touchdown:<end>` (on a rail), `approach:<end>`, `holding:<end>` and `apron:<lowest stand>`. A low one keeps clear of the runways, taxiways and stands, and a spot with no clear place is left out. `World.PlaySpot` (`POST /api/camera/spot`) plays one on any aircraft: `id` (-1 the player) or `tail`, with `sec`, `share` and `lock`. In a scene, `"spot": "touchdown:24"` on a shot, or `"touchdown"` for the aircraft's own runway.
 
 `spots.json` in `DataDir` changes them by airport, local winning per value; a name not generated adds a spot:
