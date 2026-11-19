@@ -218,7 +218,10 @@ func TestExpeditedClimb(t *testing.T) {
 		t.Fatal(err)
 	}
 	var dep world.ControlView
-	if !h.Until(30*time.Minute, func() bool {
+	// Past a stand delay the first one may ask for (up to 15 minutes, on
+	// top of about 15 to its climb: WORLDTEST_SEED=18 with the repository's
+	// LKPR data, TVS1985 delayed 13 minutes, climbing at 28 minutes).
+	if !h.Until(45*time.Minute, func() bool {
 		for _, v := range h.World.Snapshot().Aircraft {
 			if v.Kind == "departure" && slices.Contains(v.Actions, "climb") {
 				dep = v

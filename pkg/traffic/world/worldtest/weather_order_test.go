@@ -30,7 +30,29 @@ func TestWeatherAskedAfterCheckInAnswer(t *testing.T) {
 	if err := h.World.SetSchedule(world.ScheduleSettings{Enabled: true, Airports: []string{"LKPR"}, Density: 3, MaxAircraft: 20}); err != nil {
 		t.Fatal(err)
 	}
-	h.Advance(60 * time.Minute)
+	// Until a few crews have asked, then on for what is said after the last.
+	// One hour was not always enough: about 20 check-ins in an hour at
+	// weatherShare (15 %), and the seed does not pin the draws (the World's
+	// goroutines take the traffic's random numbers in their own order), so
+	// now and then no crew asked in it.
+	asks := func() int {
+		n := 0
+		for _, tx := range h.Heard() {
+			if tx.Pilot && tx.Intent == traffic.IntentRequestWeather {
+				n++
+			}
+		}
+		return n
+	}
+	var lookedAt time.Time
+	h.Until(weatherOrderMax, func() bool {
+		if now := h.Clock.Now(); now.Sub(lookedAt) >= 10*time.Second {
+			lookedAt = now
+			return asks() >= weatherOrderAsks
+		}
+		return false
+	})
+	h.Advance(5 * time.Minute)
 	heard := h.Heard()
 	asked := 0
 	for i, tx := range heard {
@@ -61,3 +83,10 @@ func TestWeatherAskedAfterCheckInAnswer(t *testing.T) {
 // weatherOrderSeed: a draw with a crew asking for the weather on a busy
 // tower frequency.
 const weatherOrderSeed = 1
+
+// weatherOrderAsks, weatherOrderMax: the run goes on until this many crews
+// have asked for the weather, at most this long.
+const (
+	weatherOrderAsks = 3
+	weatherOrderMax  = 3 * time.Hour
+)

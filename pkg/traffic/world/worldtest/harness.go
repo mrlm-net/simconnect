@@ -272,11 +272,15 @@ func (h *Harness) Until(max time.Duration, cond func() bool) bool {
 }
 
 // step moves the manual clock d on and sends the frame, then waits until
-// the World has taken every message of it.
+// the World has taken every message of it and every tick of its tickers.
+// Not waiting for the ticks, a slow run (the race detector) stepped on
+// past the once-a-second control tick, whose missed ticks were dropped:
+// clearances, the controllers' calls and the schedule then ran seconds
+// apart in traffic time, and a test ran out of its traffic time.
 func (h *Harness) step(d time.Duration) {
 	h.Clock.Advance(d)
 	h.Sim.Step()
-	for deadline := time.Now().Add(stepTimeout); len(h.Sim.out) != 0 || h.World.Queued() != 0; {
+	for deadline := time.Now().Add(stepTimeout); len(h.Sim.out) != 0 || h.World.Queued() != 0 || h.Clock.TicksWaiting() != 0; {
 		if time.Now().After(deadline) {
 			panic("worldtest: the World did not take a frame within " + stepTimeout.String())
 		}

@@ -386,7 +386,9 @@ func TestStaffedDepartureLevelsOff(t *testing.T) {
 		t.Fatal(err)
 	}
 	var dep world.ControlView
-	if !h.Until(30*time.Minute, func() bool {
+	// Past a stand delay the first one may ask for (up to 15 minutes, on
+	// top of about 16 to its climb), as TestStaffedDepartureHeading.
+	if !h.Until(45*time.Minute, func() bool {
 		for _, v := range h.World.Snapshot().Aircraft {
 			if v.Kind == "departure" && slices.Contains(v.Actions, "climb") {
 				dep = v

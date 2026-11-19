@@ -7,6 +7,14 @@ This project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 ---
 
+## [0.182.2] - 2026-11-19
+
+### Fixed
+
+- `worldtest`: on the manual clock a step now also waits until the World's tickers have taken their ticks (`ManualClock.TicksWaiting`), not only its messages. A slow run (the race detector, a loaded machine) stepped on past the once-a-second control tick, and the ticks it missed were dropped: clearances, the controllers' calls and the schedule ran seconds apart in traffic time (57 dropped ticks in an hour at LKPR under -race, 24 without it; now none). Engine unchanged (#1583).
+- `TestWeatherAskedAfterCheckInAnswer` failed now and then with "no crew asked for the weather": an hour at LKPR has about 20 check-ins at a 15 % share, and its seed does not pin the draws (the World's goroutines take the random numbers in their own order). It now runs until three crews have asked (at most 3 h) and checks each of them as before (#1583).
+- `TestExpeditedClimb` and `TestStaffedDepartureLevelsOff` failed now and then with "no departure on the staffed departure": the first departure climbs about 15 minutes in, and a stand delay adds up to 15 more (WORLDTEST_SEED=18: 28 minutes), so 30 minutes left no margin under load. They wait up to 45 minutes, as `TestStaffedDepartureHeading` already does (#1583).
+
 ## [0.182.1] - 2026-11-19
 
 ### Fixed
