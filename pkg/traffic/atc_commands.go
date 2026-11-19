@@ -177,12 +177,7 @@ func (c *TaxiController) vacateAfterReject(pose TakeoffPose) error {
 		}
 	}
 	pts = append(pts, route.Points[1:]...)
-	if n := len(pts); n >= 2 { // stop short of the hold-short line
-		a, b := pts[n-2], pts[n-1]
-		if l := localDist(a, b); l > HoldShortStopMeters+1 {
-			pts[n-1] = offsetHeading(b, localBearing(b, a), HoldShortStopMeters)
-		}
-	}
+	pts = trimPathEnd(pts, HoldShortStopMeters) // stop short of the hold-short line (#1570)
 	path, err := NewGroundPath(pts, prof)
 	if err != nil {
 		return err

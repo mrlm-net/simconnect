@@ -7,6 +7,18 @@ This project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 ---
 
+## [0.180.0] - 2026-11-19
+
+### Added
+
+- A departure taxiing up to its runway (runway next and close) is offered `takeoff` beside `lineup`, and `lineupbehind` while only the next arrival is in the way, on the tower's frequency and only while the tower's holding-point checks pass (runway free, departure interval, arrival gap, closures, crossing runway). Cleared, it rolls through the holding point onto the runway without stopping (#1568).
+
+### Fixed
+
+- A lined-up or lining-up departure already cleared for take-off is no longer offered `takeoff` again; only `abort` (#1569).
+- A departure stopped with its nose gear on the hold-short line when the last segment of its taxi path was shorter than 8 m (OSM-derived layouts, TNCM): the 7 m stop is now trimmed along the path, also on the re-taxi after a rejected take-off (#1570).
+- A departure out of a staffed tower that had not been handed over climbed away silent: at its hand-over to the simulator's AI the tower now says "contact <departure>", the crew reads it back and checks in with departure ("passing <alt> climbing <level>, <SID>"), and the departure station can work it afterwards (#1572).
+
 ## [0.179.0] - 2026-11-19
 
 ### Added
