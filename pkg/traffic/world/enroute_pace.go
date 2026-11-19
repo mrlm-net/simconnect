@@ -36,7 +36,7 @@ func (s *scheduler) paceEnroute(now time.Time) {
 	s.mu.Lock()
 	var list []*enrouteAC
 	for _, e := range s.enroute {
-		if e.arrive != nil && !e.handing && e.corridor == "" && len(e.route) > 1 {
+		if e.arrive != nil && !e.handing && e.corridor == "" && len(e.route) > 1 && e.told == nil {
 			list = append(list, e)
 		}
 	}

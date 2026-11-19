@@ -200,7 +200,7 @@ The World keeps one `nav.RunwaySelector` per airport ([Keeping the runway in use
 
 - **Emergencies:** `Priority(tail, on)` and `PriorityFor(tail, kind)` give an aircraft priority (the user aircraft with `tail` ""), and `POST /api/emergency` has one of ours declare one. See [Emergencies & Scenarios](traffic-emergencies.md).
 - **Scenarios:** `StartScenario(sc, hooks)` plays a scripted situation around the traffic. See [Emergencies & Scenarios](traffic-emergencies.md#scenarios).
-- **Staffed stations:** `SetStaffed(list)` hands chosen ATC stations to a human controller. See [ATC Game & Staffed Stations](atc-game.md).
+- **Staffed stations:** `SetStaffed(list)` hands chosen ATC stations to a human controller. See [ATC Game & Staffed Stations](atc-game.md). With approach staffed, the player may give an arrival still en route, before its STAR entry, a speed, a heading or a level (`POST /api/approach/{icao}/{callsign}/{speed|heading|descend}`); it flies them on its en-route waypoints and is handed over at the entry as before.
 
 ## Stands and stand rules
 

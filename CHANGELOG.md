@@ -7,6 +7,16 @@ This project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 ---
 
+## [0.182.0] - 2026-11-19
+
+### Added
+
+- On a staffed approach the player can give an arrival still en route, before its STAR entry, a speed, a heading or a level: `POST /api/approach/{icao}/{callsign}/speed`, `heading` and `descend` no longer answer "not one of our arrivals" there (#1419). Approach says it and the crew reads it back; MSFS AI flies it on the arrival's en-route waypoints from where it is (no jump), the conflict watch predicting it on that route: at most the speed told, a heading for 30 NM then "resume own navigation direct (fix)", a descent at about 3° (steeper when expedited) to the level told. It keeps its place in the landing sequence and is handed to approach at its STAR entry as before; the AI no longer paces it behind the arrival ahead. In network play only the approach player may instruct it. Not staffed, or told nothing, en-route arrivals fly as before.
+
+### Fixed
+
+- Two en route arrivals reaching the same STAR entry in the same look are no longer both handed to approach at once: the second waits for the next look. Its handover was refused ("spawn point in use") and its flight cancelled (#1419).
+
 ## [0.181.0] - 2026-11-19
 
 ### Added

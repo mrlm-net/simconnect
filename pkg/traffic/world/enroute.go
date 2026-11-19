@@ -78,6 +78,7 @@ type enrouteAC struct {
 	route     []traffic.RoutePoint
 	fixes     []airFix // the named fixes of route, for shortcuts (conflicts)
 	handing   bool
+	told      *enrouteTold // what the player told it (#1419, enroute_told.go); nil nothing
 	// corridor: one of the traffic along the user's route (#740), not the
 	// schedule's.
 	corridor   traffic.CorridorKind
@@ -447,7 +448,7 @@ func (s *scheduler) handovers(now time.Time) {
 		late := now.After(lateAt) && (!seen || far < handoverLateNM || now.After(e.f.STA))
 		if far < handoverNM || late {
 			// Not onto other traffic at the entry: the handover waits.
-			if who := s.cc.nearAirborne(entry, 0, e.f.Callsign, now); who != "" {
+			if who := s.cc.nearAirborne(entry, 0, e.f.Callsign, now); who != "" || s.handingAt(entry) {
 				continue
 			}
 			e.handing = true

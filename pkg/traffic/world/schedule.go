@@ -845,6 +845,7 @@ func (s *scheduler) tick(now time.Time) {
 	s.tiersTick(now) // virtual overflights on, near ones into the simulator
 	s.expirePending()
 	s.paceEnroute(now) // no catching up the one ahead en route
+	s.enrouteResumes()
 	s.handovers(now)
 	s.corridorTick(now)
 }

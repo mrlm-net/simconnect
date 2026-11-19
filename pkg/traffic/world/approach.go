@@ -24,7 +24,8 @@ import (
 // hold: hold now at the STAR's hold fix, on the stack; release: leave the
 // hold; slow: lose another minute by speed and stretching; direct: direct
 // to the join point on the final; heading: fly a magnetic heading off the route
-// (#1414); goaround: go around.
+// (#1414); goaround: go around. On a staffed approach, speed, heading and
+// descend work on an arrival still en route too (#1419, enroute_told.go).
 
 // unsequencedActions are the approach actions an arrival not (yet) in the
 // sequence can be given: direct only to a point, joining the final needs a runway.
@@ -80,9 +81,9 @@ type spacing struct {
 	mark func(traffic.Transmission) traffic.Transmission
 	// expedite: a descent or a speed told to hurry, a descent only through
 	// throughFt if set (#1331).
-	expedite  bool
+	expedite bool
 	// heading: the magnetic heading of action "heading", 1 to 360.
-	heading float64
+	heading   float64
 	throughFt float64
 }
 
@@ -94,6 +95,10 @@ func (q *sequences) approachSpace(icao, callsign string, delay time.Duration, wi
 
 // approachDo is approachActionAt, a "slow" for spacing with sp.
 func (q *sequences) approachDo(icao, callsign, action string, at *airport.LatLon, kts, ft float64, sp spacing) error {
+	// En route, on a staffed approach: flown on its plan (#1419).
+	if done, err := q.enrouteAction(icao, callsign, action, kts, ft, sp); done {
+		return err
+	}
 	s, e, ok := q.entryOf(icao, callsign)
 	if !ok {
 		// Radar instructions need no place in the landing order (#1414).
@@ -358,6 +363,10 @@ func registerApproach(mux *http.ServeMux, st *state) {
 		if as := positionOf(r); q.cc != nil {
 			if it := q.cc.byTail(r.PathValue("callsign")); it != nil && !mayClear(as, it) {
 				http.Error(w, it.Tail+" is not on your frequency ("+as+")", http.StatusForbidden)
+				return
+			}
+			if q.enrouteForbidden(as, strings.ToUpper(r.PathValue("icao")), r.PathValue("callsign")) {
+				http.Error(w, r.PathValue("callsign")+" is approach's ("+as+")", http.StatusForbidden)
 				return
 			}
 		}
