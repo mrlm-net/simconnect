@@ -185,6 +185,22 @@ func (s manualStop) Stop() bool {
 	return was
 }
 
+// TicksWaiting is how many running tickers hold a tick not taken yet. A
+// test stepping the clock waits for 0 before it moves on: a tick still
+// waiting when the next one is due is dropped (as time.Ticker), and a
+// once-a-second ticker that misses ticks runs its work seconds late.
+func (c *ManualClock) TicksWaiting() int {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	n := 0
+	for _, t := range c.timers {
+		if !t.dead && t.period > 0 && len(t.ch) > 0 {
+			n++
+		}
+	}
+	return n
+}
+
 // Advance moves the clock d on, firing every timer and ticker due on the
 // way at its own time, earliest first: a ticker's channel gets the time
 // (dropped when its last tick was not taken, as time.Ticker), an
