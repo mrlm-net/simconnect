@@ -688,6 +688,22 @@ func (t *towers) apply(icao, rwy string, c traffic.RunwayClearances, ours map[st
 			t.given[tail+" lineup"] = true // no "line up and wait" after it
 		}
 		t.mu.Unlock()
+		// Nobody to say it at a field without a tower (#1596): the landing
+		// is the crew's own, its final call on the advisory frequency said
+		// now. Not a grant waiting its turn on a tower's agenda: one older
+		// than grantFresh by then (ticks four simulated seconds apart at
+		// rate 4) was dropped every time, and the crew went around for no
+		// landing clearance until the flight was cancelled.
+		if action == "land" {
+			if _, nobody := t.cc.uncontrolled(it.ICAO); nobody {
+				it.mu.Lock()
+				it.spoken["land"] = true
+				it.mu.Unlock()
+				it.say(said)
+				it.actAfterReadback(traffic.PosTower, "tower: land", func() error { return f(it) })
+				return
+			}
+		}
 		// On the tower's agenda, most urgent first: a go-around, then a
 		// landing, then the rest. Still granted when its turn comes, or
 		// dropped (to be given again when granted again).
@@ -713,7 +729,7 @@ func (t *towers) apply(icao, rwy string, c traffic.RunwayClearances, ours map[st
 			t.mu.Lock()
 			at := t.grantAt[key]
 			t.mu.Unlock()
-			return !it.gates.Load() && t.cc.clock.Now().Sub(at) <= grantFresh
+			return !it.gates.Load() && t.cc.clock.Now().Sub(at) <= grantFreshAt(t.cc.clock.Rate())
 		}
 		dropped := func() {
 			t.mu.Lock()
@@ -966,6 +982,18 @@ func (t *towers) apply(icao, rwy string, c traffic.RunwayClearances, ours map[st
 // grantFresh: a clearance the runway controller granted no longer ago than
 // this (it decides every second) is still granted.
 const grantFresh = 2500 * time.Millisecond
+
+// grantFreshAt is grantFresh at sim rate rate: the controller decides every
+// real second, rate simulated seconds apart, so a grant stays fresh as many
+// of its rounds at any rate (#1596: at 4 every landing clearance was older
+// than grantFresh when its turn came, dropped, and the arrival went around
+// until cancelled). Slower than real time: grantFresh.
+func grantFreshAt(rate float64) time.Duration {
+	if rate <= 1 {
+		return grantFresh
+	}
+	return time.Duration(float64(grantFresh) * rate)
+}
 
 // waitKind is a wait reason without its numbers: the same wait while its
 // time or distance counts down.

@@ -7,6 +7,13 @@ This project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 ---
 
+## [0.186.1] - 2026-11-19
+
+### Fixed
+
+- **Arrivals at a field without a tower land on their own calls.** An IFR arrival that had cancelled IFR and changed to the advisory frequency kept getting a tower `land` grant that was dropped before its turn came. The crew then went around for "no landing clearance", again and again, until the schedule cancelled the flight. At a field without a tower, the landing is now counted as given when the runway is free. The crew makes its final call on the advisory frequency straight away, without waiting for a tower turn on the radio. If the runway is not free by the decision point, the crew goes around for "runway not clear", which the game does not score as a missing clearance. Runway sequencing is unchanged, so a departure still waits for the landing. (#1596)
+- **Landing clearances hold at any sim rate.** The tower decides every real second, but checked whether a grant was still fresh against a fixed 2.5 simulated seconds. From rate 3 up, every grant was already stale when its turn on the radio came, and it was dropped. At a towered field the arrival was then never cleared to land and went around until the flight was cancelled. A grant now stays fresh for the same number of tower rounds at any rate: 2.5 s × the sim rate, never less than 2.5 s. At rate 1 nothing changes. The offline loopback can now report a sim rate (`Loopback.SetSimRate`). (#1596)
+
 ## [0.186.0] - 2026-11-19
 
 ### Added

@@ -97,6 +97,8 @@ type Loopback struct {
 	groundTitles       []string
 	// calls: the calls counted and the placements checked (calls.go).
 	calls ledger
+	// simRate: SIMULATION RATE as set (SetSimRate); 0 real time.
+	simRate float64
 }
 
 // NewLoopback returns a loopback with the user aircraft at lat, lon on
@@ -120,6 +122,14 @@ func (l *Loopback) User(f func(o *Object)) {
 	l.mu.Lock()
 	defer l.mu.Unlock()
 	f(l.objects[UserObjectID])
+}
+
+// SetSimRate sets the SIMULATION RATE the simulator reports: at 4 the
+// traffic's clock runs four times as fast as its ticks.
+func (l *Loopback) SetSimRate(rate float64) {
+	l.mu.Lock()
+	defer l.mu.Unlock()
+	l.simRate = rate
 }
 
 // Objects are copies of the objects now, the user aircraft included.
@@ -557,6 +567,9 @@ func (l *Loopback) value(o *Object, d datum) float64 {
 		}
 		return 1
 	case "SIMULATION RATE":
+		if l.simRate > 0 {
+			return l.simRate
+		}
 		return 1
 	case "COM ACTIVE FREQUENCY":
 		return o.COM1
