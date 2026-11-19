@@ -111,6 +111,9 @@ func (c *ArrivalController) takeover(m arrivalMonitor, pos airport.LatLon, onRun
 	replan := c.mover != nil // ours already: a new exit on the roll (VacateAt)
 	prof := c.profile()
 	nose := NoseGear(pos, m.Heading, prof)
+	if onRunway && !replan {
+		c.exitInReach(m.GroundKts, nose) // too fast for its exit: a later one (#1586)
+	}
 	route := c.plan.Route.Points
 
 	// The path: from the nose gear on along the route, ending straight along

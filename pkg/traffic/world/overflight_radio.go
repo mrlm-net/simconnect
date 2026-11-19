@@ -160,7 +160,7 @@ func (s *scheduler) radioLook(now time.Time, icao string, stations []traffic.Sta
 		if in && ok {
 			next = st
 		}
-		if next.Freq != "" && s.tunedTo(next.Freq) && !s.centreRoom(now, next.Freq, 1) {
+		if next.Freq != "" && s.tunedTo(next.Freq) && !s.centreRoom(now, icao, next.Freq, 1) {
 			return // its check-in there over the cap: the hand-off waits
 		}
 		t := traffic.Handoff(p.cs, traffic.PosCenter, traffic.PosCenter, next.Name, next.Freq)
@@ -233,40 +233,65 @@ func (s *scheduler) centreSay(now time.Time, icao string, st traffic.Station, t 
 	if !s.tunedTo(st.Freq) {
 		return true
 	}
-	if !s.centreRoom(now, st.Freq, n) {
+	// Checked at when it would go out: a busy frequency puts it later.
+	from := now
+	if c := s.cc.radio.ClearAt(icao, st.Freq); c.After(from) {
+		from = c
+	}
+	if !s.centreRoom(from, icao, st.Freq, n) {
 		return false
 	}
 	t.Frequency = st.Freq
 	said := s.cc.radio.Transmit(icao, t)
-	// Counted when said: a busy frequency puts it later (and its readback
-	// after it).
+	// Each counted when it goes out: the call when said, its readback
+	// once the frequency is clear of what was booked with it (the end of
+	// the readback, a little late rather than early).
 	at := said.At
 	if at.Before(now) {
 		at = now
 	}
+	back := at
+	if n > 1 {
+		if c := s.cc.radio.ClearAt(icao, st.Freq); c.After(back) {
+			back = c
+		}
+	}
 	s.mu.Lock()
-	for range n {
-		s.over.cr.sent[st.Freq] = append(s.over.cr.sent[st.Freq], at)
+	for i := range n {
+		x := at
+		if i > 0 {
+			x = back
+		}
+		s.over.cr.sent[st.Freq] = append(s.over.cr.sent[st.Freq], x)
 	}
 	s.mu.Unlock()
 	return true
 }
 
 // centreRoom reports whether n more transmissions on freq stay within the
-// cap for the minute to now.
-func (s *scheduler) centreRoom(now time.Time, freq string, n int) bool {
+// cap for the minute to now: ours as counted, or all the radio has said or
+// booked on it at icao (others on it too), whichever is more.
+func (s *scheduler) centreRoom(now time.Time, icao, freq string, n int) bool {
+	heard := 0
+	for _, t := range s.cc.radio.Recent(icao, 0) {
+		if t.Frequency == freq && now.Sub(t.At) < time.Minute {
+			heard++
+		}
+	}
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	limit := s.over.callsPerMinute
 	if limit <= 0 {
 		limit = centreCallsPerMinute
 	}
-	sent := s.over.cr.sent[freq]
-	for len(sent) > 0 && now.Sub(sent[0]) >= time.Minute {
-		sent = sent[1:]
+	sent := s.over.cr.sent[freq][:0]
+	for _, x := range s.over.cr.sent[freq] {
+		if now.Sub(x) < time.Minute {
+			sent = append(sent, x)
+		}
 	}
 	s.over.cr.sent[freq] = sent
-	return len(sent)+n <= limit
+	return max(len(sent), heard)+n <= limit
 }
 
 // EnrouteInstruction is a player's instruction to an en-route aircraft of
