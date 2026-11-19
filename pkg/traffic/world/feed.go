@@ -67,11 +67,27 @@ func (f localFeed) Procedures(p airport.Procedures) {
 		f.st.procedures = map[string]airport.Procedures{}
 	}
 	f.st.procedures[p.ICAO] = p
+	if placed, moved := f.st.placeRunwayFixesLocked(p.ICAO); moved {
+		p = placed
+	}
 	f.st.mu.Unlock()
+	// Dumped with the runway fixes on the runway ends once the layout is
+	// known; else as the simulator gave them, and again with the layout.
 	f.st.dump(p.ICAO, dumpProcedures, p)
 }
 
-func (f localFeed) Layout(icao string, _ *airport.Layout, err error) { f.st.finish(icao, err) }
+func (f localFeed) Layout(icao string, l *airport.Layout, err error) {
+	if l != nil {
+		// Procedures that came first: their runway fixes on its runway ends.
+		f.st.mu.Lock()
+		p, moved := f.st.placeRunwayFixesLocked(icao)
+		f.st.mu.Unlock()
+		if moved {
+			f.st.dump(p.ICAO, dumpProcedures, p)
+		}
+	}
+	f.st.finish(icao, err)
+}
 
 func (f localFeed) UserAircraft(a Aircraft, rate float64, com1 string) {
 	cc := f.cc

@@ -7,6 +7,14 @@ This project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 ---
 
+## [0.183.1] - 2026-11-19
+
+### Fixed
+
+- Procedure runway fixes (`RW24`, the MAP of most finals) sat at the runway's centre, as the facility data gives them: 0.5–1.1 NM down the runway (KJFK 04L 0.92 NM from the CIFP threshold, LKPR 24 1.0 NM, EGLL 27R 1.05 NM). New `airport.Procedures.AtRunwayEnds(layout)` puts them on the runway end: the landing threshold (`LandingThreshold`) in STARs and approaches (transitions, final, missed), the pavement end in SIDs; a fix already there, of another runway or too far away is kept. The World places them when procedures or the layout arrive (either order, simulator, director feed or offline files), so approaches, finals, missed approaches, flight plans and the AI's waypoints use the threshold, and `Options.AirportDumpDir` (airport-dump) writes `procedures.json` with them placed; `FlownRouteFor`, `Charts` and `nav.Plan` place them too (#1573).
+- A go-around's published missed approach point straight ahead of the runway but short of the go-around climb-out (LKPR: FM from RW06, 2.7 NM out once the fix is on the threshold) is moved to the climb-out's end: no turn inside the VFR circuit (#1573).
+- A go-around's way back is planned up front, when it goes around, instead of being left to the sequencer and the conflict watch: its place in the sequence is taken behind every arrival it would reach the final with (timed along their planned ways, each spaced behind the one before it, 6 NM and a 30 s margin), and the time is lost on a longer downwind (one vector); its circuit is then flown ahead against every arrival's planned way (down their STARs as planned, not held at the level they are level at now) and the downwind extended further while that puts the meeting later, never for those it lands before; where one still comes down through its level beside it, that one stops its descent a level above the go-around, a stack in landing order (levels only for crossing; no orbit, no hold). The extended downwind runs 1.5 NM wider than the circuit's 3.5 NM, out of the way of those turning base inside it; arrivals to a parallel runway beside its final count for its circuit side and its slot; the circuit is planned at the approach speed it flies (it was taken as 250 kt, so "reduce speed to 190 knots" lost nothing), and spacing on the way back never gives a dog-leg off its climb-out. Offline LKPR 06 and 24 and EGLL 27R go-around beds: no loss of separation and no conflict-watch firing involving the go-around (LKPR 24 had losses down to 2.4 NM/796 ft) (#1573).
+
 ## [0.183.0] - 2026-11-19
 
 ### Added
