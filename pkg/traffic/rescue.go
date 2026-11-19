@@ -25,8 +25,17 @@ type SimObjectRescue struct {
 	// Layout is the airport, for the roads from the depot and back; nil or
 	// no road: it appears at its standby point and leaves from where it is.
 	Layout *airport.Layout
+	// Depot is the fire station it leaves from and goes home to; nil: the
+	// vehicle depot nearest its standby point (#1587).
+	Depot *airport.LatLon
+	// After is the vehicle leaving before it: from the same depot it
+	// appears only once After is RescueDepotGapMeters out, so they never
+	// stand on one another there; nil or another depot, at once.
+	After *SimObjectRescue
 
 	mu       sync.Mutex
+	pending  bool // waiting at the depot for After to move off
+	init     types.SIMCONNECT_DATA_INITPOSITION
 	objectID uint32
 	pose     GroundPose
 	mover    *GroundMover // driving to standby or home; nil waiting or following
@@ -62,7 +71,13 @@ func (r *SimObjectRescue) Standby(at GroundPose) error {
 	defer r.mu.Unlock()
 	r.pose = at
 	if r.Layout != nil {
-		if d, ok := nearestDepot(r.Layout, at.Position); ok {
+		d, ok := airport.LatLon{}, false
+		if r.Depot != nil {
+			d, ok = *r.Depot, true
+		} else {
+			d, ok = nearestDepot(r.Layout, at.Position)
+		}
+		if ok {
 			if route, err := r.Layout.VehicleRoute(d, at.Position); err == nil && len(route) >= 2 {
 				if path, err := NewArcPath(append(route, at.Position), fuelRoadProfile(), 8); err == nil {
 					r.mover = NewGroundMoverFrom(path, rescueRoadProfile(), localBearing(path.PointAt(0), path.PointAt(math.Min(5, path.Length()))), 0)
@@ -71,9 +86,47 @@ func (r *SimObjectRescue) Standby(at GroundPose) error {
 			}
 		}
 	}
-	return r.client.AICreateSimulatedObject(r.title, types.SIMCONNECT_DATA_INITPOSITION{
+	r.init = types.SIMCONNECT_DATA_INITPOSITION{
 		Latitude: r.pose.Position.Lat, Longitude: r.pose.Position.Lon, Heading: r.pose.Heading, OnGround: 1,
-	}, r.reqID)
+	}
+	if r.hasDepot && r.After != nil {
+		if d, ok := r.After.leftFrom(); ok && localDist(d, r.depot) < RescueDepotGapMeters {
+			r.pending = true
+			return nil
+		}
+	}
+	return r.client.AICreateSimulatedObject(r.title, r.init, r.reqID)
+}
+
+// RescueDepotGapMeters: a vehicle leaving a depot after another appears
+// once that one is this far from it.
+const RescueDepotGapMeters = 30.0
+
+// leftFrom is the depot it left from, false without one.
+func (r *SimObjectRescue) leftFrom() (airport.LatLon, bool) {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	return r.depot, r.hasDepot
+}
+
+// clearOfDepot reports whether it is out of the way of the next vehicle
+// from its depot: RescueDepotGapMeters off where it appeared, or gone.
+func (r *SimObjectRescue) clearOfDepot() bool {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	if r.done {
+		return true
+	}
+	start := airport.LatLon{Lat: r.init.Latitude, Lon: r.init.Longitude}
+	return r.objectID != 0 && !r.pending && localDist(r.pose.Position, start) >= RescueDepotGapMeters
+}
+
+// Waiting reports that it waits at its depot for the vehicle ahead to move
+// off, not yet in the simulator.
+func (r *SimObjectRescue) Waiting() bool {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	return r.pending && !r.done
 }
 
 // Handle takes its creation's answer: the object is driven from then on.
@@ -97,6 +150,10 @@ func (r *SimObjectRescue) Handle(msg engine.Message) bool {
 func (r *SimObjectRescue) Update(dt float64) error {
 	r.mu.Lock()
 	defer r.mu.Unlock()
+	if r.pending && !r.done && r.After.clearOfDepot() {
+		r.pending = false
+		return r.client.AICreateSimulatedObject(r.title, r.init, r.reqID)
+	}
 	if r.done || r.objectID == 0 {
 		return nil
 	}
@@ -241,9 +298,10 @@ func rescueRoadProfile() MotionProfile {
 }
 
 // RescueStandby are the standby points beside a landing runway end: where
-// the fire trucks wait, n of them (1–3), RescueStandbyAsideMeters off the
+// the fire trucks wait, n of them, RescueStandbyAsideMeters off the
 // centreline on the side of the runway's exits (its taxiways), at a third,
-// half and two thirds of its length, facing along the landing direction.
+// half and two thirds of its length (more than 3: spread evenly from a
+// fifth to four fifths, #1587), facing along the landing direction.
 func RescueStandby(l *airport.Layout, runwayEnd string, n int) []GroundPose {
 	rwy, end, ok := l.RunwayEnd(runwayEnd)
 	if !ok || n <= 0 {
@@ -264,8 +322,15 @@ func RescueStandby(l *airport.Layout, runwayEnd string, n int) []GroundPose {
 			}
 		}
 	}
+	shares := []float64{1.0 / 3, 0.5, 2.0 / 3}[:min(n, 3)]
+	if n > 3 {
+		shares = shares[:0]
+		for i := 0; i < n; i++ {
+			shares = append(shares, 0.2+0.6*float64(i)/float64(n-1))
+		}
+	}
 	var out []GroundPose
-	for _, share := range []float64{1.0 / 3, 0.5, 2.0 / 3}[:min(n, 3)] {
+	for _, share := range shares {
 		p := offsetHeading(end.Threshold, end.Heading, rwy.Length*share)
 		p = offsetHeading(p, end.Heading+side, rwy.Width/2+RescueStandbyAsideMeters)
 		out = append(out, GroundPose{Position: p, Heading: end.Heading})
