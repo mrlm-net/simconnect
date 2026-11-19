@@ -37,6 +37,12 @@ type core struct {
 	vehiclesOnce sync.Once
 	// vehicleRadioOff: the vehicles keep quiet on the radio (vehicles.go).
 	vehicleRadioOff atomic.Bool
+	// com1: the user aircraft's COM1 frequency ("118.100"; nil none yet),
+	// for the overflights' radio (overflight_radio.go, #1487).
+	com1 atomic.Pointer[string]
+	// scanFrom: when the scan being taken began (UnixNano, traffic time),
+	// the time of its positions (scanTime).
+	scanFrom atomic.Int64
 
 	// runwayMu guards selectors and inUse: each airport's runway in use,
 	// one selector for the traffic and its ATIS (#454), and the last one

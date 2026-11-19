@@ -5426,7 +5426,7 @@ func (cc *controlCenter) reportTraffic(scan []Traffic) {
 	}
 	// Ground pictures and stand allocators get it from here; our own
 	// aircraft report themselves (SetOwn in update).
-	cc.world.Observe(cc.clock.Now(), obs)
+	cc.world.Observe(cc.scanTime(), obs)
 }
 
 // labelled is a copy of scan with what the simulator does not say: which are

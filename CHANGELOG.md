@@ -7,6 +7,21 @@ This project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 ---
 
+## [0.184.0] - 2026-11-19
+
+### Added
+
+- Overflight route structure (#1484): with `"overflightRoutes": true` (`OverflightTraffic.OverflightRoutes`) each overflight crosses by the airspace's route structure from the new `nav.routeStructure` table (pkg/dict, replaceable; per area a box, `freeRouteFt`, `airwaysOnly`, named entry and exit points). In free route airspace at its level it flies direct (via the nearest listed entry and exit points). Elsewhere it flies along its plan's airways. Each flies a strategic lateral offset of 0, 1 or 2 NM right of its route, picked per call sign. Shipped: LKAA (free route from FL245) and London (airways only), the project's estimates; an area with no entry is airways only. Off by default.
+- Transit traffic (#1485): with `"transits": true` (`OverflightTraffic.Transits`) the departures and arrivals of the airports in and near the area cross it on their climb or descent (`traffic.Transits`, `TransitOptions`). The volume is by each airport's size and local wave. Each transit is flown on its flight plan's vertical profile from where it is above 10,000 ft, out of view, to 60 NM past the area or its descent through 10,000 ft. Its top is planned up front against everyone's planned ways: lower levels of its direction if needed, never a hold. `GET /api/schedule` lists `transitFlights`. Off by default.
+- Crossing traffic keeps clear of the terminal airspace (#1486): with `"crossingKeepClear": true` (`OverflightTraffic.CrossingKeepClear`) no overflight or transit level is given that comes into a layer of the focus airports' terminal airspace inside its outline (1,000 ft margin). With the real airspaces the other airports' terminal airspace counts too, the flight's own ends excepted. A transit that cannot stay above is routed round it. The terminal airspace comes from the new `airspace.Store.TerminalStack` (a generic rule: the controlled records stacked on the control zone up to FL245; LKPR to 16,500 ft, LZKZ to 13,500 ft) with `airspace.InStack`. Without the airspaces it is a generic 30 NM cylinder to 12,500 ft above the field. Off by default.
+- Overflights on the centre frequency (#1487): with `"overflightRadio": true` (`OverflightTraffic.OverflightRadio`) overflights and transits, virtual tracks too, check in with the centre station whose sector holds them (`traffic.CheckIn`, their level or "passing … climbing …"). They are handed to the next sector's station or the next unit on leaving it (`traffic.Handoff`), with readbacks. This happens only on the frequency the user's COM1 is on, and at most `centreCallsPerMinute` transmissions a minute per centre frequency (default 6). The centre stations are the scenery's or local ones (`PUT /api/stations`, sectors by `area`).
+- Instructions to en-route aircraft (#1487): `World.InstructEnroute(EnrouteInstruction)` and `POST /api/enroute/instruct` give an overflight or transit a level, heading, speed or direct-to from the player staffing its centre station. It is read back and flown at once through its waypoint chain or its virtual track, with no jump. Errors: `ErrNotStaffed` (403) and `ErrNotEnroute` (404). On a staffed centre station the AI hands nobody off unless `autoHandoff`.
+
+### Fixed
+
+- A transit spawned late, on from its start by the time since it was due, is no longer created in view, nor given a way that ends in view. It waits, or is dropped, as any blocked spawn. Seen offline: a transit created 15 NM from the field and taken out 5 s later.
+- Overflight tiers under a slow frame: the picture took a scan's positions as of when its last entry and names came in, a frame or more after the simulator gave them, so an aircraft taken out of the simulator was flown on virtually from a pose 200 ms older than its time (50 m behind it, the nightly `-race` run of TestOverflightTiers). The picture now times a scan from when it began (`controlCenter.scanTime`), and the switch to a virtual track flies on from the clock's time now, not the tick's. TestOverflightTiers counts a track created in the very sample it is first listed as born near the viewer.
+
 ## [0.183.1] - 2026-11-19
 
 ### Fixed

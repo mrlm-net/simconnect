@@ -109,6 +109,8 @@ func (s *scheduler) applyOverflightCaps() {
 // tiersTick moves the virtual overflights on, and creates or removes each
 // one by its distance from the viewers (scheduler goroutine, each second).
 func (s *scheduler) tiersTick(now time.Time) {
+	s.transitsTick(now) // the transits at the end of their way (#1485)
+	s.radioTick(now)    // the crossing traffic on the centre frequency (#1487)
 	s.mu.Lock()
 	t, maxOver := s.tiers, s.maxOverflightsOr()
 	var virtual []*enrouteAC
@@ -347,7 +349,14 @@ func (s *scheduler) dematerialise(e *enrouteAC, a traffic.TrackedAircraft, now t
 	}
 	start.Heading = a.Heading // as it flies now, mid-turn too
 	vt := traffic.NewVirtualFlight(start, wps)
-	// Where it is by now: the picture saw it a moment ago.
+	// Where it is by now: the picture saw it a moment ago. Now as the
+	// clock has it, not the tick's: a slow frame left that behind the
+	// picture, and the track flew on from a time before its pose (50 m
+	// ahead under -race).
+	now = s.cc.clock.Now()
+	if a.Updated.After(now) {
+		now = a.Updated
+	}
 	if dt := now.Sub(a.Updated).Seconds(); dt > 0 && dt < 5 {
 		vt.Step(dt)
 	}

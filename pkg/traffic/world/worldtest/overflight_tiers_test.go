@@ -40,7 +40,7 @@ type overflightRun struct {
 	// the same seed); the tiers only change which are in the simulator.
 	pairsMeet bool
 	// The overflight and transit traffic (#1483–#1487), off by default.
-	flows bool
+	flows, routes, transits, keepClear, radio bool
 }
 
 // The budget of the overflights' SimConnect calls with the tiers on, per

@@ -81,6 +81,31 @@ Shipped entries (the project's estimates, not from a source): `LKAA` (Praha FIR,
 
 Without the setting the overflights are drawn as before: `PerHour` on the waves, the pairs by size.
 
+### Route structure
+
+With `"overflightRoutes": true` each overflight crosses by the airspace's route structure, from the table `nav.routeStructure` (replaceable like the other [tables](dictionaries.md)). An entry is a box, `freeRouteFt` (free route at and above it), `airwaysOnly`, and optional named entry and exit `points`.
+
+- **Free route** at its level: direct on the great circle. When the entry lists points, it goes via the point nearest where it enters and the one nearest where it leaves (within 40 NM, picked per call sign).
+- **Elsewhere:** along its plan's airways, as an arrival's (direct where the World knows no airways).
+- **Lateral spread:** each overflight flies 0, 1 or 2 NM right of its route, picked per call sign (a strategic lateral offset), so flights on one route are not on one line. Levels still follow the semicircular rule.
+- Shipped: `LKAA` (free route from FL245) and `EGTT-LON` (airways only), the project's estimates; an area with no entry is airways only.
+
+### Transits
+
+With `"transits": true` the departures and arrivals of the airports in and near the area (within its radius plus 100 NM, not the focus airports) cross it on their climb or descent (`traffic.Transits`).
+
+- **Volume:** for each such airport, per hour, about 24 × its size share × its local wave × density. The other end is drawn by size, at least 100 NM away, on a great circle passing within 60 % of the radius of the centre.
+- **Flown on its profile:** each is flown on its flight plan's profile (`nav.Plan`: climb, the cruise level for its distance and type, descent from its top of descent). It appears where it is above 10,000 ft and inside the area, out of view (past the materialise range, else 40 NM, plus 5), and goes 60 NM past the area or at 10,000 ft on its descent, out of view.
+- **Level planning:** its level is planned up front against everyone's planned ways: its top as planned, else a lower level of its direction (a climb levels off sooner, a descent starts lower). Never a hold or an orbit.
+- **To the World:** each is an overflight (its Enter and Exit, the tiers, the caps); `GET /api/schedule` lists their call signs in `transitFlights`.
+
+### Keeping clear of the terminal airspace
+
+With `"crossingKeepClear": true` overflights and transits keep out of the terminal airspace.
+
+- **What it is:** the focus airports' terminal airspace, and with the real airspaces (`world.Options.Airspaces`) the other airports' within the area's radius plus 20 NM, the flight's own ends excepted. It is the control zone and the terminal areas stacked on it (`airspace.Store.TerminalStack`, a generic rule on the records: from the class B–D record holding the airport from the surface, each next layer is the controlled record holding the airport whose floor is the last one's ceiling, up to FL245). LKPR: Ruzyne CTR to 3,500 ft, Prague TMA II to 9,500 ft, TMA IX to 16,500 ft. Without the airspaces it is a generic cylinder round each focus airport: 30 NM, to 12,500 ft above the field.
+- **How:** no level is given that comes into a layer (with 1,000 ft to spare) inside its outline. A transit whose every top would comes round it: its points within the area's reach move square off its track, 3 NM outside. Separation from the focus airports' own traffic is the up-front plan's: departures' climb clearances and arrivals' levels are planned against everyone's planned ways, crossing traffic's among them.
+
 ### Distance tiers
 
 Every overflight in the simulator is an object that costs the simulator's main thread, seen or not. With the tiers on (`world.Options.Overflights`, or `POST /api/schedule` with `overflightMaterialiseNM`), an overflight far from the viewer is a **virtual track**: the World flies it along its planned waypoints (`traffic.VirtualFlight`, the flying model of the offline simulator), with no simulator object and no request. The viewer is the user aircraft and the aircraft our camera is on.

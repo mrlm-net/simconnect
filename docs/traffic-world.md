@@ -165,8 +165,21 @@ With the schedule on, the World flies the traffic a real airport sees overhead: 
 | Field | What |
 |---|---|
 | `overflightFlows` | the overflights by the area's streams and volume from the flows table, else the generic fallback ([Streams and volume per area](traffic-schedules.md#streams-and-volume-per-area), #1483) |
+| `overflightRoutes` | across by the airspace's route structure: direct in free route airspace (through its entry and exit points when the table lists them), along the airways elsewhere, each at a strategic offset of 0, 1 or 2 NM right of its route ([Route structure](traffic-schedules.md#route-structure), #1484) |
+| `transits` | the neighbouring airports' departures and arrivals crossing the area on their climb or descent ([Transits](traffic-schedules.md#transits), #1485) |
+| `crossingKeepClear` | overflights and transits keep clear of the terminal airspace: above each layer inside its outline, or round it ([Keeping clear of the terminal airspace](traffic-schedules.md#keeping-clear-of-the-terminal-airspace), #1486) |
+| `overflightRadio`, `centreCallsPerMinute` | overflights and transits talk to the centre station holding them: check-in, hand-off, on the tuned frequency only, at most `centreCallsPerMinute` transmissions a minute (default 6) ([Overflights on the centre frequency](#overflights-on-the-centre-frequency), #1487) |
 
-`GET /api/schedule` shows what is set, with `overflightArea` and `overflightPeakPerHour` while the flows are on.
+`GET /api/schedule` shows what is set, with `overflightArea` and `overflightPeakPerHour` while the flows are on, and `transitFlights`, the transits' call signs.
+
+### Overflights on the centre frequency
+
+With `overflightRadio`, the overflights and transits are worked by the centre station whose sector holds them: `traffic.PickStation` over the focus airport's stations at the `center` position. That is the scenery's centre frequency, or a local station set with `PUT /api/stations?icao=` (an `area` polygon makes a sector). Without a centre station that has a frequency they say nothing.
+
+- **Check-in:** entering the area, the crew calls the station with its level: "Praha Radar, CSA123, flight level 370". A climbing or descending transit says "passing flight level 183, climbing flight level 240".
+- **Hand-off:** leaving its sector, the station hands it to the next sector's station ("contact <station> <freq>"); the crew reads back and checks in there. Leaving the area, it is handed to the next unit, not named. Virtual tracks talk as the aircraft do.
+- **Frequency load:** only on the frequency the user's COM1 is on (with no user aircraft, all). A centre frequency gets at most `centreCallsPerMinute` transmissions a minute, readbacks counted; a call over the cap waits.
+- **Staffed:** a centre station staffed by a player (`StaffedStation`, position `center` or the station's name) is theirs. The crews still check in; the AI hands nobody off (unless `autoHandoff`). The player instructs an overflight or transit of ours (an arrival before its STAR is approach's, see Staffed stations) with `World.InstructEnroute(EnrouteInstruction{Callsign, AltFt | Heading+HeadingDeg | Kts | Direct | Fix, By})` or `POST /api/enroute/instruct`. It is said on the station's frequency, read back, and flown from where the aircraft is now: through its waypoint chain (`SetRoute`), or its virtual track restarted at its pose (no jump). A level or speed holds for the rest of its way; a heading is flown for 15 minutes, then back onto its way. Refused (403) when the station working it is not the player's, 404 for no such aircraft.
 
 ## Beside the host's own ATC
 
