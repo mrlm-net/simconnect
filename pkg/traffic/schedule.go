@@ -624,6 +624,10 @@ type OverflightOptions struct {
 	// Exclude are airports whose own traffic is scheduled (the focus
 	// airports): overflights neither start nor end there.
 	Exclude []string
+	// Flows: by the area's streams and volume from the flows table, else
+	// the generic fallback (#1483, overflight_flows.go); PerHour, when
+	// set, is the peak volume instead. False: as before.
+	Flows bool
 }
 
 // Overflights generates flights between the config's airports outside the
@@ -631,6 +635,9 @@ type OverflightOptions struct {
 // Each has Enter and Exit, when it crosses into and out of the area at its
 // cruise speed. Deterministic for a seed.
 func Overflights(cfg ScheduleConfig, o OverflightOptions, from, to time.Time) []Flight {
+	if o.Flows {
+		return overflightsByFlows(cfg, o, from, to)
+	}
 	if o.PerHour <= 0 {
 		o.PerHour = 6
 	}

@@ -39,6 +39,8 @@ type overflightRun struct {
 	// pair meet now and then, with the tiers off as well (the same pair,
 	// the same seed); the tiers only change which are in the simulator.
 	pairsMeet bool
+	// The overflight and transit traffic (#1483–#1487), off by default.
+	flows bool
 }
 
 // The budget of the overflights' SimConnect calls with the tiers on, per
@@ -205,7 +207,6 @@ func (x *tierMetrics) sample(t *testing.T, h *Harness) {
 	for _, v := range list {
 		if v.Virtual {
 			virt[v.Tail] = v
-			x.everVirt[v.Tail] = true
 		}
 	}
 	// The creations since: where each appeared against its track's last
@@ -225,6 +226,12 @@ func (x *tierMetrics) sample(t *testing.T, h *Harness) {
 		}
 	}
 	x.nCreated = len(cr)
+	// Seen virtual: after the creations, so one created in this very
+	// sample (under -race, between the list and the creations read) counts
+	// as born near the viewer, as it is, not as a track never sampled.
+	for cs := range virt {
+		x.everVirt[cs] = true
+	}
 	// The removals before: flown on virtually from where they were?
 	for _, r := range x.removedAt {
 		v, ok := virt[r.Tail]

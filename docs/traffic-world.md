@@ -158,6 +158,16 @@ In cruise, the World can keep a few airliners around the host's flight. `SetCorr
 
 They are airlines of the schedule, with a jet that cruises at that level, created airborne and flown by MSFS AI (`traffic.CorridorRoute`, the en-route machinery). Each is kept at least 15 s from the last; none appears on top of other traffic. One more than `DespawnNM` (default 80) from the user aircraft and moving away is taken out and replaced. `GET /api/corridor` shows the settings and the aircraft; `"enabled": false` takes them all out. The user aircraft's position comes from the World's feed.
 
+## Traffic over the airport
+
+With the schedule on, the World flies the traffic a real airport sees overhead: overflights crossing the 100 NM around the picture's centre ([Overflights](traffic-schedules.md#overflights)). Each is created airborne as a NonATC aircraft on a waypoint chain of ours (MSFS 2024 ignores the en-route spawn phase), its level planned clear of everyone's planned ways before it appears; with the [distance tiers](traffic-schedules.md#distance-tiers) far ones are virtual tracks with no simulator object. `ScheduleSettings.OverflightTraffic` (the same fields in `POST /api/schedule`) turns on each piece; each is off when not given, and the traffic is then as before:
+
+| Field | What |
+|---|---|
+| `overflightFlows` | the overflights by the area's streams and volume from the flows table, else the generic fallback ([Streams and volume per area](traffic-schedules.md#streams-and-volume-per-area), #1483) |
+
+`GET /api/schedule` shows what is set, with `overflightArea` and `overflightPeakPerHour` while the flows are on.
+
 ## Beside the host's own ATC
 
 The World never controls nor calls the user aircraft. A host whose own ATC works the player tells the World what it does:

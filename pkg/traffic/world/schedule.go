@@ -66,6 +66,7 @@ type scheduler struct {
 	tiers       OverflightTiers
 	maxOver     int
 	nextVirtual uint32
+	over        overflightTraffic // overflight_traffic.go (#1483–#1487)
 	seed        uint64
 	// noIFR and noVFR switch the airline (and overflying) and the light
 	// aircraft flights off; both run by default.
@@ -424,11 +425,12 @@ func (s *scheduler) overflights(from, to time.Time) []traffic.Flight {
 	if noIFR {
 		return nil // airliners crossing the area are IFR traffic too
 	}
-	if perHour <= 0 {
+	flows := s.overflightSettings().flows
+	if perHour <= 0 && !flows { // with the flows, the area's volume (#1483)
 		perHour = defaultOverflightsPerHour
 	}
-	return traffic.Overflights(s.config(), traffic.OverflightOptions{Centre: c, RadiusNM: overflightRadiusNM, PerHour: perHour, Density: density,
-		Seed: seed ^ uint64(from.Unix()/3600) ^ 0x0f, Exclude: focus}, from, to)
+	return s.crossingTraffic(traffic.OverflightOptions{Centre: c, RadiusNM: overflightRadiusNM, PerHour: perHour, Density: density,
+		Seed: seed ^ uint64(from.Unix()/3600) ^ 0x0f, Exclude: focus, Flows: flows}, from, to)
 }
 
 // Spawn puts a managed flight into the simulator (traffic.Spawner): the
@@ -886,6 +888,7 @@ type scheduleView struct {
 	Flights   []traffic.ManagedFlight `json:"flights"`
 	// Now is the traffic time the flights' times are in (#413).
 	Now time.Time `json:"now"`
+	OverflightTraffic
 }
 
 func registerSchedule(mux *http.ServeMux, st *state) {
@@ -919,6 +922,7 @@ func registerSchedule(mux *http.ServeMux, st *state) {
 		}
 		s.mu.Unlock()
 		v.VirtualOverflights = s.virtualCount()
+		v.OverflightTraffic = s.overflightTrafficView()
 		writeJSON(w, v)
 	})
 	postSchedule := func(w http.ResponseWriter, r *http.Request) {
@@ -950,6 +954,7 @@ func registerSchedule(mux *http.ServeMux, st *state) {
 			VFR                       *bool    `json:"vfr"`       // light aircraft through the circuit
 			Generator                 *bool    `json:"generator"` // false: only flights added (POST /api/flights, #738)
 			OffsetMin                 *float64 `json:"offsetMin"` // the airline timetable this many minutes later flown now (#738)
+			OverflightTraffic                  // overflights and transits (#1483–#1487)
 		}
 		if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
 			http.Error(w, err.Error(), http.StatusBadRequest)
@@ -1011,6 +1016,7 @@ func registerSchedule(mux *http.ServeMux, st *state) {
 		}
 		s.mu.Unlock()
 		s.applyOverflightCaps()
+		s.setOverflightTraffic(req.OverflightTraffic)
 		if req.ICAO != "" {
 			req.Airports = append(req.Airports, req.ICAO)
 		}

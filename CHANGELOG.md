@@ -7,6 +7,17 @@ This project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 ---
 
+## [0.183.0] - 2026-11-19
+
+### Added
+
+- Overflight streams and volume per area (#1483): with `OverflightOptions.Flows` (World: `"overflightFlows": true` in `POST /api/schedule`, `ScheduleSettings.OverflightTraffic`) the overflights are drawn by the area's streams from the new `traffic.overflightFlows` table (pkg/dict, replaceable; per area a box, `peakPerHour`, streams from and to regions by ICAO prefix with weights and an hourly profile in UTC): a stream by its weight that hour, then a pair of it crossing the area, an airline serving both ends and a type by range. An area with no entry gets the generic fallback, its volume from the airport pairs whose great circle crosses it (`traffic.FallbackOverflightsPerHour`). `overflightsPerHour`, when set, is the peak instead; `Density` scales it. Shipped: LKAA (Praha FIR) and London, the project's estimates. `traffic.OverflightRate` gives an hour's mean; `GET /api/schedule` shows `overflightArea` and `overflightPeakPerHour`. Off by default: without the setting the overflights are as before.
+
+### Tests
+
+- The overflight bed's lower bound on the overflights planned is binomial: each hour's draw kept with a chance of a half at least, failing only below that binomial's 1-in-10000 low tail (it failed at LZKZ, 10/h, at 4 of 9 by chance).
+- TestOverflightTiers: a track created in the sample it was first listed in (under -race) counts as born near the viewer, not as a virtual track never sampled.
+
 ## [0.182.2] - 2026-11-19
 
 ### Fixed
