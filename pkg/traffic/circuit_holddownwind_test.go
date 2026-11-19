@@ -36,8 +36,17 @@ func TestHoldDownwindUntilCalled(t *testing.T) {
 		t.Fatal(err)
 	}
 	base, _ := c.Point(LegBase)
-	near := func() { // short of the base turn as it stands, by less than the call's lead
-		at := offsetHeading(base.Position, c.heading+180, ctl.tromboneNM*1852-BaseCallLeadM+20)
+	near := func() { // short of its turn in as it stands, by less than the call's lead
+		thr, _ := c.Point(LegRunway)
+		b0 := alongHeading(thr.Position, c.heading, base.Position)
+		ctl.mu.Lock()
+		baseAlong := b0 - ctl.tromboneNM*1852
+		turnIn := ctl.circuitTurnIn(baseAlong)
+		ctl.mu.Unlock()
+		if turnIn-baseAlong < 100 {
+			t.Fatalf("turn in %.0f m before the corner: not rounded", turnIn-baseAlong)
+		}
+		at := offsetHeading(base.Position, c.heading+180, b0-(turnIn+BaseCallLeadM-20))
 		ctl.Handle(arrivalPositionMsg(DefaultArrivalRequestBase+arrReqMonitor, 80, at, base.AltFt, c.heading+180, kts, false))
 	}
 	near()

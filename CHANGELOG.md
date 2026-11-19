@@ -7,6 +7,12 @@ This project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 ---
 
+## [0.185.4] - 2026-11-19
+
+### Fixed
+
+- A VFR circuit arrival told "I'll call your base" could be held on downwind once it had already started its turn onto base. It then turned back out of that turn and came onto the final the long way round, with no base flown and no base call (`TestUncontrolledMixedCalls`: " base runway 24" not said in 3 simulated hours, about 1 run in 10). The base call (`BaseDue`) was due `BaseCallLeadM` (400 m) before the corner, but the rounded turn in starts up to a turn's radius (some 900 m) before it, so `HoldDownwind` extended the downwind 38° into the turn. The guard against that missed it too: a route set by an extension past the threshold starts at the turn's first point, the straight to it flown from where the aircraft was and not in the route, so `circuitTurnIn` found no straight along the downwind and took the corner itself as where the turn starts. The base call is now due `BaseCallLeadM` before the turn in starts, so a hold is on the straight; a route's first point on the downwind's line, with the next one inside it, counts as where its turn in starts; and a downwind is no longer extended once that turn has begun (#1314) (#1598).
+
 ## [0.185.3] - 2026-11-19
 
 ### Fixed
