@@ -1660,13 +1660,9 @@ func (c *TaxiController) startTaxiOut() error {
 	}
 	c.crossZones = crossingZones(c.req.Graph, route.Points, holds)
 	// End the path HoldShortStopMeters before the hold-short line, so the
-	// stop there cannot be lost when crossing holds are cleared.
-	if n := len(pts); n >= 2 {
-		a, b := pts[n-2], pts[n-1]
-		if l := localDist(a, b); l > HoldShortStopMeters+1 {
-			pts[n-1] = offsetHeading(b, localBearing(b, a), HoldShortStopMeters)
-		}
-	}
+	// stop there cannot be lost when crossing holds are cleared: along the
+	// path, not only off its last segment (#1570).
+	pts = trimPathEnd(pts, HoldShortStopMeters)
 	path, err := NewGroundPath(pts, prof)
 	if err != nil {
 		return err
@@ -1697,6 +1693,29 @@ func (c *TaxiController) startTaxiOut() error {
 	}
 	c.lastStep = c.now()
 	return nil
+}
+
+// trimPathEnd shortens pts by m metres along the path from its end: the
+// points within m of it dropped, the last one left moved back on its
+// segment. On a layout with nodes close together near the holding point
+// (OSM-derived ones, many MSFS ones) the last segment is shorter than m,
+// and trimmed off it alone the stop was skipped: the nose gear stopped on
+// the hold-short line, past the stop bar (TNCM, #1570). A path no longer
+// than m+1 is left as it is.
+func trimPathEnd(pts []airport.LatLon, m float64) []airport.LatLon {
+	if len(pts) < 2 || pathLen(pts) <= m+1 {
+		return pts
+	}
+	for n := len(pts); n >= 2 && m > 0; n = len(pts) {
+		a, b := pts[n-2], pts[n-1]
+		l := localDist(a, b)
+		if l > m+0.5 {
+			pts[n-1] = offsetHeading(b, localBearing(b, a), m)
+			return pts
+		}
+		pts, m = pts[:n-1], m-l
+	}
+	return pts
 }
 
 // startLineUp builds the path onto the runway: from the nose gear to the

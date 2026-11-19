@@ -120,6 +120,10 @@ type controlled struct {
 	// tcasRA: its crew flies a TCAS RA (#450): approach gives it nothing
 	// until clear of conflict.
 	tcasRA atomic.Bool
+	// rollTakeoff, rollBehind: taxiing up to its runway, the tower's
+	// holding-point checks pass for a take-off clearance rolling through,
+	// or for a line-up behind the next arrival (rollThrough, #1568).
+	rollTakeoff, rollBehind atomic.Bool
 	// finished: its controller is done (view.Done), read without it.mu;
 	// doneAt when.
 	finished atomic.Bool
@@ -1755,6 +1759,9 @@ func (it *controlled) update(ev TaxiOrArrival) {
 		v.Request = it.called
 		v.SayingUntil = it.sayingUntil()
 		v.Actions = askedFor(departureActions(e.State, e.HoldingShortOf, it.dep), v.State, it.delivered, it.called)
+		if e.State == traffic.TaxiTaxiing {
+			v.Actions = it.rollThroughOffer(v.Actions)
+		}
 		if it.clearanceDue != nil {
 			v.Actions = append([]string{"clearance"}, v.Actions...)
 		}
@@ -1886,7 +1893,14 @@ func departureActions(s traffic.TaxiState, holdingShortOf string, ctl departureC
 		// the one that stops it. Only with the runway next and close may it
 		// be told to line up, by a controller who knows the sequence (#1331).
 		if ctl != nil && ctl.RunwayNext() {
-			return notAgain(ctl, []string{"hold", "taxi", "upto", "lineup"})
+			// Or cleared for take-off, rolling through the holding point
+			// without a stop (#1568): kept on offer only while the tower's
+			// holding-point checks pass (rollThrough). Once given, nothing
+			// of the runway is said again.
+			if ctl.Cleared("takeoff") {
+				return notAgain(ctl, []string{"hold", "taxi", "upto"})
+			}
+			return notAgain(ctl, []string{"hold", "taxi", "upto", "lineup", "lineupbehind", "takeoff"})
 		}
 		return notAgain(ctl, []string{"hold", "taxi", "upto"})
 	case traffic.TaxiHoldingShort:
@@ -1895,7 +1909,8 @@ func departureActions(s traffic.TaxiState, holdingShortOf string, ctl departureC
 		}
 		return notAgain(ctl, []string{"lineup", "lineupbehind", "takeoff"})
 	case traffic.TaxiLiningUp, traffic.TaxiLinedUp:
-		return []string{"takeoff", "abort"}
+		// Cleared for take-off already: only "abort" is left (#1569).
+		return notAgain(ctl, []string{"takeoff", "abort"})
 	case traffic.TaxiDeparting:
 		return []string{"abort"}
 	}
@@ -4774,7 +4789,7 @@ func (it *controlled) handoff(ev TaxiOrArrival) {
 	// (action "handoff"), unless the station hands off by itself.
 	if !it.handoffGiven {
 		at, _ := it.station(it.atc)
-		if s, staffed := it.cc.core.staffedAt(it.ICAO, it.atc, at); staffed && !s.AutoHandoff {
+		if s, staffed := it.cc.core.staffedAt(it.ICAO, it.atc, at); staffed && !s.AutoHandoff && !it.lastLook(ev, pos) {
 			if it.handoffDue != pos {
 				it.cc.log.printf("%-6s leaving the staffed %s: the player hands it to %s", it.Tail, it.atc, pos)
 			}

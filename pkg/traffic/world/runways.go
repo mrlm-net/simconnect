@@ -174,8 +174,12 @@ func (t *towers) tick(now time.Time) {
 		if !ok {
 			continue
 		}
+		// Taxiing up to its runway, told to line up behind the next arrival
+		// (#1568): in the queue as at its holding point, lined up once that
+		// one has passed.
+		behindNext := it.dep != nil && v.State == "taxiing" && v.OnGround && t.behindOf(v.Tail)
 		// Taxiing across a runway (cleared, or not waiting to be): on it.
-		if v.State == "taxiing" && v.OnGround {
+		if v.State == "taxiing" && v.OnGround && !behindNext {
 			on := false
 			for _, r := range l.Runways {
 				if onRunway(r, v.Position) {
@@ -200,7 +204,7 @@ func (t *towers) tick(now time.Time) {
 			}
 			u.Phase, u.Crossing = traffic.RunwayHoldingShort, true
 			rk = key{it.ICAO, x.Name()}
-		case it.dep != nil && v.State == "holding short":
+		case it.dep != nil && (v.State == "holding short" || behindNext):
 			u.Phase, u.LineUpIn = traffic.RunwayHoldingShort, it.dep.LineUpLeft()
 			u.AlongM = alongRunway(l, v.Runway, v.Position) // its way in: an intersection's
 			// Cleared to line up (behind the one departing or landing too) and
@@ -442,6 +446,7 @@ func (t *towers) tick(now time.Time) {
 		t.last[k.icao+" "+k.rwy] = view
 		t.mu.Unlock()
 	}
+	t.rollThrough(now, items, layout) // the take-off offered rolling through (#1568)
 }
 
 // behind gives departure it a conditional line-up behind arrival (#509):
