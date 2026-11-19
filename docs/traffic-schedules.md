@@ -61,6 +61,26 @@ over := traffic.Overflights(cfg, traffic.OverflightOptions{
 
 Each has `Enter` and `Exit`, when it crosses into and out of the area at its cruise speed; they are zero for other flights. Like `Schedule`, it is deterministic for a seed. The [Traffic Manager](traffic-manager.md#enroute-traffic-and-overflights) spawns both: `ManagerOptions.Source` for the schedule and `ManagerOptions.Overflights` for the overflights.
 
+### Streams and volume per area
+
+Real traffic over an area runs in strong, place-specific streams at very different volumes by region: Western Europe to and from the Gulf and Asia over Central Europe, the North Atlantic's westbound day and eastbound night waves near London, leisure flows to the Mediterranean. With `OverflightOptions.Flows` (`POST /api/schedule` with `"overflightFlows": true`) the overflights follow the area's streams:
+
+- The **flows table** `traffic.overflightFlows` (replaceable at runtime like the other [tables](dictionaries.md), local values win) has an entry per area: a latitude/longitude box (a FIR's, roughly), `peakPerHour` (the overflights an hour when every stream is at its peak, at density 1) and its `streams`: `from` and `to` regions as ICAO prefixes (`"EG"`, `"K"`, `"*"` any), a `weight` against the others, `hoursUTC` (24 values, the stream's volume by UTC hour against its peak; none: flat all day) and `minNM` (the shortest pair, 200 NM by default).
+- Each hour, the mean is `peakPerHour × Density × Σ weight × hoursUTC[h] / Σ weight` (`traffic.OverflightRate`). Each overflight draws a stream by its weight that hour, then a pair of the stream's airports outside the area whose great circle crosses it (bigger airports more often), then an airline serving both ends; the type comes from its fleet by range, so long-haul streams fly long-haul types.
+- **Generic fallback:** an area with no entry gets its volume from the airport list: the pairs whose great circle crosses it, by their sizes (`traffic.FallbackOverflightsPerHour`, between 1 and 40 an hour, none where no pair crosses), the pairs drawn by size and the hours by the first focus airport's waves, as without the flows. About 14 an hour over Prague with the built-in airports, 5 over Košice, 1 over the Faroes.
+- `overflightsPerHour`, when set, is the area's peak volume instead of the table's; `Density` scales it as everything else. `GET /api/schedule` shows `overflightArea` and `overflightPeakPerHour`.
+- Overflights never start or end at a focus airport, and the minimum pair distance is kept, as before.
+
+Shipped entries (the project's estimates, not from a source): `LKAA` (Praha FIR, 36 an hour at the peak: Western Europe ↔ the Gulf and Asia, Germany and Benelux ↔ south-east Europe, the north ↔ the Mediterranean, Poland and the Baltics ↔ the west) and `EGTT-LON` (London, 24 an hour: the North Atlantic both ways, Ireland and the north ↔ the continent and the Mediterranean). Everywhere else the fallback.
+
+```json
+{"area": "LKAA", "name": "Praha FIR", "north": 51.2, "south": 48.4, "west": 11.9, "east": 19.0, "peakPerHour": 36,
+ "streams": [{"name": "Western Europe to the Gulf and Asia", "from": ["EG", "EH", "LF"], "to": ["OM", "OT"], "weight": 3,
+              "hoursUTC": [0.1, 0.05, "… 24 values …"]}]}
+```
+
+Without the setting the overflights are drawn as before: `PerHour` on the waves, the pairs by size.
+
 ### Distance tiers
 
 Every overflight in the simulator is an object that costs the simulator's main thread, seen or not. With the tiers on (`world.Options.Overflights`, or `POST /api/schedule` with `overflightMaterialiseNM`), an overflight far from the viewer is a **virtual track**: the World flies it along its planned waypoints (`traffic.VirtualFlight`, the flying model of the offline simulator), with no simulator object and no request. The viewer is the user aircraft and the aircraft our camera is on.

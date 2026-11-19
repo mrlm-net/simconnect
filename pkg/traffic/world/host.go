@@ -477,6 +477,9 @@ type ScheduleSettings struct {
 	OffsetMin *float64 `json:"offsetMin,omitempty"`
 	// Others: "respect" or "ignore" the traffic not ours.
 	Others string `json:"others,omitempty"`
+	// The overflight and transit traffic (#1483–#1487): each off when not
+	// given.
+	OverflightTraffic
 }
 
 // SetSchedule starts or stops the scheduled traffic.

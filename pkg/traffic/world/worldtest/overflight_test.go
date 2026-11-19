@@ -125,6 +125,9 @@ type overflightMetrics struct {
 	peakOver   int
 	meanOver   float64
 	fingerprnt string
+
+	// crossing: the overflights' tracks and levels (#1484-#1486).
+	crossing *crossingMetrics
 }
 
 // boardFlight is a flight on the schedule's board (GET /api/schedule).
@@ -198,7 +201,7 @@ func runOverflights(t *testing.T, root, icao string, hours int, run overflightRu
 	no := false
 	if err := h.World.SetSchedule(world.ScheduleSettings{Enabled: true, Airports: []string{icao}, Density: 1, MaxAircraft: 12, VFR: &no, Seed: h.Seed,
 		OverflightsPerHour: run.perHour, MaxOverflights: run.maxOver, OverflightMaterialiseNM: run.materialiseNM, OverflightDematerialiseNM: run.dematerialiseNM,
-		MaxVirtualOverflights: run.maxVirtual}); err != nil {
+		MaxVirtualOverflights: run.maxVirtual, OverflightTraffic: run.traffic()}); err != nil {
 		t.Fatal(err)
 	}
 	m := &overflightMetrics{icao: icao, seed: h.Seed, hours: hours, planned: map[string]boardFlight{}, enter0: map[string]time.Time{},
@@ -210,6 +213,7 @@ func runOverflights(t *testing.T, root, icao string, hours int, run overflightRu
 	start := h.Clock.Now()
 	end := start.Truncate(time.Hour).Add(time.Duration(hours) * time.Hour) // whole hours
 	centre := airport.LatLon{Lat: h.Layout.Latitude, Lon: h.Layout.Longitude}
+	m.crossing = newCrossingMetrics(h, centre)
 
 	over := map[string]bool{}  // the overflights' call signs
 	wrong := map[string]bool{} // flew a level of the other direction
@@ -270,6 +274,7 @@ func runOverflights(t *testing.T, root, icao string, hours int, run overflightRu
 			}
 			nAC++
 			if over[ob.ATCID] && !m.shared[ob.ATCID] {
+				m.crossing.sample(ob, at, samples)
 				nOver++
 				// Its level, each way: level flight (within 20 ft of where it
 				// was 5 s before) at a whole flight level, from FL100.
@@ -406,7 +411,7 @@ func runOverflights(t *testing.T, root, icao string, hours int, run overflightRu
 	}
 
 	// Per hour: planned (by the time each enters the area), entered (created).
-	waves := traffic.DefaultScheduleConfig().Waves
+	cfg := traffic.DefaultScheduleConfig()
 	hf := fnv.New64a()
 	var names []string
 	for cs := range m.planned {
@@ -422,7 +427,7 @@ func runOverflights(t *testing.T, root, icao string, hours int, run overflightRu
 	}
 	m.fingerprnt = strconv.FormatUint(hf.Sum64(), 16)
 	for hr := start.Truncate(time.Hour); hr.Before(end); hr = hr.Add(time.Hour) {
-		x := overflightHour{at: hr, mean: m.perHour * waves[traffic.LocalHour(icao, centre, hr)]}
+		x := overflightHour{at: hr, mean: traffic.OverflightRate(cfg, traffic.OverflightOptions{Centre: centre, RadiusNM: 100, PerHour: rateOf(m.perHour, run), Exclude: []string{icao}, Flows: run.flows}, hr)}
 		for _, cs := range names {
 			f, enter := m.planned[cs], m.enter0[cs]
 			if enter.Before(hr) || !enter.Before(hr.Add(time.Hour)) {
@@ -445,6 +450,7 @@ func runOverflights(t *testing.T, root, icao string, hours int, run overflightRu
 			t.Logf("%s %s → %s due %s, not created: %s %s %s", cs, f.Origin, f.Destination, f.Enter.Format("15:04"), f.Status, f.Err, f.Note)
 		}
 	}
+	m.crossing.finish(m)
 	m.wall = time.Since(wall)
 	return m
 }
@@ -475,7 +481,7 @@ func (m *overflightMetrics) report(t *testing.T) {
 	var b strings.Builder
 	fmt.Fprintf(&b, "overflights at %s: WORLDTEST_SEED=%d, %d h of traffic time in %v of wall time, planned %d (fingerprint %s)\n",
 		m.icao, m.seed, m.hours, m.wall.Round(time.Second), len(m.planned), m.fingerprnt)
-	fmt.Fprintf(&b, "  per hour (rate %.0f/h × wave): hour, mean, planned, entered\n", m.perHour)
+	fmt.Fprintf(&b, "  per hour (the generator's mean; rate %.0f/h set): hour, mean, planned, entered\n", m.perHour)
 	for _, x := range m.hourly {
 		fmt.Fprintf(&b, "    %s  %.1f  %d  %d\n", x.at.Format("15:04"), x.mean, x.planned, x.entered)
 	}
@@ -520,7 +526,23 @@ func (m *overflightMetrics) report(t *testing.T) {
 	if m.tiers != nil {
 		m.tiers.report(&b, m)
 	}
+	m.crossing.report(&b)
 	t.Log(b.String())
+}
+
+// binomialLow is the least k with P(X < k) <= alpha, X ~ Binomial(n, p).
+func binomialLow(n int, p, alpha float64) int {
+	cdf := 0.0
+	for k := 0; k <= n; k++ {
+		lg, _ := math.Lgamma(float64(n + 1))
+		a, _ := math.Lgamma(float64(k + 1))
+		b, _ := math.Lgamma(float64(n - k + 1))
+		cdf += math.Exp(lg - a - b + float64(k)*math.Log(p) + float64(n-k)*math.Log1p(-p))
+		if cdf > alpha {
+			return k
+		}
+	}
+	return n
 }
 
 // check pins today's behaviour (#1481).
@@ -532,18 +554,19 @@ func (m *overflightMetrics) check(t *testing.T) {
 	// The generator draws the floor or the ceiling of the mean each hour
 	// (rate × density × the hour's wave), never more; a draw that finds no
 	// pair of airports whose route crosses the area is dropped, more often
-	// at an airport far from the busy pairs: half the mean at least.
-	var planned int
-	var mean float64
+	// at an airport far from the busy pairs. Each draw kept with a chance
+	// of a half at least: fewer than the binomial's 1-in-10000 low tail is
+	// a fault (LZKZ at 10/h, 2 h: 4 of 9 is chance, not one).
+	var planned, draws int
 	for _, x := range m.hourly {
 		if hi := int(math.Ceil(x.mean)); x.planned > hi {
 			t.Errorf("%s %s: %d overflights planned, want %d at most (mean %.1f)", m.icao, x.at.Format("15:04"), x.planned, hi, x.mean)
 		}
 		planned += x.planned
-		mean += x.mean
+		draws += int(math.Floor(x.mean))
 	}
-	if float64(planned) < mean/2 {
-		t.Errorf("%s: %d overflights planned in %d h, want %.0f at least (half the mean)", m.icao, planned, m.hours, mean/2)
+	if lo := binomialLow(draws, 0.5, 1e-4); planned < lo {
+		t.Errorf("%s: %d overflights planned in %d h of %d drawn at least, want %d at least (each kept with a chance of a half)", m.icao, planned, m.hours, draws, lo)
 	}
 	if m.confOO > 0 && (m.tiers == nil || !m.tiers.run.pairsMeet) {
 		t.Errorf("%s: %d conflict-watch firings between two overflights: %v", m.icao, m.confOO, m.conflicts)

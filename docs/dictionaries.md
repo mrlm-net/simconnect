@@ -41,6 +41,7 @@ A table's JSON is an envelope; `Use` also takes the bare items array:
 | `traffic.modelRules` | `title` | simulator models our traffic never uses (`ModelRuleItem`); local rules in the World's `model-rules.json` |
 | `traffic.intersectionAirports` | `icao` | an airport's own intersection entries per runway and class, and whether the clearance says the runway left (`IntersectionAirportItem`); none shipped |
 | `traffic.standRules` | `stand` | where our aircraft stop on a stand, "ICAO LABEL" ("LKPR B14"): forward and right offsets up to a wingspan (`StandRuleItem`); local rules over them, like GSX airport profiles |
+| `traffic.overflightFlows` | `area` | overflight streams and volume per area: a box, the peak per hour, streams by region with weights and hourly profiles in UTC (`OverflightArea`, #1483); LKAA and London shipped, the generic fallback elsewhere |
 | `airport.vfr` | `icao` | VFR reporting points, FIS unit and frequency per airport (`airport.VFRAirport`); Czech VFR Manual |
 | `jetway.doorOffsets` | `type` | where a jetway helper meets the visible door, per type: ahead and right in metres (`jetway.DoorOffset`); none shipped |
 | `systems.profiles` | `name` | aircraft systems profiles (`systems.Profile`; Windows builds) |
