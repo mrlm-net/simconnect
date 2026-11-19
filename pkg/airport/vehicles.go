@@ -139,6 +139,18 @@ func (g *vehicleGraph) end(p LatLon) (vehicleEnd, bool) {
 	return vehicleEnd{at: g.pos[n], seg: [2]int{n, n}}, true
 }
 
+// join is end, or with atNode the nearest node.
+func (g *vehicleGraph) join(p LatLon, atNode bool) (vehicleEnd, bool) {
+	if !atNode {
+		return g.end(p)
+	}
+	n, ok := g.nearest(p)
+	if !ok {
+		return vehicleEnd{}, false
+	}
+	return vehicleEnd{at: g.pos[n], seg: [2]int{n, n}}, true
+}
+
 // VehicleRoadDistance is how far (meters) p is from the nearest vehicle
 // road's centreline; +Inf when the airport has none.
 func (l *Layout) VehicleRoadDistance(p LatLon) float64 {
@@ -171,9 +183,17 @@ func closestOnSegment(p, a, b LatLon) LatLon {
 // between it takes the cheapest way (roads 1×, aprons and taxiways
 // vehicleOffRoad×).
 func (l *Layout) VehicleRoute(a, b LatLon) ([]LatLon, error) {
+	return l.VehicleRouteJoin(a, b, false, false)
+}
+
+// VehicleRouteJoin is VehicleRoute, but an end flagged (aAtNode, bAtNode)
+// lies on the taxiways, away from the roads (a holding position, a runway
+// exit): it joins the graph at its nearest node, not straight across to
+// the nearest road, which may be across the grass (#1597).
+func (l *Layout) VehicleRouteJoin(a, b LatLon, aAtNode, bAtNode bool) ([]LatLon, error) {
 	g := l.vehicleGraph()
-	from, ok1 := g.end(a)
-	to, ok2 := g.end(b)
+	from, ok1 := g.join(a, aAtNode)
+	to, ok2 := g.join(b, bAtNode)
 	if !ok1 || !ok2 {
 		return nil, ErrNoVehicleRoute
 	}

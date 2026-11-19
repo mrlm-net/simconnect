@@ -71,12 +71,20 @@ func TestRescueNoCountAsBefore(t *testing.T) {
 	if crew == nil || len(crew.trucks) != 2 || rescueFireTrucks != 2 {
 		t.Fatalf("crew %+v, want 2 fire trucks", crew)
 	}
+	// From one depot the second waits for the first to move off (#1597).
+	for i, handled := 0, 0; i < 3000 && len(c.created) < 2; i++ {
+		for ; handled < len(c.req); handled++ {
+			cc.rescueHandle(assignedObject(c.req[handled], 700+c.req[handled]))
+		}
+		now = now.Add(100 * time.Millisecond)
+		cc.rescueFrame(now)
+	}
 	if len(c.created) != 2 || c.created[0] != "Truck Fire Airport Medium" || c.created[1] != "Truck Fire Short" {
 		t.Fatalf("created %v", c.created)
 	}
 	for _, tr := range crew.trucks {
-		if tr.Depot != nil || tr.After != nil || tr.Waiting() {
-			t.Errorf("default crew: depot %v, after %v, waiting %v", tr.Depot, tr.After, tr.Waiting())
+		if tr.Depot != nil || tr.Waiting() {
+			t.Errorf("default crew: depot %v, waiting %v", tr.Depot, tr.Waiting())
 		}
 	}
 	c.created = nil

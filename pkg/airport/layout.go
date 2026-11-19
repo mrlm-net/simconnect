@@ -49,6 +49,32 @@ type Layout struct {
 	// known).
 	TransitionAltitude float64 `json:"transitionAlt,omitempty"`
 	TransitionLevel    float64 `json:"transitionLevel,omitempty"`
+	// RescueStandby are the fire and rescue standby positions a layout
+	// builder gives (#1597); none (the zero value): they are derived from
+	// the runway's holding positions.
+	RescueStandby []RescueStandbyPoint `json:"rescueStandby,omitempty"`
+}
+
+// RescueStandbyPoint is a pre-planned standby position for fire and
+// rescue vehicles: Runway is the runway end it serves ("" any), Position
+// where the vehicle waits and Heading the way it faces (true degrees).
+type RescueStandbyPoint struct {
+	Runway   string  `json:"runway,omitempty"`
+	Position LatLon  `json:"position"`
+	Heading  float64 `json:"heading,omitempty"`
+}
+
+// RescueStandbyFor are the layout's standby positions for runwayEnd: those
+// given for it or for any runway end.
+func (l *Layout) RescueStandbyFor(runwayEnd string) []RescueStandbyPoint {
+	want := normalizeRunwayEnd(runwayEnd)
+	var out []RescueStandbyPoint
+	for _, p := range l.RescueStandby {
+		if p.Runway == "" || normalizeRunwayEnd(p.Runway) == want {
+			out = append(out, p)
+		}
+	}
+	return out
 }
 
 // Runway is a runway with both of its ends.

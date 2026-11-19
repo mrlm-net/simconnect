@@ -78,7 +78,7 @@ func TestRescueCrew(t *testing.T) {
 	}
 	cc.rescueStep(now, prio, []traffic.TrackedAircraft{at(15, false, 200, now)})
 	cc.rescueStep(now, prio, []traffic.TrackedAircraft{at(14, false, 200, now)})
-	if len(c.created) != rescueFireTrucks || c.created[0] != "Truck Fire Airport Medium" {
+	if len(c.created) < 1 || c.created[0] != "Truck Fire Airport Medium" || len(cc.rescue.by["CSA1"].trucks) != rescueFireTrucks {
 		t.Fatalf("created %v, want %d fire trucks once", c.created, rescueFireTrucks)
 	}
 	crew := cc.rescue.by["CSA1"]
@@ -97,8 +97,13 @@ func TestRescueCrew(t *testing.T) {
 	}
 	now = now.Add(5 * time.Second)
 	cc.rescueStep(now, prio, []traffic.TrackedAircraft{at(-0.3, true, 100, now)})
+	if crew.state != rescueDown {
+		t.Fatalf("down at 100 kt, state %d: want them at standby (#1597)", crew.state)
+	}
+	now = now.Add(time.Second)
+	cc.rescueStep(now, prio, []traffic.TrackedAircraft{at(-0.3-15.0/3600, true, 15, now)})
 	if crew.state != rescueFollowing {
-		t.Fatalf("down, state %d", crew.state)
+		t.Fatalf("down and slow, state %d", crew.state)
 	}
 	// Taxiing at 15 kt while the simulator says 0 kt (AI on the ground):
 	// still moving.
@@ -110,7 +115,9 @@ func TestRescueCrew(t *testing.T) {
 	if crew.state != rescueFollowing || !crew.stoppedAt.IsZero() {
 		t.Fatalf("taxiing at 0 kt said, state %d, stopped since %v", crew.state, crew.stoppedAt)
 	}
-	now = now.Add(time.Second)
+	// No vehicle with it here (no frames): its stay counts from
+	// rescueReachWithin after they set off.
+	now = now.Add(rescueReachWithin)
 	cc.rescueStep(now, prio, []traffic.TrackedAircraft{at(s, true, 0, now)})
 	now = now.Add(rescueStay)
 	cc.rescueStep(now, prio, []traffic.TrackedAircraft{at(s, true, 0, now)})
