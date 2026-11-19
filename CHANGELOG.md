@@ -7,6 +7,13 @@ This project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 ---
 
+## [0.185.3] - 2026-11-19
+
+### Fixed
+
+- Naming an exit on the roll or on the final (`VacateAt`, `POST /api/control/{id}/vacate?node=`) no longer refuses every exit as too tight when the arrival's stand is reached tight from all of them (seven of LKPR's stands in the repository's test data, for an A320). "No way on from it fits" now blames an exit only when the planned exit has a way on that fits; when the stand is tight whichever exit is taken, the exit is judged on its own fit, its reach and whether it is passed, as before. The roll-on to a later exit for an aircraft too fast for its planned one (#1586) is no longer stuck there either. `TestVacateOnTheRoll` failed when the schedule gave its arrival such a stand: "too tight to vacate: F: no way on from it fits", with no exit refused for being passed or too near (#1594).
+- Stands nearly as close as the best are still picked at random, but the least penalised first, as already without a runway: the share of its pier already held, the other side of the Schengen border's area, a neighbour due off block. A draw alone could put a fuller pier's stand ahead of an emptier one's, and LKPR's first eight gates went seven to pier C about once in fifty schedules (`TestStandsSpreadOverPiers`; 0 of 800 draws now) (#1594).
+
 ## [0.185.2] - 2026-11-19
 
 ### Fixed

@@ -951,6 +951,54 @@ func TestSlowerAircraftEarlierExit(t *testing.T) {
 	}
 }
 
+// TestVacateAtTightStand: an arrival for a stand reached tight from every
+// exit of its runway may still be given any exit; the way on is tight
+// whichever it takes, so it is no exit's fault. TestVacateOnTheRoll failed
+// when the schedule gave its arrival such a stand.
+func TestVacateAtTightStand(t *testing.T) {
+	g := lkprGraph(t)
+	exits, err := g.RunwayExits("24")
+	if err != nil || len(exits) < 2 {
+		t.Fatalf("exits of 24: %v, %v", exits, err)
+	}
+	opts := airport.RouteOptions{HalfSpan: DefaultMotionProfile().SpanMeters / 2}
+	stand := -1
+	for p := range g.Layout.Parking {
+		if _, ok := g.ParkingNode(p); !ok {
+			continue
+		}
+		all := true
+		for _, x := range exits {
+			if r, err := g.RouteFromRunway(x, p, opts); err != nil || !r.Tight {
+				all = false
+				break
+			}
+		}
+		if all {
+			stand = p
+			break
+		}
+	}
+	if stand < 0 {
+		t.Fatal("no LKPR stand reached tight from every exit of 24: the data changed")
+	}
+	ctl := NewArrivalController(NewFleet(&fakeClient{}))
+	if err := ctl.Start(ArrivalRequest{Graph: g, Runway: "24", Parking: stand, Model: "FSLTL A320 Air France SL", Tail: "CSA2"}); err != nil {
+		t.Fatal(err)
+	}
+	was := ctl.Plan().Exit
+	far := exits[len(exits)-1]
+	if far.Node == was.Node {
+		far = exits[len(exits)-2]
+	}
+	if err := ctl.VacateAt(far); err != nil {
+		t.Fatalf("exit %s for stand %d: %v", far.Taxiway, stand, err)
+	}
+	if ctl.Plan().Exit.Node != far.Node {
+		t.Errorf("exit %v, want %v", ctl.Plan().Exit.Node, far.Node)
+	}
+}
+
 // A controller names the exit before the landing (#1308 follow-up, "vacate
 // where"): the ground part is planned again from it, the stand is kept, and
 // once the aircraft is down it is refused — the rollout's braking is already
