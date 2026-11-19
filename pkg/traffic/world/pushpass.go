@@ -27,28 +27,70 @@ const (
 	pushPassMaxWait = 3 * time.Minute
 	// pushPassRetry: a held push is asked about again after this.
 	pushPassRetry = 10 * time.Second
+	// pushLegM: the first this much of its taxi route, from the stand, is
+	// the leg it taxis once pushed. An arrival coming the other way along
+	// it while it pushes and taxis there holds the push too: pushed, it
+	// would stand on that taxilane facing the arrival, and neither could
+	// pass (#1574: XPLY, a single-lane apron loop, KLM1817 pushed facing
+	// AFR919 coming in along it).
+	pushLegM = 250.0
+	// pushStartS: seconds from the push approved to taxiing (push, start,
+	// taxi call), for when it is on its leg.
+	pushStartS = 150.0
+	// pushLegMarginS: the arrival comes to the leg no sooner than this
+	// after the departure would be off it, or the push is held.
+	pushLegMarginS = 60.0
+	// rolloutMps: an arrival's mean speed from touchdown to its exit.
+	rolloutMps = 30.0
+	// pushLegMaxWait: held for an arrival coming along its leg,
+	// pushPassMaxWait does not release it, this does: released after
+	// pushPassMaxWait, it met the next one coming (#1574: LKPR, DP500 held
+	// 3 minutes for AR500, then pushed onto H1 facing AR501).
+	pushLegMaxWait = 10 * time.Minute
 )
 
 // passingBehind is one of ours at its airport taxiing with what its push
 // will sweep on the next pushPassAheadM of its way, nil none.
 func (it *controlled) passingBehind() *controlled {
+	o, _ := it.passingFor()
+	return o
+}
+
+// passingFor is passingBehind, or an arrival to come the other way along
+// the leg it taxis once pushed (pushLegM) while it would be on it, with
+// true; such an arrival first. Planned up front: when each comes is
+// estimated from where it is (on approach, rolling out or taxiing) along
+// its planned exit and taxi-in at planned speeds, against the push, the
+// start and the taxi off the shared stretch (#1574: LKPR, DP301 pushed
+// from C23 onto H1 as AR301 was on final for 06, to C31 along H1).
+func (it *controlled) passingFor() (*controlled, bool) {
 	if it.dep == nil {
-		return nil
+		return nil, false
 	}
 	area, ok := it.dep.PushArea()
 	if !ok || len(area.Points) == 0 {
-		return nil
+		return nil, false
 	}
+	var behind *controlled
+	var leg []airport.LatLon
+	if r := it.dep.Route(); r != nil {
+		leg = firstMeters(r.Points, pushLegM)
+	}
+	taxiMps := traffic.TaxiSpeedKts * 1852 / 3600
 	for _, o := range it.cc.snapshotItems() {
 		if o == it || o.ICAO != it.ICAO {
 			continue
 		}
 		ahead := pushPassAheadM
 		_, way, movable, ok := o.groundWay()
+		before := 0.0
 		if bt := o.backtrackWay(false); bt != nil {
 			// Backtracking on the runway to its way off (#1563): its whole
 			// taxi-in, the push not onto the one way it comes.
 			way, movable, ok, ahead = bt, true, true, math.Inf(1)
+		} else if !ok || !movable {
+			way, before, ok = o.inboundWay()
+			movable = ok
 		}
 		if !ok || !movable {
 			continue
@@ -56,11 +98,58 @@ func (it *controlled) passingBehind() *controlled {
 		o.mu.Lock()
 		half := traffic.MotionProfileFor(o.view.Model).SpanMeters / 2
 		o.mu.Unlock()
-		if wayMeets(way, area, half+area.HalfSpan+traffic.HeadOnMarginMeters, ahead) {
-			return o
+		reach := half + area.HalfSpan + traffic.HeadOnMarginMeters
+		if fa, fb, ln, _, ok := traffic.OpposedStretch(way, leg, reach); ok && before+fa/taxiMps < pushStartS+(fb+ln)/taxiMps+pushLegMarginS {
+			return o, true
+		}
+		if before == 0 && wayMeets(way, area, reach, ahead) {
+			if math.IsInf(ahead, 1) {
+				return o, false
+			}
+			if behind == nil {
+				behind = o
+			}
 		}
 	}
-	return nil
+	return behind, false
+}
+
+// inboundWay is an arrival's taxi-in route from its exit on, before it
+// taxis (on approach, landing, rolling out or vacating), and the seconds
+// until it is at the exit: to touchdown at ApproachSpeedKts, then the
+// rollout. ok false for any other.
+func (it *controlled) inboundWay() (way []airport.LatLon, before float64, ok bool) {
+	if it.arr == nil {
+		return nil, 0, false
+	}
+	st := it.arr.State()
+	if st != traffic.ArrivalApproaching && st != traffic.ArrivalLanding && st != traffic.ArrivalRollout && st != traffic.ArrivalVacating {
+		return nil, 0, false
+	}
+	p := it.arr.Plan()
+	if p == nil || p.Route == nil || p.VacateIndex < 0 || p.VacateIndex >= len(p.Route.Points)-1 {
+		return nil, 0, false
+	}
+	if st == traffic.ArrivalApproaching || st == traffic.ArrivalLanding {
+		it.mu.Lock()
+		pos := it.view.Position
+		it.mu.Unlock()
+		th := p.End.LandingThreshold()
+		before = calc.HaversineMeters(pos.Lat, pos.Lon, th.Lat, th.Lon)/(traffic.ApproachSpeedKts*1852/3600) + p.Exit.Along/rolloutMps
+	}
+	return p.Route.Points[p.VacateIndex:], before, true
+}
+
+// firstMeters is way up to meters along it from its first point.
+func firstMeters(way []airport.LatLon, meters float64) []airport.LatLon {
+	gone := 0.0
+	for i := 1; i < len(way); i++ {
+		gone += calc.HaversineMeters(way[i-1].Lat, way[i-1].Lon, way[i].Lat, way[i].Lon)
+		if gone > meters {
+			return way[:i+1]
+		}
+	}
+	return way
 }
 
 // wayMeets reports whether the first ahead metres of way come within reach
@@ -95,14 +184,18 @@ func wayMeets(way []airport.LatLon, area airport.Occupied, reach, ahead float64)
 
 // holdPushForPassing is whether ground holds its push for traffic passing
 // behind: told once, asked again after pushPassRetry; never longer than
-// pushPassMaxWait in all.
+// pushPassMaxWait in all (pushLegMaxWait for traffic along its leg).
 func (it *controlled) holdPushForPassing(req string) bool {
-	o := it.passingBehind()
+	o, leg := it.passingFor()
 	now := it.cc.clock.Now()
+	wait := pushPassMaxWait
+	if leg {
+		wait = pushLegMaxWait
+	}
 	// One backtracking on the runway is not waited out: it has to come by.
 	waitOut := o == nil || o.backtrackWay(false) == nil
 	it.mu.Lock()
-	if o == nil || it.request != req || waitOut && !it.pushPassFrom.IsZero() && now.Sub(it.pushPassFrom) > pushPassMaxWait {
+	if o == nil || it.request != req || waitOut && !it.pushPassFrom.IsZero() && now.Sub(it.pushPassFrom) > wait {
 		it.mu.Unlock()
 		return false
 	}

@@ -72,7 +72,7 @@ func (p *GroundPicture) Report(id uint32, pos airport.LatLon, hdg float64, prof 
 	defer p.mu.Unlock()
 	p.aircraft[id] = groundEntry{
 		pos: pos, hdg: hdg, at: now, ahead: p.aircraft[id].ahead, half: p.aircraft[id].half, pushing: p.aircraft[id].pushing, waiting: p.aircraft[id].waiting,
-		intent: p.aircraft[id].intent, parked: p.aircraft[id].parked,
+		intent: p.aircraft[id].intent, parked: p.aircraft[id].parked, behind: p.aircraft[id].behind,
 		nose: prof.WheelbaseMeters*pushNoseFactor - prof.RefAheadMeters,
 		tail: tail + prof.RefAheadMeters,
 	}
@@ -731,7 +731,9 @@ func (p *GroundPicture) oncoming(id uint32, path *GroundPath, from, half float64
 		// Stopped behind this one, in its way: not held for, or neither goes
 		// (live, LKPR: CSA839 held on J for TVS1120, which stood behind
 		// it, 19 minutes until TVS1120 was removed).
-		if e.behind == id {
+		// Each stopped at the other's body, nose to nose: the head-on rule
+		// decides which holds, or each drew up on the other (#1574).
+		if e.behind == id && p.aircraft[id].behind != oid {
 			continue
 		}
 		way := e.intent
@@ -862,6 +864,48 @@ func (p *GroundPicture) oncoming(id uint32, path *GroundPath, from, half float64
 		}
 	}
 	return at, other, hold
+}
+
+// nearWay is where, coming up to at along path (not before from), path
+// comes within both half-spans and HeadOnMarginMeters of the way aircraft
+// other means to taxi, whatever its direction there: at, walked back while
+// it is that near. Holding for one coming the other way, an aircraft stops
+// short of that, not of the first point the two ways run opposite: the
+// other turns off the shared stretch across its nose (#1574: XPLY, AR2001
+// held in the mouth of the apron loop's leg while DP2001 came down it to
+// turn onto the parallel there; neither could pass).
+func (p *GroundPicture) nearWay(other uint32, path *GroundPath, from, at, half float64) float64 {
+	p.mu.Lock()
+	e, ok := p.aircraft[other]
+	p.mu.Unlock()
+	if !ok {
+		return at
+	}
+	way := e.intent
+	if !wayFromHere(e.pos, way) {
+		way = nil
+	}
+	if len(way) < 2 && e.waiting {
+		way = e.ahead
+	}
+	h := e.half
+	if h <= 0 {
+		h = DefaultHalfSpanMeters
+	}
+	reach := half + h + HeadOnMarginMeters
+	near := func(s float64) bool {
+		q := path.PointAt(s)
+		for _, r := range way {
+			if localDist(q, r) <= reach {
+				return true
+			}
+		}
+		return false
+	}
+	for at-oncomingStep >= from && near(at-oncomingStep) {
+		at -= oncomingStep
+	}
+	return at
 }
 
 // Head-on: HeadOnMarginMeters added to both half-spans for two ways to be

@@ -72,6 +72,8 @@ type groundDrive struct {
 	onS     float64
 	onOther uint32
 	onHold  bool
+	// onNear: where it stops short of the other's way, holding (nearWay).
+	onNear  float64
 	wayPath *GroundPath
 	way     []airport.LatLon
 
@@ -478,9 +480,13 @@ func (d *groundDrive) followAhead(now time.Time) {
 	if path != d.onPath || now.Sub(d.onAt) >= OncomingCheckEvery {
 		d.onPath, d.onAt = path, now
 		d.onS, d.onOther, d.onHold = d.picture.oncoming(d.object, path, s0, half, now)
+		d.onNear = d.onS
+		if d.onHold && !math.IsInf(d.onS, 1) {
+			d.onNear = d.picture.nearWay(d.onOther, path, s0, d.onS, half)
+		}
 	}
 	if at, o, hold := d.onS, d.onOther, d.onHold; hold && !math.IsInf(at, 1) && at-s0 <= OncomingLookMeters {
-		hs := d.junctionStop(path, s0, at-noseTip-TrafficGapMeters, noseTip, half+DefaultHalfSpanMeters+GiveWayMarginMeters)
+		hs := d.junctionStopTo(path, s0, d.onNear-noseTip-TrafficGapMeters, noseTip, half+DefaultHalfSpanMeters+GiveWayMarginMeters, at)
 		if hs < stop {
 			stop = hs
 			d.blockedBy, d.facing = o, true
@@ -555,6 +561,10 @@ func (d *groundDrive) followAhead(now time.Time) {
 // count as coming the other way.
 const oncomingDeg = 120.0
 
+// junctionCutMeters: a path turning at a junction passes this near its
+// node at most (junctionStop).
+const junctionCutMeters = 12.0
+
 // junctionStop is where to stop, at most at stop, facing an oncoming
 // aircraft further along path (#444): with the body, nose tip noseTip
 // ahead of the reference, at least clear from every other branch of the
@@ -564,27 +574,46 @@ const oncomingDeg = 120.0
 // again). stop when there is no junction; s0, where it is, when no place
 // behind is clear.
 func (d *groundDrive) junctionStop(path *GroundPath, s0, stop, noseTip, clear float64) float64 {
+	return d.junctionStopTo(path, s0, stop, noseTip, clear, stop+noseTip)
+}
+
+// junctionStopTo is junctionStop with the junction looked for up to upTo
+// along path (at least the nose tip at the stop): holding for one coming
+// the other way, the junction where the shared stretch begins, which the
+// other turns off through (#1574).
+func (d *groundDrive) junctionStopTo(path *GroundPath, s0, stop, noseTip, clear, upTo float64) float64 {
 	g := d.graph
 	if g == nil || stop <= s0 {
 		return stop
 	}
+	upTo = math.Min(math.Max(upTo, stop+noseTip), path.Length())
 	// The last junction on the path between here and the stop (well, within
 	// the nose ahead of it: the stop is where the reference halts).
 	const step = 2.0
 	junction, sJ := airport.NodeID(-1), 0.0
-	from, to := path.PointAt(s0), path.PointAt(stop+noseTip)
-	reach := localDist(from, to) + stop + noseTip - s0 // a bound on how far the path strays
+	from, to := path.PointAt(s0), path.PointAt(upTo)
+	reach := localDist(from, to) + upTo - s0 // a bound on how far the path strays
 	for id, n := range g.Nodes {
 		if n.Kind == airport.NodeParking || len(g.Adj[id]) < 3 || localDist(from, n.Position) > reach {
 			continue
 		}
-		for s := s0; s <= stop+noseTip; s += step {
-			if localDist(path.PointAt(s), n.Position) <= 3 {
-				if s > sJ || junction < 0 {
-					junction, sJ = airport.NodeID(id), s
-				}
+		// Turning there, the path cuts the corner: the junction is where it
+		// passes nearest, within junctionCutMeters (#1574: XPLY, AR2001
+		// turning into the apron loop's leg held in its mouth, the junction
+		// not seen).
+		near, sNear := math.Inf(1), 0.0
+		for s := s0; s <= upTo; s += step {
+			dn := localDist(path.PointAt(s), n.Position)
+			if dn <= 3 {
+				near, sNear = dn, s
 				break
 			}
+			if dn < near {
+				near, sNear = dn, s
+			}
+		}
+		if (near <= 3 || near <= junctionCutMeters && sNear > s0 && sNear+step <= upTo) && (sNear > sJ || junction < 0) {
+			junction, sJ = airport.NodeID(id), sNear
 		}
 	}
 	if junction < 0 {
