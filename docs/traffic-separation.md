@@ -253,7 +253,7 @@ The airport map's **Sequence** section shows each runway's landing sequence, fir
 - ⏵: leave the hold;
 - ↺: go around.
 
-These call `POST /api/approach/{icao}/{callsign}/{action}`. The section also shows the tower (who is on or at each runway, and why they wait) and the predicted conflicts with the resolutions given. While it is open, the map draws each final: the extended centreline to 15 NM with a tick every mile, and each arrival within 20 NM at its distance to go. The arrival is green when it keeps its spacing to the one ahead, red when it is short.
+These call `POST /api/approach/{icao}/{callsign}/{action}`. With approach staffed, `speed`, `heading` and `descend` also work on an arrival still en route to its STAR entry: flown on its en-route waypoints until the handover there, see [Approach staffed, en route](atc-game.md). The section also shows the tower (who is on or at each runway, and why they wait) and the predicted conflicts with the resolutions given. While it is open, the map draws each final: the extended centreline to 15 NM with a tick every mile, and each arrival within 20 NM at its distance to go. The arrival is green when it keeps its spacing to the one ahead, red when it is short.
 
 In the ATC game the player can work approach too, and spacing on final costs: an arrival within 10 NM of the threshold closer to the one ahead than its spacing loses 25 points.
 
