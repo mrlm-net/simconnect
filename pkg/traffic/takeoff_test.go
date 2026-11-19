@@ -144,12 +144,13 @@ func TestMotionProfileForAsoboTitles(t *testing.T) {
 }
 
 // TestRequiredTakeoffRun: computed from the aircraft's take-off, longer for
-// bigger aircraft and at higher, hotter airports.
+// bigger aircraft and at higher, hotter airports. It is the short-field
+// take-off at the lowest weight (#1566): an A320 on about 1,200 m.
 func TestRequiredTakeoffRun(t *testing.T) {
 	a320 := RequiredTakeoffRun(DefaultTakeoffProfile(), TakeoffConditions{})
 	b77w := RequiredTakeoffRun(TakeoffProfileFor("B77W"), TakeoffConditions{})
 	high := RequiredTakeoffRun(DefaultTakeoffProfile(), TakeoffConditions{ElevationFt: 5000, ISADeviationC: 15})
-	if a320 < 1600 || a320 > 2600 {
+	if a320 < 1000 || a320 > 2600 {
 		t.Errorf("A320 needs %.0f m", a320)
 	}
 	if b77w <= a320 || high <= a320*1.5 {

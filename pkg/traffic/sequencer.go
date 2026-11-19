@@ -42,6 +42,10 @@ type ApproachAircraft struct {
 	// track distance to each: arrivals sharing one are put in trail there
 	// (MergeSpacingNM), not only on the final.
 	Fixes []FixAhead
+	// RunwayOccupancy: how long it keeps the runway after landing when
+	// longer than its wake's (RunwayOccupancyIn): a backtrack to its way
+	// off (#1563, ArrivalPlan.BacktrackMeters). 0: its wake's.
+	RunwayOccupancy time.Duration
 }
 
 // FixAhead is a named fix on an arrival's route and its track distance.
@@ -270,7 +274,7 @@ func (s *ApproachSequencer) departureGap(lead, follow ApproachAircraft, c Approa
 	g := SeparationTime(nm, kts)
 	// The first rolls once lined up behind the leader (or the leader off
 	// the runway, if later), the next ones each DoubleGapExtraNM on.
-	ready := max(RunwayOccupancyIn(lead.Wake, true, c.Surface), LineUpBehindReady)
+	ready := max(lead.occupancy(c.Surface), LineUpBehindReady)
 	if need := ready + SeparationTime(DepartureGapArrivalNM+extra+cmp, kts); need > g {
 		g = need
 		nm = g.Hours() * kts
@@ -516,7 +520,7 @@ func (s *ApproachSequencer) gap(lead, follow ApproachAircraft, c ApproachConditi
 		kts = ApproachConditions{}.FinalGroundKts(follow.FinalKts) // the time, not the distance, is kept
 	}
 	g := SeparationTime(nm, kts)
-	if occ := RunwayOccupancyIn(lead.Wake, true, c.Surface); occ > g {
+	if occ := lead.occupancy(c.Surface); occ > g {
 		g = occ
 		if why == "" {
 			why = "runway occupancy"
@@ -1224,3 +1228,9 @@ func (s *ApproachSequencer) smoothed(now time.Time, callsign string, raw time.Ti
 // departure gap only when it can lose the delay with speed and its path
 // (PlanAbsorption); farther out, approach has the time and room.
 const gapAbsorbNM = 25.0
+
+// occupancy is how long a lands and keeps the runway: its wake's
+// RunwayOccupancyIn on surface, or its own RunwayOccupancy when longer.
+func (a ApproachAircraft) occupancy(surface RunwaySurface) time.Duration {
+	return max(RunwayOccupancyIn(a.Wake, true, surface), a.RunwayOccupancy)
+}

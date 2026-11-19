@@ -15,7 +15,8 @@ import (
 // TestRunwayTooShortRefused: a jet given a runway too short for its
 // take-off that day refuses it on the frequency and keeps its own; the
 // host is told (#1232). LKPR's runways are all long: the day is made hot
-// enough (ISA+87) that 12/30 is not.
+// enough (ISA+160: a jet's short-field take-off, #1566, fits nearly any
+// real day) that 12/30 is not.
 func TestRunwayTooShortRefused(t *testing.T) {
 	if testing.Short() {
 		t.Skip("runs the World")
@@ -29,7 +30,7 @@ func TestRunwayTooShortRefused(t *testing.T) {
 		t.Fatal(err)
 	}
 	defer h.Close()
-	wx := nav.StaticWeather(240, 5, 9999, 100, 10, 1013)
+	wx := nav.StaticWeather(240, 5, 9999, 172, 10, 1013)
 	h.World.SetWeather(&wx)
 	h.World.SetStaffed([]world.StaffedStation{{ICAO: "LKPR", Position: "delivery", Mode: "silent"}})
 	if err := h.World.SetSchedule(world.ScheduleSettings{Enabled: true, Airports: []string{"LKPR"}, Density: 3, MaxAircraft: 6}); err != nil {

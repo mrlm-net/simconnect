@@ -794,7 +794,7 @@ func (c *ArrivalController) onPosition(m arrivalMonitor) {
 			}
 		}
 		// Vacating once off the runway surface, near or past the planned exit.
-		if off > c.plan.Runway.Width/2+RunwayClearMeters && past > c.plan.Exit.Along-100 {
+		if off > c.plan.Runway.Width/2+RunwayClearMeters && c.vacatedBy(past, pos) {
 			c.track.pos = c.exitAlong
 			if c.inj != nil {
 				if err := c.takeover(m, pos, false); err == nil {
@@ -1288,3 +1288,22 @@ func (c *ArrivalController) canMakeExit(x airport.RunwayExit) error {
 	}
 	return nil
 }
+
+// vacatedBy: off the runway surface at pos (past meters from the landing
+// threshold), the aircraft has vacated where its plan leaves the runway:
+// near or past the planned exit, or after a backtrack (#1563) at the way
+// off it, not the turning bay it turned round on.
+func (c *ArrivalController) vacatedBy(past float64, pos airport.LatLon) bool {
+	if !c.plan.Backtrack {
+		return past > c.plan.Exit.Along-100
+	}
+	at := c.plan.ClearAt()
+	if c.plan.Route == nil || at >= len(c.plan.Route.Points) {
+		return past > c.plan.Exit.Along-100
+	}
+	return localDist(pos, c.plan.Route.Points[at]) < backtrackOffMeters
+}
+
+// backtrackOffMeters: within this of the way off the runway after a
+// backtrack, an aircraft off the runway surface has vacated.
+const backtrackOffMeters = 80.0

@@ -288,6 +288,12 @@ func (g *Graph) runwayRoute(from, prev NodeID, runwayEnd string, opts RouteOptio
 		if c.fromThresh-cands[0].fromThresh > tol {
 			break
 		}
+		// The nearest one a full-length entry: not an intersection in its
+		// place for a shorter taxi (#1562: TNCM 10, A at 63 m passed for B
+		// at 345 m).
+		if cands[0].fromThresh <= FullLengthMeters && c.fromThresh > FullLengthMeters {
+			break
+		}
 		if cost(c) < cost(best) {
 			best = c
 		}

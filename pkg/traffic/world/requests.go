@@ -212,6 +212,11 @@ func (it *controlled) answer(req string) {
 	if req == "pushback" && it.holdPushForPassing(req) {
 		return
 	}
+	// An arrival backtracking to its way off, coming out along the way
+	// this one goes (#1563): held till it is by (pushpass.go).
+	if (req == "pushback" || req == "taxi") && it.holdForBacktrack(req) {
+		return
+	}
 	it.mu.Lock()
 	if it.request != req {
 		it.mu.Unlock()

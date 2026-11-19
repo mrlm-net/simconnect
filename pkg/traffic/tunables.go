@@ -345,6 +345,10 @@ const (
 	// StandSpread of the best plus StandSpreadMeters are picked at random.
 	StandSpread       = 0.4
 	StandSpreadMeters = 300.0
+	// StandBacktrackPenaltyMeters: a stand reached only back along the
+	// landing runway (#1563) ranks as if its taxi-in were this much longer,
+	// after those a taxiway reaches.
+	StandBacktrackPenaltyMeters = 5000.0
 	// A stand within StandPushNeighbourMeters of one whose aircraft is due
 	// off the stand within StandPushConflictWindow of this one ranks as if
 	// its taxi-in were up to StandPushConflictMeters longer (less as the

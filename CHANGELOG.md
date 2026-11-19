@@ -7,6 +7,29 @@ This project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 ---
 
+## [0.181.0] - 2026-11-19
+
+### Added
+
+- Runway-aware take-off configuration (#1566). Each departure takes off in a configuration chosen for the runway it actually has ahead: the run from where its roll starts to the pavement end (a displaced threshold does not shorten it), at the airport's elevation and temperature. Where the type's usual take-off fits, it flies exactly as before (reduced thrust, normal flaps). Where it does not, it takes off short-field: full rated thrust (`RollAccel` × 1.15) and the higher take-off flaps (Vr and climb speed × 0.95), and if that still does not fit, at a lower weight down to 85 % (speeds × √weight, acceleration ÷ weight). API: `traffic.ChooseTakeoff`, `ShortFieldTakeoff`, `TakeoffConfig`. The figures are conservative engineering estimates, not manufacturer performance data.
+- `FlapSchedule.TakeoffDetent`, `ShortTakeoffPct` and `ShortTakeoffDetent`: each family's take-off flap detents (Airbus 1+F / 3, 737 5 / 15, 777 15 / 20, 787 5 / 15, 747 10 / 20, E-Jet 2 / 4, CRJ 8 / 20, Q400 5 / 15, ATR 15). The flap surfaces follow the chosen setting, and a full-thrust roll sets the throttles to 100 % (#1566).
+- `takeoff` in the control view (`ControlView.Takeoff`) and in `TaxiEvent.Takeoff`: flaps detent and percent, thrust (`derate` or `full`), `shortField`, `weightPct`, required and available run; all new fields, left out when not set (#1566).
+- `traffic.RunwaySuits` and `traffic.RunwayLongEnough`: whether a model can use a runway by its surface (never water; grass and other soft surfaces only for light aircraft) and by its take-off run (#1561).
+- `ArrivalPlan.Backtrack`, `ClearIndex`, `ClearAt()` and `BacktrackMeters()`, `traffic.BacktrackOccupancy`, `RunwayUser.Backtracks`, `ApproachAircraft.RunwayOccupancy` and `StandBacktrackPenaltyMeters` (#1563).
+
+### Changed
+
+- `RequiredTakeoffRun` is now the shortest take-off the type can make (short-field at its lowest weight), so every check built on it refuses only a runway no configuration fits, and the lift-off point is never past the runway's end. At TNCM (2,300 m, ISA) a B77W, B747-400 or A350-900 now lifts off at about 1,650–1,770 m (before: 2,059–2,673 m, past the end for the 777 and 747). At LKPR most types keep today's take-off; heavies whose normal take-off needs more runway than there is now use full thrust and flaps 20 (Airbus 3): the 747 on either runway, the 777-300ER from 24 at A, any 777 or A380 on 12/30 (#1566).
+
+### Fixed
+
+- A departure's runway is picked by its aircraft class first, then by what its stand reaches: an airliner is never given a grass or short strip, a light aircraft can take either; the other ends in use come next, then the other open runways; with none, the spawn is refused with the reason, e.g. "stand 29 reaches no runway in use (27)" (#1561).
+- A runway close beside another (under 760 m apart, LKTB grass 08/26 next to 09/27) is not used at the same time as it: a take-off or landing waits until one of ours on the other is past its far end and 3 NM away (#1561).
+- Departures with a full-length holding point in reach (within 300 m of the threshold) taxi to it rather than to an intersection a little further in because the taxi there is shorter: TNCM 10 at A, not B. Intersection departures given by the tower are unchanged (#1562).
+- An arrival whose stand no exit reaches by taxiway (TNCM 10, stands A1 to C12) turns round off an exit or at the runway's end and backtracks along the runway to leave it nearer its stand; never chosen when a taxiway route exists, and stands reached by taxiway are allocated first. The runway stays taken until it is off: the next arrival is not cleared to land and is spaced for the longer occupancy, no departure lines up behind it, and a departure that would meet it is held (#1563).
+- An arrival's exit is chosen only among exits with a taxi route to its stand; when none past the planned rollout has one, it takes an earlier exit that does with firm braking (up to 2.5 m/s²), and backtracks only when none is in reach (#1567).
+- A full-length departure (no entry given) whose route ends at an intersection with less runway ahead than its aircraft needs taxis to the full-length entry instead, when one can be reached (LKPR 12: a B77W goes to the threshold, not to the hold 490 m in). Such a departure is never refused; tower-given intersection departures are checked as before (#1571).
+
 ## [0.180.0] - 2026-11-19
 
 ### Added

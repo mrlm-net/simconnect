@@ -24,6 +24,12 @@ type FlapSchedule struct {
 	// FullFt (the stabilised-approach gate).
 	ApproachPct, LandingPct float64
 	RetractFt, FullFt       float64
+	// TakeoffDetent names the TakeoffPct detent ("1+F", "5"); the
+	// short-field take-off (#1566, ChooseTakeoff) sets ShortTakeoffPct,
+	// named ShortTakeoffDetent (0: TakeoffPct).
+	TakeoffDetent      string  `json:",omitempty"`
+	ShortTakeoffPct    float64 `json:",omitempty"`
+	ShortTakeoffDetent string  `json:",omitempty"`
 }
 
 // LightUsage is how a type differs from the common light rules.
@@ -106,7 +112,8 @@ func a320Profile() AircraftProfile {
 		CGHeightM: spawnCGFt * 0.3048, TakeoffDistanceM: 2100,
 		Motion: m, Takeoff: DefaultTakeoffProfile(), Approach: DefaultApproachProfile(), Rollout: DefaultRolloutProfile(),
 		NoseOffsetM: DefaultNoseOffsetMeters,
-		Flaps:       FlapSchedule{TakeoffPct: TakeoffFlapsPct, ApproachPct: ApproachFlapsPct, LandingPct: 100, RetractFt: FlapsRetractFt, FullFt: FlapsFullFt},
+		Flaps: FlapSchedule{TakeoffPct: TakeoffFlapsPct, ApproachPct: ApproachFlapsPct, LandingPct: 100, RetractFt: FlapsRetractFt, FullFt: FlapsFullFt,
+			TakeoffDetent: flapsAirbus.TakeoffDetent, ShortTakeoffPct: flapsAirbus.ShortTakeoffPct, ShortTakeoffDetent: flapsAirbus.ShortTakeoffDetent},
 		PushbackKts: PushbackSpeedKts,
 	}
 }
