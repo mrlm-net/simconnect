@@ -3821,6 +3821,7 @@ func (it *controlled) logStopped(by string) {
 		return "object " + s[1:]
 	})
 	it.cc.log.printf("%-6s %s: stopped %s — %s", it.Tail, it.Kind, stoppedLogAfter, said)
+	it.standOff(by) // each stopped for the other: broken (standoff.go)
 }
 
 // giveWayCallGap: an aircraft is told to give way at most once in this

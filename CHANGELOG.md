@@ -7,6 +7,15 @@ This project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 ---
 
+## [0.182.1] - 2026-11-19
+
+### Fixed
+
+- Ground plans a pushback against arrivals up front. Every arrival whose planned taxi-in comes the other way along the departure's first 250 m of taxi is checked, including arrivals still on approach, rolling out or vacating. When it would reach that stretch (to touchdown, rollout and taxi at planned speeds) before the departure has pushed, started and taxied off it, with a minute's margin, the push is held until it has passed (at most 10 minutes). Before, the departure could be pushed facing the arrival on a single-lane apron, and neither could pass (#1574).
+- An arrival holding for a departure coming the other way stops short of the junction where the departure turns off, not in the mouth of the lane it comes down. A junction the path cuts the corner of is now seen (#1574).
+- Two aircraft each stopped at the other's body no longer both skip the head-on rule: one holds, the other goes (#1574).
+- Two aircraft each stopped for the other (a stand-off) are spotted once it lasts 20 s: ground looks for a way round for one of them, or logs that there is none (#1574).
+
 ## [0.182.0] - 2026-11-19
 
 ### Added
