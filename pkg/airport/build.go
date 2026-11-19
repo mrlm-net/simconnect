@@ -39,6 +39,18 @@ type RawAirport struct {
 	// (0: not given).
 	TransitionAltitude float64 `json:"transitionAlt,omitempty"`
 	TransitionLevel    float64 `json:"transitionLevel,omitempty"`
+	// RescueStandby are the fire and rescue standby positions, set by a
+	// layout builder; none: derived. Layout.RescueStandby (#1597).
+	RescueStandby []RawRescueStandby `json:"rescueStandby,omitempty"`
+}
+
+// RawRescueStandby is a fire and rescue standby position: the runway end
+// it serves ("" any), where and facing which way (true degrees).
+type RawRescueStandby struct {
+	Runway    string  `json:"runway,omitempty"`
+	Latitude  float64 `json:"lat"`
+	Longitude float64 `json:"lon"`
+	Heading   float64 `json:"heading,omitempty"`
 }
 
 // RawFrequency is a FREQUENCY record: TYPE
@@ -174,6 +186,11 @@ func BuildLayout(raw RawAirport) (*Layout, error) {
 	if t := raw.Tower; t != nil {
 		l.Tower, l.TowerAltitude, l.HasTower = LatLon{Lat: t.Latitude, Lon: t.Longitude}, t.Altitude, true
 		l.TowerSource, l.TowerHeightM = t.Source, t.HeightM
+	}
+	for _, s := range raw.RescueStandby {
+		l.RescueStandby = append(l.RescueStandby, RescueStandbyPoint{
+			Runway: s.Runway, Position: LatLon{Lat: s.Latitude, Lon: s.Longitude}, Heading: s.Heading,
+		})
 	}
 	offset := func(x, z float32) LatLon {
 		lat, lon := convert.OffsetToLatLon(raw.Latitude, raw.Longitude, float64(x), float64(z))

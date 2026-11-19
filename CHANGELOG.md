@@ -7,6 +7,16 @@ This project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 ---
 
+## [0.186.0] - 2026-11-19
+
+### Added
+
+- `Layout.RescueStandby` (`RawAirport.RescueStandby`): a layout may give its own fire and rescue standby positions (`RescueStandbyPoint`: the runway end it serves, "" any, position and heading); `Layout.RescueStandbyFor` lists them for a runway end. None (the zero value) keeps the derived points. `Layout.VehicleRouteJoin` is `VehicleRoute` with an end that lies on the taxiways joining the graph at its nearest node instead of straight across to the nearest road. `traffic.RescueStripHalfMeters`, `traffic.RescueAccess`, `SimObjectRescue.Enter`, `HoldOffRunway` and `KeepBehind` (#1597).
+
+### Fixed
+
+- Rescue crews no longer wait in the grass inside the runway strip, nor chase the landing aircraft down the runway. `RescueStandby` takes the holding positions of the runway's exits and entries (a layout's own standby positions first), at the same shares of its length, walked out along the taxiway when nearer the centreline than `RescueStripHalfMeters` (75 m for a runway 30 m wide or more), at least 30 m apart, the one nearest the expected stop (half the runway) first; before, they were 60 m beside the runway edge (82.5 m from the centreline of a 45 m runway, off any taxiway). The trucks drive to them by the roads and taxiways and stop short of the runway once the aircraft is within 5 NM. After the touchdown they stay at standby until the aircraft is at or below taxi speed (`TaxiSpeedKts`), then come onto the runway by the exit or entry nearest it (not ahead of it while it still moves) and drive to their places by it, nearest first, the others keeping 30 m behind; a touch-and-go or go-around leaves them at standby. Its stay counts once a vehicle is with it. The default crew's two trucks from one depot now leave one after another, as a fire station's do, instead of appearing on top of each other (#1597).
+
 ## [0.185.4] - 2026-11-19
 
 ### Fixed

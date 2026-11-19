@@ -8,7 +8,7 @@ import (
 	"github.com/mrlm-net/simconnect/pkg/calc"
 )
 
-// TestRescueTruck: the standby points lie beside runway 24, off its edge;
+// TestRescueTruck: the standby points lie beside runway 24, out of its strip;
 // a truck drives there from the depot and waits; after touchdown it
 // follows the aircraft down the runway, never turning faster than its
 // limit nor jumping, and stops RescueGapMeters behind it; then it drives
@@ -25,7 +25,7 @@ func TestRescueTruck(t *testing.T) {
 	}
 	for _, s := range spots {
 		along, cross := runwayFrame(end, s.Position)
-		if along < 0 || along > rwy.Length || math.Abs(cross) < rwy.Width/2+RescueStandbyAsideMeters-5 {
+		if along < 0 || along > rwy.Length || math.Abs(cross) <= RescueStripHalfMeters(rwy.Width) {
 			t.Errorf("standby %.0f m along, %.0f m across: not beside the runway", along, cross)
 		}
 	}

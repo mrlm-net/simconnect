@@ -18,9 +18,12 @@ import (
 // (an emergency: one of ours declaring it, or the host's for the player)
 // coming in to an airport of ours gets the airport's fire and rescue: as
 // it comes within rescueDispatchNM, fire trucks drive from the fire
-// station (the nearest vehicle depot) to standby points beside its landing
-// runway and wait; once it is down they follow it down the runway to where
-// it stops, stay a while, then drive back and go. A medical emergency gets
+// station (the nearest vehicle depot) by the roads and taxiways to standby
+// at the holding positions of its landing
+// runway and wait; once it is down and slow (#1597) they come onto the
+// runway by the exit or entry nearest it and drive to it (they wait at
+// standby through its roll and a go-around), stay a while by where
+// it stops, then drive back and go. A medical emergency gets
 // an ambulance instead, following it in to its stand and staying there
 // longer. The trucks are SimObjectRescue, placed every frame.
 
@@ -54,9 +57,14 @@ type rescueState int
 
 const (
 	rescueStandby   rescueState = iota // on its way to standby, or waiting there
-	rescueFollowing                    // after the aircraft, it down
+	rescueFollowing                    // after the aircraft, it down and slow
 	rescueHome                         // driving back
+	rescueDown                         // it down and rolling: still at standby (#1597)
 )
+
+// rescueRunwayHoldNM: with the aircraft this close to the runway (or on
+// it), vehicles on their way to standby stop short of the runway.
+const rescueRunwayHoldNM = 5.0
 
 // rescueCrew is the vehicles sent for one aircraft.
 type rescueCrew struct {
@@ -65,9 +73,14 @@ type rescueCrew struct {
 	defBase            uint32
 	trucks             []*traffic.SimObjectRescue
 	state              rescueState
-	target             traffic.TrackedAircraft // the aircraft as last seen
-	stoppedAt          time.Time               // since when it has stood, zero moving
-	frameAt            time.Time
+	graph              *airport.Graph
+	// ahead: they came onto the runway ahead of the aircraft (stopped),
+	// and wait in front of it.
+	ahead     bool
+	enteredAt time.Time               // since when they drive to it
+	target    traffic.TrackedAircraft // the aircraft as last seen
+	stoppedAt time.Time               // since when it has stood, zero moving
+	frameAt   time.Time
 	// kts is its speed: the simulator's, or from its positions when more
 	// (AI on the ground report 0 kt while moving).
 	kts float64
@@ -83,6 +96,46 @@ func (c *rescueCrew) observe(a traffic.TrackedAircraft) {
 		c.kts = math.Max(a.GroundKts, moved)
 	} else if dt < 0 || prev.Tail != a.Tail {
 		c.kts = a.GroundKts
+	}
+}
+
+// nearRunway: a is within rescueRunwayHoldNM of the crew's runway.
+func (c *rescueCrew) nearRunway(a traffic.TrackedAircraft) bool {
+	if c.graph == nil {
+		return false
+	}
+	_, end, ok := c.graph.Layout.RunwayEnd(c.runway)
+	return ok && calc.HaversineNM(a.Position.Lat, a.Position.Lon, end.Threshold.Lat, end.Threshold.Lon) <= rescueRunwayHoldNM
+}
+
+// holdOffRunway keeps the vehicles on their way off the crew's runway, or
+// lets them go on.
+func (c *rescueCrew) holdOffRunway(hold bool) {
+	var rwy *airport.Runway
+	if c.graph != nil && hold {
+		if r, _, ok := c.graph.Layout.RunwayEnd(c.runway); ok {
+			rwy = &r
+		}
+	}
+	for _, t := range c.trucks {
+		t.HoldOffRunway(rwy)
+	}
+}
+
+// enter sends the vehicles to the aircraft, now slow: by the exit or entry
+// nearest it (not ahead of it while it moves), one after another (#1597).
+func (c *rescueCrew) enter() {
+	c.holdOffRunway(false)
+	if c.graph == nil {
+		return
+	}
+	way, ok := traffic.RescueAccess(c.graph, c.runway, c.target.Position, c.kts > rescueStoppedKts)
+	if !ok {
+		return
+	}
+	c.ahead = way.Ahead
+	for _, t := range c.trucks {
+		_ = t.Enter(way)
 	}
 }
 
@@ -257,11 +310,26 @@ func (cc *controlCenter) rescueStep(now time.Time, prio map[string]bool, aircraf
 		case c.state == rescueStandby && !prio[name]:
 			cc.rescueHome(c, "priority taken away")
 		case c.state == rescueStandby && touchedDown(a) && a.Airport == c.icao:
-			c.state = rescueFollowing
-			cc.log.printf("%-6s rescue: down, the vehicles follow it", name)
+			c.state = rescueDown
+			c.holdOffRunway(true)
+			cc.log.printf("%-6s rescue: down, the vehicles wait at standby until it slows", name)
+		case c.state == rescueStandby:
+			c.holdOffRunway(c.nearRunway(a))
+		case c.state == rescueDown && !touchedDown(a):
+			c.state = rescueStandby
+			cc.log.printf("%-6s rescue: off again (go-around), the vehicles stay at standby", name)
+		case c.state == rescueDown && c.kts <= traffic.TaxiSpeedKts:
+			c.state, c.enteredAt = rescueFollowing, now
+			c.enter()
+			cc.log.printf("%-6s rescue: slow, the vehicles drive to it", name)
 		case c.state == rescueFollowing:
 			if c.kts > rescueStoppedKts {
 				c.stoppedAt = time.Time{}
+				break
+			}
+			// Its stay counts once a vehicle is with it (they drive from
+			// standby by the taxiways), or rescueReachWithin after they set off.
+			if c.stoppedAt.IsZero() && !c.with() && now.Sub(c.enteredAt) < rescueReachWithin {
 				break
 			}
 			if c.stoppedAt.IsZero() {
@@ -310,12 +378,15 @@ func (cc *controlCenter) sendRescue(name string, a traffic.TrackedAircraft, medi
 		cc.log.printf("%-6s rescue: %v", name, err)
 		return
 	}
-	c := &rescueCrew{tail: name, icao: a.Airport, runway: rwy, medical: medical, defBase: defBase, target: a}
+	c := &rescueCrew{tail: name, icao: a.Airport, runway: rwy, medical: medical, defBase: defBase, target: a, graph: g}
 	stations := map[airport.LatLon]bool{}
 	var prev *traffic.SimObjectRescue
 	for i, leg := range legs {
 		t := traffic.NewSimObjectRescue(cc.client, cc.inj, leg.title, reqBase+uint32(i))
 		t.Layout = g.Layout
+		// From one depot one after another, not on top of one another
+		// (the default crew too: both from the depot nearest, #1597).
+		t.After = prev
 		if leg.depot != nil {
 			t.Depot, t.After = leg.depot, prev
 			stations[*leg.depot] = true
@@ -428,14 +499,24 @@ func (cc *controlCenter) rescueFrame(now time.Time) {
 		if dt <= 0 || dt > 0.5 {
 			continue
 		}
-		for i, t := range c.trucks {
+		var first []airport.LatLon // where the vehicles going first are
+		for i, t := range c.ordered() {
+			t.KeepBehind(first)
+			if p, _, ok := t.Track(); ok {
+				first = append(first, p.Position)
+			}
 			var err error
 			if c.state == rescueFollowing {
 				a := c.target
 				ahead := c.kts * 1852 / 3600 * math.Min(2, now.Sub(a.Updated).Seconds())
-				lat, lon := calc.DisplaceByHeading(a.Position.Lat, a.Position.Lon, a.Heading, ahead-rescueTrail*float64(i))
+				off, hdg := ahead-rescueTrail*float64(i), a.Heading
+				if c.ahead {
+					// In front of it: its place RescueGapMeters ahead.
+					off, hdg = ahead+rescueTrail*float64(i), a.Heading+180
+				}
+				lat, lon := calc.DisplaceByHeading(a.Position.Lat, a.Position.Lon, a.Heading, off)
 				pos := airport.LatLon{Lat: lat, Lon: lon}
-				err = t.Follow(traffic.GroundPose{Position: pos, Heading: a.Heading}, c.kts, dt)
+				err = t.Follow(traffic.GroundPose{Position: pos, Heading: math.Mod(hdg, 360)}, c.kts, dt)
 			} else {
 				err = t.Update(dt)
 			}
@@ -446,10 +527,31 @@ func (cc *controlCenter) rescueFrame(now time.Time) {
 	}
 }
 
+// ordered are the crew's vehicles in the order they go: as sent, and
+// driving to the aircraft the nearest it first, which takes the place
+// nearest it; the others keep behind (#1597: one arriving later never
+// drives through one already there).
+func (c *rescueCrew) ordered() []*traffic.SimObjectRescue {
+	if c.state != rescueFollowing {
+		return c.trucks
+	}
+	out := append([]*traffic.SimObjectRescue(nil), c.trucks...)
+	at := c.target.Position
+	dist := map[*traffic.SimObjectRescue]float64{}
+	for _, t := range out {
+		dist[t] = math.Inf(1)
+		if p, _, ok := t.Track(); ok {
+			dist[t] = calc.HaversineMeters(p.Position.Lat, p.Position.Lon, at.Lat, at.Lon)
+		}
+	}
+	sort.SliceStable(out, func(i, j int) bool { return dist[out[i]] < dist[out[j]] })
+	return out
+}
+
 // rescueWithM: a rescue vehicle this close to the aircraft it follows is
 // with it (an emergency arrival rolls out and vacates as any other; they
 // catch it up on the runway or the taxiway).
-const rescueWithM = 80.0
+const rescueWithM = traffic.RescueGapMeters + 2*traffic.RescueStopMeters + 10
 
 // rescueStatus reports whether vehicles were sent for tail, and whether
 // one is with it (down, a vehicle within rescueWithM): a scene's
@@ -461,17 +563,23 @@ func (cc *controlCenter) rescueStatus(tail string) (sent, with bool) {
 	if c == nil {
 		return cc.rescue.sent[tail], false
 	}
-	if c.state != rescueFollowing {
-		return true, false
-	}
+	return true, c.state == rescueFollowing && c.with()
+}
+
+// with: a vehicle of the crew is within rescueWithM of the aircraft.
+func (c *rescueCrew) with() bool {
 	at := c.target.Position
 	for _, t := range c.trucks {
 		if p, _, ok := t.Track(); ok && calc.HaversineMeters(p.Position.Lat, p.Position.Lon, at.Lat, at.Lon) <= rescueWithM {
-			return true, true
+			return true
 		}
 	}
-	return true, false
+	return false
 }
+
+// rescueReachWithin: the aircraft's stay counts from this long after the
+// vehicles set off to it, should none get to it before.
+const rescueReachWithin = 10 * time.Minute
 
 // rescueTrack is where the vehicles out for tail are, for the map.
 func (cc *controlCenter) rescueTrack(tail string) []tugView {
