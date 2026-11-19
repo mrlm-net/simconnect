@@ -7,6 +7,12 @@ This project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 ---
 
+## [0.185.2] - 2026-11-19
+
+### Fixed
+
+- `TestDepartureHandoverBeforeDone` failed on Linux with "departure check-in false": the test stopped as soon as the departure was handed over, with its check-in with departure still queued on the radio. It now runs on a minute before reading what was heard (#1592).
+
 ## [0.185.1] - 2026-11-19
 
 ### Fixed
