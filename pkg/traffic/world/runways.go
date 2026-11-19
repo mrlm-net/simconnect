@@ -688,6 +688,22 @@ func (t *towers) apply(icao, rwy string, c traffic.RunwayClearances, ours map[st
 			t.given[tail+" lineup"] = true // no "line up and wait" after it
 		}
 		t.mu.Unlock()
+		// Nobody to say it at a field without a tower (#1596): the landing
+		// is the crew's own, its final call on the advisory frequency said
+		// now. Not a grant waiting its turn on a tower's agenda: one older
+		// than grantFresh by then (ticks four simulated seconds apart at
+		// rate 4) was dropped every time, and the crew went around for no
+		// landing clearance until the flight was cancelled.
+		if action == "land" {
+			if _, nobody := t.cc.uncontrolled(it.ICAO); nobody {
+				it.mu.Lock()
+				it.spoken["land"] = true
+				it.mu.Unlock()
+				it.say(said)
+				it.actAfterReadback(traffic.PosTower, "tower: land", func() error { return f(it) })
+				return
+			}
+		}
 		// On the tower's agenda, most urgent first: a go-around, then a
 		// landing, then the rest. Still granted when its turn comes, or
 		// dropped (to be given again when granted again).

@@ -7,6 +7,12 @@ This project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 ---
 
+## [0.185.5] - 2026-11-19
+
+### Fixed
+
+- **Arrivals at a field without a tower land on their own calls.** An IFR arrival that had cancelled IFR and changed to the advisory frequency kept getting a tower `land` grant that was dropped before its turn came (at sim rate 4 the ticks are four simulated seconds apart, older than a grant stays fresh). The crew then went around for "no landing clearance", again and again, until the schedule cancelled the flight. At a field without a tower, the landing is now counted as given when the runway is free. The crew makes its final call on the advisory frequency straight away, without waiting for a tower turn on the radio. If the runway is not free by the decision point, the crew goes around for "runway not clear", which the game does not score as a missing clearance. Runway sequencing is unchanged, so a departure still waits for the landing. Towered fields are unchanged. The offline loopback can now report a sim rate (`Loopback.SetSimRate`). (#1596)
+
 ## [0.185.4] - 2026-11-19
 
 ### Fixed

@@ -62,8 +62,13 @@ func (t *towers) crewDecides(icao string, list []traffic.RunwayUser, ours map[st
 		if sent {
 			continue
 		}
+		// At a field without a tower nobody gives a landing clearance
+		// (#1596): not given, the runway is not free for it.
+		_, nobody := t.cc.uncontrolled(icao)
 		why := ""
 		switch {
+		case !cleared && nobody:
+			why = "runway not clear"
 		case !cleared:
 			why = "no landing clearance"
 		case !checked && traffic.RandomFloat64() < crewUnstableShare:
@@ -92,7 +97,7 @@ func (t *towers) crewDecides(icao string, list []traffic.RunwayUser, ours map[st
 		}
 		t.cc.log.printf("%-6s crew: going around — %s", cs, why)
 		it.say(traffic.GoingAroundFor(cs, why))
-		if !cleared {
+		if !cleared && !nobody {
 			t.cc.scoreNoLandingClearance(icao, cs)
 		}
 		go func() {
