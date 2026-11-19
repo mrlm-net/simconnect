@@ -133,6 +133,9 @@ func TestDepartureHandoverBeforeDone(t *testing.T) {
 	h, _, states := staffedDeparture(t, []string{"delivery", "ground", "tower", "departure", "approach"}, func(v world.ControlView, a string) bool {
 		return a != "lineup" && !(a == "handoff" && (v.State == "departing" || v.State == "complete"))
 	})
+	// Done once handed over: the readback and the check-in with departure
+	// are still queued on the radio then (said a few seconds later).
+	h.Advance(time.Minute)
 	heard := h.Heard()
 	from := slices.IndexFunc(heard, func(tx traffic.Transmission) bool {
 		return tx.Callsign == "CSA8" && !tx.Pilot && strings.Contains(strings.ToLower(tx.Text), "cleared for take-off")
