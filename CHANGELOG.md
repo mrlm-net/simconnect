@@ -7,6 +7,13 @@ This project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 ---
 
+## [0.185.1] - 2026-11-19
+
+### Fixed
+
+- An injected arrival no longer turns off at roll-out speed onto an exit it cannot slow for (on a small field with right-angle exits, an E190 planned onto the first exit past the touchdown zone turned 90° in under a second at 120 kt). Taken over on the runway, braking at its rollout's `BrakeDecel` it must slow to the exit speed and, through the exit's turn, to the turn speed the turn's radius allows at `ExitLateralAccel` (v²/r, about 0.15 g); when it cannot, it rolls on to the first later exit it can make that fits and reaches its stand, the last at worst (#1586).
+- The overflights' centre-frequency cap (`CentreCallsPerMinute`, #1487) counted a crew's readback at the time of the call and saw only its own calls: a readback said later and others' calls on the same frequency let a busy minute reach 8 transmissions against a cap of 6. Each is now counted when it goes out, a call is checked at the time the frequency is clear for it, and everything the radio has said or booked on the frequency counts.
+
 ## [0.185.0] - 2026-11-19
 
 ### Added

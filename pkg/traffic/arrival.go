@@ -1208,17 +1208,7 @@ func (c *ArrivalController) VacateAt(x airport.RunwayExit) error {
 	if rolling && c.plan.Exit.Node == x.Node {
 		return nil
 	}
-	opts := req.Options
-	if half := c.profile().SpanMeters / 2; half > opts.HalfSpan {
-		opts.HalfSpan = half
-	}
-	why := g.ExitTight(x, c.plan.End.Heading, opts)
-	if why == "" {
-		if r, err := g.RouteFromRunway(x, req.Parking, opts); err == nil && r.Tight {
-			why = "no way on from it fits"
-		}
-	}
-	if why != "" {
+	if why := c.exitTight(x); why != "" {
 		return fmt.Errorf("%w: %s: %s", ErrExitTooTight, x.Taxiway, why)
 	}
 	if rolling {
@@ -1235,7 +1225,39 @@ func (c *ArrivalController) VacateAt(x airport.RunwayExit) error {
 			return fmt.Errorf("%w: %s", ErrExitTooClose, x.Taxiway)
 		}
 	}
-	plan, err := PlanArrival(g, req.Runway, req.Parking, ArrivalOptions{
+	if err := c.planExit(x, true); err != nil {
+		return err
+	}
+	if rolling && c.mover != nil {
+		pose := c.mover.Pose()
+		return c.takeover(arrivalMonitor{Latitude: pose.Position.Lat, Longitude: pose.Position.Lon, Heading: pose.Heading, GroundKts: pose.GroundSpeedKts}, pose.Position, true)
+	}
+	return nil
+}
+
+// exitTight is why x does not fit the aircraft (airport.Graph.ExitTight, or
+// no way on from it fits), "" when it does. c.mu held.
+func (c *ArrivalController) exitTight(x airport.RunwayExit) string {
+	g, req := c.req.Graph, c.req
+	opts := req.Options
+	if half := c.profile().SpanMeters / 2; half > opts.HalfSpan {
+		opts.HalfSpan = half
+	}
+	why := g.ExitTight(x, c.plan.End.Heading, opts)
+	if why == "" {
+		if r, err := g.RouteFromRunway(x, req.Parking, opts); err == nil && r.Tight {
+			why = "no way on from it fits"
+		}
+	}
+	return why
+}
+
+// planExit plans the arrival again with exit x, from the landing on: the
+// route, the vacate stop and the taxi-in; ai: MSFS AI landing it is given
+// the new landing chain too. c.mu held.
+func (c *ArrivalController) planExit(x airport.RunwayExit, ai bool) error {
+	req := c.req
+	plan, err := PlanArrival(req.Graph, req.Runway, req.Parking, ArrivalOptions{
 		SpawnNm: c.plan.SpawnNm, Exit: &x, Route: req.Options, GroundAGL: req.GroundAGL, NoseOffset: req.NoseOffset, StandSide: req.StandSide,
 		TouchdownKts: approachProfileOf(req).TouchdownKts, BrakeDecel: req.Rollout.BrakeDecel,
 	})
@@ -1245,7 +1267,7 @@ func (c *ArrivalController) VacateAt(x airport.RunwayExit) error {
 	plan.Spawn = c.plan.Spawn
 	// MSFS AI landing it (not injected, its procedure flown): the landing
 	// chain to the new vacate stop, as ChangeStand re-points it.
-	if !req.InjectApproach && !c.flyingProc && c.objectID != 0 && c.state >= ArrivalApproaching {
+	if ai && !req.InjectApproach && !c.flyingProc && c.objectID != 0 && c.state >= ArrivalApproaching {
 		if err := c.fleet.SetWaypoints(c.objectID, c.defBase+arrDefWaypoints, plan.Waypoints); err != nil {
 			return err
 		}
@@ -1254,11 +1276,66 @@ func (c *ArrivalController) VacateAt(x airport.RunwayExit) error {
 	c.track = newRouteTracker(plan.Route)
 	c.exitAlong = c.track.cum[len(plan.Exit.Path)-1]
 	c.vacateAlong = c.track.cum[plan.VacateIndex] - plan.VacateBackMeters
-	if rolling && c.mover != nil {
-		pose := c.mover.Pose()
-		return c.takeover(arrivalMonitor{Latitude: pose.Position.Lat, Longitude: pose.Position.Lon, Heading: pose.Heading, GroundKts: pose.GroundSpeedKts}, pose.Position, true)
-	}
 	return nil
+}
+
+// exitTurnReach is how fast (m/s) an aircraft whose nose gear is at nose
+// may be to leave by the planned exit (#1586): braking at the rollout's
+// BrakeDecel it slows to the exit speed at the exit and, through the exit's
+// turn, to the turn speed its radius allows at ExitLateralAccel (v²/r,
+// about 0.15 g), as the injected rollout is planned.
+func (c *ArrivalController) exitTurnReach(nose airport.LatLon) float64 {
+	ro := c.rolloutProfile()
+	route := c.plan.Route.Points
+	upto := min(c.plan.ClearAt()+2, len(route)-1)
+	pts := append([]airport.LatLon{nose}, route[:upto+1]...)
+	prof := c.profile()
+	prof.CruiseKts = 400
+	path, err := newGroundPath(pts, prof, firmZone{meters: math.Inf(1), decel: ro.BrakeDecel, lateral: ro.ExitLateralAccel})
+	if err != nil {
+		return 0
+	}
+	exitKts := ro.ExitKts
+	if c.plan.Exit.HighSpeed {
+		exitKts = ro.HighSpeedExitKts
+	}
+	at := localDist(nose, route[0])
+	path.LimitRange(at, at, exitKts, ro.BrakeDecel)
+	return path.limit[0]
+}
+
+// exitInReach (#1586): taken over on the runway, the aircraft must slow to
+// its exit's turn speed before it turns off (exitTurnReach). When it is too
+// fast for the planned exit it rolls on to the first later one it can make
+// that fits and reaches its stand, the last such at worst; never turning
+// off at roll-out speed. c.mu held.
+func (c *ArrivalController) exitInReach(kts float64, nose airport.LatLon) {
+	if c.plan.Backtrack || c.req.Graph == nil {
+		return
+	}
+	v := kts * ktsToMS
+	if c.exitTurnReach(nose) >= v {
+		return
+	}
+	exits, err := c.req.Graph.RunwayExits(c.plan.End.Name)
+	if err != nil {
+		return
+	}
+	was := c.plan.Exit
+	for _, x := range exits {
+		if x.Along <= c.plan.Exit.Along || c.exitTight(x) != "" {
+			continue
+		}
+		if c.planExit(x, false) != nil {
+			continue
+		}
+		if c.exitTurnReach(nose) >= v {
+			break
+		}
+	}
+	if c.plan.Exit.Node != was.Node {
+		c.seq.add(c.now(), "too fast for "+was.Taxiway+": rolling on to "+c.plan.Exit.Taxiway, 0, kts)
+	}
 }
 
 // canMakeExit reports whether the aircraft on the roll can leave by x: ahead
