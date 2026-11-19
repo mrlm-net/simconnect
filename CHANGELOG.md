@@ -7,6 +7,12 @@ This project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 ---
 
+## [0.179.0] - 2026-11-19
+
+### Added
+
+- `camera.TravelPath`: a travel's flight on its own, for a host app that drives the camera itself with no `Aim` or `Spot`. `NewTravelPath(from, toEye, toLook, observer)` (or `Travel.Path(toEye, toLook)` for the move and the subject's velocity, `Travel.LookVelMps`) plans it; `At(elapsed, toEye, toLook)` gives the pose with the ends live, so an eye moving along a rail and a moving subject are followed with no jump and the drone lands exactly on the latest eye; `Lens`, `Length` and `Done`. `Spot.TravelTo` now flies a `TravelPath`, so the World's spotting and an app fly the same way; its poses are unchanged.
+
 ## [0.178.0] - 2026-11-18
 
 ### Added

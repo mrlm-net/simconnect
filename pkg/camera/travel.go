@@ -2,8 +2,6 @@ package camera
 
 import (
 	"math"
-	"sort"
-	"sync"
 	"time"
 )
 
@@ -51,6 +49,10 @@ type Travel struct {
 	// MarginM is how far above the higher end it cruises (0:
 	// DefaultTravelMargin).
 	MarginM float64
+	// LookVelMps is the subject's velocity, metres a second east, north and
+	// up, for TravelAuto and TravelDolly on a Travel.Path (TravelTo reads
+	// its Aim's).
+	LookVelMps [3]float64
 }
 
 // Defaults and limits of a Travel.
@@ -73,32 +75,14 @@ const (
 	travelSteps = 512
 )
 
+// travelShot flies a TravelPath to the spot's eye, the look on the aim's
+// subject: the one travel there is, a host app's and the World's alike.
 type travelShot struct {
 	spot Spot
 	aim  *Aim
 	size float64
 	name string
-
-	cosLat float64
-	// The path in local metres from the spot's eye: a Bézier curve on the
-	// ground, its length S along steps; heights above the eye at each end
-	// and cruising.
-	p        [4][2]float64
-	steps    []float64 // length to sample i
-	s        float64
-	altA     float64
-	altB     float64
-	cruise   float64
-	speed    float64 // cruise, m/s
-	ramp     float64 // s
-	d        float64 // s
-	fov0     float64
-	turn     float64 // s: 0 no turn
-	h0, p0   float64 // the view at the start, degrees
-	dist0    float64
-	mu       sync.Mutex
-	lastHead float64 // the subject's bearing unwrapped, for the turn
-	haveHead bool
+	path *TravelPath // local metres from the spot's eye
 }
 
 // TravelTo flies the drone from t.From to s's eye, aimed at aim's subject
@@ -109,123 +93,23 @@ type travelShot struct {
 // same Aim with s joined after it.
 func (s Spot) TravelTo(aim *Aim, size float64, t Travel) Shot {
 	s = s.withDefaults()
-	x := &travelShot{spot: s, aim: aim, size: size, name: t.Name, cosLat: math.Cos(s.Eye.Lat * math.Pi / 180)}
+	x := &travelShot{spot: s, aim: aim, size: size, name: t.Name}
 	if x.name == "" {
 		x.name = "travel " + s.Name
 	}
-	speed := t.SpeedMps
-	if speed <= 0 {
-		speed = DefaultTravelSpeed
-	}
-	margin := t.MarginM
-	if margin <= 0 {
-		margin = DefaultTravelMargin
-	}
-	var a vec3 // the start, local
-	if t.From.Eye.Frame == World {
-		a = x.local(t.From.Eye.Lat, t.From.Eye.Lon, t.From.Eye.AltM)
-	}
-	x.fov0 = fovOf(t.From)
+	x.path = &TravelPath{org: s.Eye, cosLat: math.Cos(s.Eye.Lat * math.Pi / 180)}
 
-	// The subject now, for the shape and the turn.
+	// The subject now, for the shape and the turn: looked at a little above.
 	aim.mu.Lock()
 	now, have := aim.update()
-	var subj, vel vec3
+	var look, vel vec3
 	if have {
-		subj = x.local(aim.at(now))
+		look = x.path.local(aim.at(now))
+		look.u += spotLookUp
 		vel = aim.vel
 	}
 	aim.mu.Unlock()
-
-	l := math.Hypot(a.e, a.n)
-	ue, un := 0.0, 0.0
-	if l > 0 {
-		ue, un = -a.e/l, -a.n/l // towards the spot
-	}
-	move := t.Move
-	if move == TravelAuto && have && l > 0 {
-		move = autoTravel(a, subj, vel, ue, un, l)
-	}
-	// Control points: tangents of a third of the way at each end.
-	t0e, t0n, t1e, t1n := ue, un, ue, un
-	bow := 0.0
-	switch move {
-	case TravelDolly:
-		if v := math.Hypot(vel.e, vel.n); v > 0 {
-			ve, vn := vel.e/v, vel.n/v
-			if ve*ue+vn*un < 0 {
-				ve, vn = -ve, -vn
-			}
-			t0e, t0n, t1e, t1n = ve, vn, ve, vn
-		}
-	case TravelSlide:
-		// Away from the subject's side of the way, a fifth of it.
-		side := (subj.e-a.e)*-un + (subj.n-a.n)*ue // > 0: the subject on the left
-		bow = 0.2 * l
-		if side > 0 {
-			bow = -bow
-		}
-	case TravelPushIn:
-		if w := math.Hypot(subj.e, subj.n); w > 0 {
-			t1e, t1n = subj.e/w, subj.n/w
-		}
-	}
-	k := l / 3
-	ne, nn := -un, ue // the left of the way
-	x.p = [4][2]float64{
-		{a.e, a.n},
-		{a.e + t0e*k + ne*bow, a.n + t0n*k + nn*bow},
-		{-t1e*k + ne*bow, -t1n*k + nn*bow},
-		{0, 0},
-	}
-	x.steps = make([]float64, travelSteps+1)
-	pe, pn := x.bezier(0)
-	for i := 1; i <= travelSteps; i++ {
-		e, n := x.bezier(float64(i) / travelSteps)
-		x.steps[i] = x.steps[i-1] + math.Hypot(e-pe, n-pn)
-		pe, pn = e, n
-	}
-	x.s = x.steps[travelSteps]
-	x.altA, x.altB = a.u, 0
-	x.cruise = max(x.altA, x.altB) + margin
-	if move == TravelRise {
-		x.cruise += min(travelRiseMax, max(10, 0.06*l))
-	}
-
-	// The climb at its steepest counts in the speed: the cruise is the
-	// drone's, not its way's over the ground.
-	if x.s > 0 {
-		k := max(x.cruise-x.altA, x.cruise-x.altB) * 1.875 / (travelClimb * x.s)
-		speed /= math.Sqrt(1 + k*k)
-	}
-
-	// The view's turn to the subject.
-	if t.From.Target.Frame == World && have {
-		tg := x.local(t.From.Target.Lat, t.From.Target.Lon, t.From.Target.AltM)
-		x.h0, x.p0, x.dist0 = viewOf(a, tg)
-		h1, p1, _ := viewOf(a, vec3{subj.e, subj.n, subj.u + spotLookUp})
-		if ang := angleBetween(x.h0, x.p0, h1, p1); ang > 0.5 {
-			x.turn = max(travelTurnMin.Seconds(), ang*1.875/TravelTurnRate)
-			x.lastHead, x.haveHead = x.h0+wrap180(h1-x.h0), true
-		}
-	}
-
-	// The time: the way at the cruise with a ramp at each end, or longer
-	// for the turn, slower.
-	ramp := TravelRamp.Seconds()
-	if x.s > 0 {
-		ramp = min(ramp, x.s/speed)
-		x.d = x.s/speed + ramp
-	}
-	if need := x.turn + 2; x.turn > 0 && x.d < need {
-		x.d = need
-	}
-	x.d = min(x.d, MaxStretch.Seconds())
-	if x.s > 0 {
-		ramp = min(TravelRamp.Seconds(), x.d/2)
-		speed = x.s / (x.d - ramp)
-	}
-	x.speed, x.ramp = speed, ramp
+	x.path.plan(t, look, vel, have)
 	return x
 }
 
@@ -267,21 +151,6 @@ func along(a vec3, h, p, d float64) vec3 {
 	return vec3{a.e + g*math.Sin(h*r), a.n + g*math.Cos(h*r), a.u + d*math.Sin(p*r)}
 }
 
-func (x *travelShot) local(lat, lon, alt float64) vec3 {
-	return vec3{(lon - x.spot.Eye.Lon) * mPerDegLat * x.cosLat, (lat - x.spot.Eye.Lat) * mPerDegLat, alt - x.spot.Eye.AltM}
-}
-
-func (x *travelShot) world(p vec3) Point {
-	return At(x.spot.Eye.Lat+p.n/mPerDegLat, x.spot.Eye.Lon+p.e/(mPerDegLat*x.cosLat), x.spot.Eye.AltM+p.u)
-}
-
-func (x *travelShot) bezier(u float64) (e, n float64) {
-	v := 1 - u
-	b0, b1, b2, b3 := v*v*v, 3*v*v*u, 3*v*u*u, u*u*u
-	p := x.p
-	return b0*p[0][0] + b1*p[1][0] + b2*p[2][0] + b3*p[3][0], b0*p[0][1] + b1*p[1][1] + b2*p[2][1] + b3*p[3][1]
-}
-
 // rampIn is the way covered over the ease in at f (0..1) of it, as a share
 // of the cruise speed times the ramp: the speed rises as Smooth does.
 func rampIn(f float64) float64 {
@@ -289,88 +158,34 @@ func rampIn(f float64) float64 {
 	return f * f * f * f * (f*(f-3) + 2.5)
 }
 
-// way is how far along the path at t seconds.
-func (x *travelShot) way(t float64) float64 {
-	switch {
-	case x.s == 0:
-		return 0
-	case t <= x.ramp:
-		return x.speed * x.ramp * rampIn(t/x.ramp)
-	case t >= x.d-x.ramp:
-		return x.s - x.speed*x.ramp*rampIn((x.d-t)/x.ramp)
-	}
-	return x.speed*x.ramp/2 + x.speed*(t-x.ramp)
-}
-
-// eyeAt is the eye at t seconds, local.
-func (x *travelShot) eyeAt(t float64) vec3 {
-	w := max(0, min(x.s, x.way(t)))
-	i := sort.SearchFloat64s(x.steps, w)
-	u := 1.0
-	if i <= 0 {
-		u = 0
-	} else if i <= travelSteps {
-		a, b := x.steps[i-1], x.steps[i]
-		f := 0.0
-		if b > a {
-			f = (w - a) / (b - a)
-		}
-		u = (float64(i-1) + f) / travelSteps
-	}
-	e, n := x.bezier(u)
-	q := 1.0
-	if x.s > 0 {
-		q = w / x.s
-	}
-	up := Smooth(q / travelClimb)
-	down := Smooth((1 - q) / travelClimb)
-	alt := x.cruise - (x.cruise-x.altA)*(1-up) - (x.cruise-x.altB)*(1-down)
-	if x.s == 0 {
-		alt = x.altB
-	}
-	return vec3{e, n, alt}
-}
-
-func (x *travelShot) Length() time.Duration { return time.Duration(x.d * float64(time.Second)) }
+func (x *travelShot) Length() time.Duration { return x.path.Length() }
 func (x *travelShot) Name() string          { return x.name }
 
 // PoseAt is the drone t into the travel; its aim is live, on the aim's
 // clock.
 func (x *travelShot) PoseAt(t time.Duration) Pose {
-	sec := max(0, min(x.d, t.Seconds()))
-	eye := x.eyeAt(sec)
-	x.mu.Lock()
-	defer x.mu.Unlock()
+	path := x.path
+	sec := max(0, min(path.d, t.Seconds()))
+	eye := path.eyeAt(sec, vec3{})
 	a := x.aim
 	a.mu.Lock()
 	defer a.mu.Unlock()
 	now, ok := a.update()
-	p := Pose{Eye: x.world(eye), Target: On(a.object, 0, spotLookUp, 0), FovDeg: x.fov0}
+	p := Pose{Eye: path.world(eye), Target: On(a.object, 0, spotLookUp, 0), FovDeg: path.fov0}
 	if !ok {
 		return p
 	}
-	aim := x.local(a.at(now))
+	aim := path.local(a.at(now))
 	aim.u += spotLookUp
-	f := 1.0
-	if x.d > 0 {
-		f = sec / x.d
-	}
-	want := x.spot.Framing(x.size, aim.sub(eye).len())
-	p.FovDeg = x.fov0 + (want-x.fov0)*Smooth(f)
-	w := 1.0
-	if x.turn > 0 {
-		w = Smooth(sec / x.turn)
-	}
+	p.FovDeg = path.Lens(t, x.spot.Framing(x.size, aim.sub(eye).len()))
+	tg, turning := path.look(sec, eye, aim)
 	switch {
-	case w < 1:
-		h1, p1, d1 := viewOf(eye, aim)
-		h1 = x.lastHead + wrap180(h1-x.lastHead) // unwrapped as it turns
-		x.lastHead = h1
-		p.Target = x.world(along(eye, x.h0+(h1-x.h0)*w, x.p0+(p1-x.p0)*w, x.dist0+(d1-x.dist0)*w))
+	case turning:
+		p.Target = path.world(tg)
 	case x.spot.LockAim:
 		p.Target = On(a.object, 0, spotLookUp, 0)
 	default:
-		p.Target = x.world(aim)
+		p.Target = path.world(aim)
 	}
 	a.show(p.Eye, p.FovDeg)
 	return p
