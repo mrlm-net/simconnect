@@ -32,11 +32,19 @@ type SimClock struct {
 	// Now gave, the least it gives after a hitch.
 	lastFrame time.Time
 	read      time.Time
+	// stepped: on a time source a test steps (ManualClock), not the wall
+	// clock: time moves only as the test moves it, frame by frame, and a
+	// gap between frames is its frame length, never the simulator
+	// standing still (Frame).
+	stepped bool
 }
 
 // NewSimClock creates a clock at the wall clock's time, rate 1, running.
 func NewSimClock() *SimClock {
-	return newSimClock(Now)
+	c := newSimClock(Now)
+	_, wall := src().(wallClock)
+	c.stepped = !wall
+	return c
 }
 
 func newSimClock(wall func() time.Time) *SimClock {
@@ -110,7 +118,11 @@ func (c *SimClock) Frame() {
 	w := c.wall()
 	last := c.lastFrame
 	c.lastFrame = w
-	if last.IsZero() || c.paused {
+	if last.IsZero() || c.paused || c.stepped {
+		// Stepped (worldtest, 200 ms frames): a gap counted as a hitch
+		// lost 100 ms of traffic time whenever nothing read the clock
+		// during it, by the goroutines' order (under -race, 3.7 s over
+		// 4 h), and the traffic ran apart from the test's clock.
 		return
 	}
 	if gap := w.Sub(last); gap > SimHitch {

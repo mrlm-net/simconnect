@@ -93,10 +93,12 @@ type enrouteAC struct {
 	// virtualID is its ID on the map. materialising: its aircraft asked
 	// for and not answered yet, vt standing where it is created. gone:
 	// taken off the list meanwhile, its aircraft removed once answered.
-	vt                  *traffic.VirtualFlight
-	vtAt                time.Time
-	virtualID           uint32
-	materialising, gone bool
+	// placed: materialising, its pose taken for the creation (till then
+	// it flies on, its creation waiting for the connection).
+	vt                          *traffic.VirtualFlight
+	vtAt                        time.Time
+	virtualID                   uint32
+	materialising, gone, placed bool
 }
 
 // spawnEnroute creates an enroute arrival or an overflight where its

@@ -7,6 +7,16 @@ This project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 ---
 
+## [0.187.1] - 2026-11-20
+
+### Fixed
+
+- traffic: an overflight switching between a virtual track and a simulator object stays continuous however long or late the frames are (the nightly `TestOverflightTiers` failures, 50 to 185 m at whole frames) (#1613).
+  - The traffic scan's positions are dated from when the scan was asked, not from when the World's loop reached its first entry. A slow loop reached it frames later, and an overflight taken out of the simulator then flew on virtually 50 to 100 m behind itself.
+  - With no simulator, `SimlessAI.SetClock` gives `SimlessAI` the World's traffic time. It now moves its aircraft up to now before answering a traffic scan or removing an aircraft, not only on the 60 Hz camera tick. Without this, an aircraft removed between two ticks was a frame behind its time.
+  - A virtual overflight that is being materialised keeps flying on the map, in the snapshot and in the planning until its pose is taken for the creation. Before, it stood still while the creation waited for the connection.
+  - On a time source a test steps (`ManualClock`), `SimClock` no longer treats the gap between frames as the simulator standing still. Each 200 ms worldtest frame lost 100 ms of traffic time whenever nothing read the clock during it, depending on the order the goroutines ran in (3.7 s over 4 h under -race). The traffic then drifted away from the test's clock. On the wall clock the stall detection is unchanged.
+
 ## [0.187.0] - 2026-11-20
 
 ### Fixed
