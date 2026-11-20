@@ -154,8 +154,18 @@ func landingGraph(t *testing.T, icao string) *airport.Graph {
 // the rollout handover; its static CG height cg and struts as learnt.
 func landingPoses(t *testing.T, g *airport.Graph, end, model string, cg, struts float64) []landingWrite {
 	t.Helper()
+	return landingPosesOn(t, g, end, model, cg, struts, false)
+}
+
+// landingPosesOn is landingPoses, with no simulator behind the injector
+// (SimlessAI, a host such as Vector) when simless.
+func landingPosesOn(t *testing.T, g *airport.Graph, end, model string, cg, struts float64, simless bool) []landingWrite {
+	t.Helper()
 	ec := &eventClient{}
 	inj := NewInjector(ec)
+	if simless {
+		inj = NewInjector(NewSimlessAI(ec))
+	}
 	var ctl *ArrivalController
 	var err error
 	exits := []*airport.RunwayExit{nil}

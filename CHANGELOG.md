@@ -7,6 +7,12 @@ This project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 ---
 
+## [0.186.5] - 2026-11-20
+
+### Fixed
+
+- Traffic with no simulator (`SimlessAI`, a host such as Vector): every model touches down on its main gear at the flare attitude and lowers its nose afterwards, at most 3°/s. Since 0.186.4 a model whose struts had been learnt beyond the flat-landing limit (the B744 in Vector) had its nose lowered over the last 10 ft of the flare, so all its gear met the runway together at 0°. That flat landing works around how MSFS shows a nose-up aircraft on its extended struts, so it now applies only with MSFS, where the writes are unchanged (#1609)
+
 ## [0.186.4] - 2026-11-20
 
 ### Fixed

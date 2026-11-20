@@ -868,7 +868,11 @@ func (i *Injector) PlaceAir(objectID uint32, pose ApproachPose) error {
 	// snapped from the flare attitude in one write and the height stepped
 	// with the turn on the main gear (#1606, TNCM 10, KLM685 B744: 5° and
 	// 0.4 ft in a frame, still airborne).
-	if pose.Landing && i.landsFlat(o) {
+	// With no simulator (simless) nothing shows it on its struts: every
+	// model touches down on its main gear at the flare attitude and
+	// derotates, whatever its struts as learnt (#1609, Vector, KLM685 B744
+	// level at touchdown).
+	if pose.Landing && !i.simless && i.landsFlat(o) {
 		if pose.OnGround {
 			pose.PitchDeg = 0
 		} else if pose.PitchDeg > 0 {
