@@ -57,10 +57,20 @@ func landingRoll(t *testing.T, model, end string) (touchdown, secs, along float6
 	return touchdown, clear.Sub(down).Seconds(), p.Exit.Along, p.Exit.Taxiway
 }
 
+// lightTouchdownMeters: where a light single's injected landing usually
+// touches down (exitLightTouchdownMeters less its spread).
+const lightTouchdownMeters = exitLightTouchdownMeters - TouchdownSpreadMeters
+
 // TestLightAircraftLandingRoll: a light single touches down near the
 // threshold and turns off at the first exit it can make, clear of the
 // runway well before an airliner would be; an airliner keeps its exit.
 // LKPR 24's first exit is C, 1305 m in (the C172 rolled 83 s to D before).
+// maxSecs is for a light single touching down at its usual point
+// (lightTouchdownMeters) or later; touching down earlier, it has that much
+// more runway to roll before the same exit, at the mean of its touchdown
+// and exit speeds (the rollout's one even deceleration), and is allowed
+// that time too (#1609: the P28A on 30 touches down 150–270 m in and
+// clears 39 s to 32 s later, about 0.06 s for every metre earlier).
 func TestLightAircraftLandingRoll(t *testing.T) {
 	for _, c := range []struct {
 		model, end, exit string
@@ -69,15 +79,20 @@ func TestLightAircraftLandingRoll(t *testing.T) {
 		{"C172", "24", "C", 60}, {"C172", "06", "L", 70}, {"P28A", "30", "R", 37}, {"A320", "24", "D", 60},
 	} {
 		td, secs, along, exit := landingRoll(t, c.model, c.end)
-		t.Logf("%s on %s: touchdown %.0f m, clear %.0f s later at exit %s (%.0f m along)", c.model, c.end, td, secs, exit, along)
+		t.Logf("%s on %s: touchdown %.0f m, clear %.1f s later at exit %s (%.0f m along)", c.model, c.end, td, secs, exit, along)
 		if exit != c.exit {
 			t.Errorf("%s on %s: exit %s, want %s", c.model, c.end, exit, c.exit)
 		}
 		if td <= 0 {
 			t.Errorf("%s on %s: no touchdown seen", c.model, c.end)
 		}
-		if secs > c.maxSecs {
-			t.Errorf("%s on %s: clear %.0f s after touchdown, want ≤ %.0f", c.model, c.end, secs, c.maxSecs)
+		limit := c.maxSecs
+		if p := ProfileFor(c.model); c.model != "A320" && td < lightTouchdownMeters {
+			mean := (p.Approach.TouchdownKts + p.Rollout.ExitKts) / 2 * ktsToMS
+			limit += (lightTouchdownMeters - td) / mean
+		}
+		if secs > limit {
+			t.Errorf("%s on %s: clear %.1f s after touchdown at %.0f m, want ≤ %.1f", c.model, c.end, secs, td, limit)
 		}
 		if c.model != "A320" && td > exitLightTouchdownMeters {
 			t.Errorf("%s: touchdown %.0f m past the threshold, planned by %.0f", c.model, td, exitLightTouchdownMeters)

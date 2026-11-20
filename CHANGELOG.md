@@ -7,6 +7,13 @@ This project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 ---
 
+## [0.187.2] - 2026-11-20
+
+### Fixed
+
+- Traffic with no simulator (`SimlessAI`, a host such as Vector): every model touches down on its main gear at the flare attitude and lowers its nose afterwards, at most 3°/s. Since 0.186.4 a model whose struts had been learnt beyond the flat-landing limit (the B744 in Vector) had its nose lowered over the last 10 ft of the flare, so all its gear met the runway together at 0°. That flat landing works around how MSFS shows a nose-up aircraft on its extended struts, so it now applies only with MSFS, where the writes are unchanged (#1609)
+- Tests: `TestLightAircraftLandingRoll` no longer fails on about 4 runs in 10. Since 0.186.2 (#1603) the P28A takes the right-angle turn off LKPR 30 at R at 12 kt, so it clears 32–39 s after touchdown (before: 32 s on average, at most 34), and the time depends on where it touched down (150–270 m in). The 37 s limit now applies to a touchdown at the usual point (220 m) or later. An earlier touchdown is allowed the extra runway at the mean of its touchdown and exit speeds. Passes 150 of 150 runs with at least 1.5 s to spare, so a 2 s regression is still caught (#1609)
+
 ## [0.187.1] - 2026-11-20
 
 ### Fixed
