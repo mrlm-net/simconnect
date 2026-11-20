@@ -284,15 +284,16 @@ func (s *scheduler) newVirtualID() uint32 {
 
 // materialise creates the aircraft of a virtual overflight at its pose,
 // to fly the waypoints it has left; nm is how near the viewer it is (for
-// the log, negative: the tiers switched off). The track stands still
-// until the simulator answers (handle). Reports whether it was asked for.
+// the log, negative: the tiers switched off). The track stands still,
+// from its creation on, until the simulator answers (handle). Reports
+// whether it was asked for.
 func (s *scheduler) materialise(e *enrouteAC, nm float64) bool {
 	s.mu.Lock()
 	if e.vt == nil || e.materialising || e.gone || s.enroute[e.f.Callsign] != e || len(e.vt.Ahead()) == 0 {
 		s.mu.Unlock()
 		return false
 	}
-	e.materialising = true
+	e.materialising, e.placed = true, false
 	e.reqID, e.pendingAt = s.freeEnrouteReq(), traffic.Now()
 	s.pending[e.reqID] = e
 	req := e.reqID
@@ -307,6 +308,7 @@ func (s *scheduler) materialise(e *enrouteAC, nm float64) bool {
 		s.advance(e, s.cc.clock.Now())
 		pose = e.vt.Pose()
 		e.waypoints = e.vt.Ahead()
+		e.placed = true
 		s.mu.Unlock()
 		if len(e.waypoints) == 0 {
 			return errors.New("through its waypoints")
@@ -419,7 +421,11 @@ func (s *scheduler) virtuals(now time.Time) []virtualView {
 			continue
 		}
 		p := e.vt.Pose()
-		if !e.materialising && !e.vtAt.IsZero() {
+		// Materialising, it flies on until its pose is taken for the
+		// creation: the creation may wait a frame or more for the
+		// connection, and standing still meanwhile it fell a frame or more
+		// behind the aircraft then created (under -race).
+		if (!e.materialising || !e.placed) && !e.vtAt.IsZero() {
 			if dt := now.Sub(e.vtAt).Seconds(); dt > 0 {
 				p = e.vt.PoseAfter(dt)
 			}

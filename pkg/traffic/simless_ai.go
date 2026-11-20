@@ -36,6 +36,9 @@ type SimlessAI struct {
 	// freezeEvents: the client events that freeze an aircraft in place.
 	freezeEvents map[uint32]bool
 	last         time.Time
+	// now: the traffic time Step is called with (SetClock); nil: the
+	// aircraft move on Step only.
+	now func() time.Time
 	// created: request → the pose an aircraft was created at
 	// (AICreateNonATCAircraft), its object's once the simulator names it
 	// (Handle).
@@ -217,8 +220,40 @@ func (s *SimlessAI) TransmitClientEvent(objectID uint32, eventID uint32, data ui
 	return s.Client.TransmitClientEvent(objectID, eventID, data, groupID, flags)
 }
 
-// AIRemoveObject forgets the aircraft, then passes the call on.
+// SetClock gives the traffic time Step is called with: the aircraft are
+// then flown up to it before anyone sees or removes them, as a
+// simulator's AI moves them every frame, not only on Step.
+func (s *SimlessAI) SetClock(now func() time.Time) {
+	s.mu.Lock()
+	s.now = now
+	s.mu.Unlock()
+}
+
+// catchUp flies the aircraft up to the time now (SetClock): a position
+// asked for, or an aircraft removed, between two Steps is where it is by
+// then, not where the last Step left it. A slow frame (the race detector,
+// offline: 200 ms) left it a frame behind its time, and an overflight
+// taken out of the simulator then flew on virtually 50 m ahead of it.
+func (s *SimlessAI) catchUp() {
+	s.mu.Lock()
+	now := s.now
+	s.mu.Unlock()
+	if now != nil {
+		s.Step(now())
+	}
+}
+
+// RequestDataOnSimObjectType flies the aircraft up to now, then passes
+// the call on: the scan has them where they are as it is asked.
+func (s *SimlessAI) RequestDataOnSimObjectType(requestID uint32, definitionID uint32, dwRadiusMeters uint32, objectType types.SIMCONNECT_SIMOBJECT_TYPE) error {
+	s.catchUp()
+	return s.Client.RequestDataOnSimObjectType(requestID, definitionID, dwRadiusMeters, objectType)
+}
+
+// AIRemoveObject flies the aircraft up to now (removed where it is),
+// forgets it, then passes the call on.
 func (s *SimlessAI) AIRemoveObject(objectID uint32, requestID uint32) error {
+	s.catchUp()
 	s.mu.Lock()
 	delete(s.objects, objectID)
 	s.mu.Unlock()

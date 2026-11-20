@@ -682,6 +682,8 @@ func runOn(ctx context.Context, st *state, client engine.Client, stream <-chan e
 		// (pkg/traffic Injector) report 0 kt, so their speed is derived.
 		lastPos = map[uint32]fix{}
 		names   = newTrafficNames()
+		// scanAsked: when the last traffic scan was asked (traffic time).
+		scanAsked time.Time
 	)
 
 	// The loader sends facility requests; this loop hands it every message.
@@ -845,6 +847,9 @@ func runOn(ctx context.Context, st *state, client engine.Client, stream <-chan e
 	}()
 	camTick := traffic.NewTicker(cameraRate)
 	defer camTick.Stop()
+	if ai, ok := client.(*traffic.SimlessAI); ok {
+		ai.SetClock(cc.clock.Now) // flown up to the time it is seen or removed at, not only on camTick
+	}
 	var lastFrame time.Time          // the simulator's last frame event
 	droppedAt := map[string]uint64{} // by ICAO: Feed's drop count when its layout was asked
 	var excWindow time.Time          // SimConnect exceptions logged since
@@ -956,6 +961,7 @@ func runOn(ctx context.Context, st *state, client engine.Client, stream <-chan e
 			// Every aircraft within TrafficRadius of the user aircraft; the scan
 			// restarts with its first entry, not here (#81: a reply still coming
 			// in was cut, aircraft vanished for a cycle).
+			scanAsked = cc.clock.Now()
 			client.RequestDataOnSimObjectType(reqTraffic, defTraffic, trafficRadius, types.SIMCONNECT_SIMOBJECT_TYPE_AIRCRAFT)
 			cc.timed("airways", func() { airways.tick(now) })
 			for _, r := range navLoader.Expire(now) {
@@ -1127,8 +1133,17 @@ func runOn(ctx context.Context, st *state, client engine.Client, stream <-chan e
 				lastPos[id] = fix{lat: t.Lat, lon: t.Lon, at: now, altFt: t.AltFt, vs: vs}
 				if uint32(d.DwEntryNumber) <= 1 {
 					scan = scan[:0] // a new scan
-					// Its positions' time (scanTime).
-					cc.core.scanFrom.Store(cc.clock.Now().UnixNano())
+					// Its positions' time (scanTime): when it was asked,
+					// the simulator answering on its next frame, not when
+					// this loop got to its first entry, which a slow loop
+					// takes frames later (offline under -race: 200 to
+					// 400 ms, an overflight taken out of the simulator
+					// then flew on virtually 50 to 100 m behind itself).
+					at := cc.clock.Now()
+					if !scanAsked.IsZero() && !scanAsked.After(at) && at.Sub(scanAsked) < scanStale {
+						at = scanAsked
+					}
+					cc.core.scanFrom.Store(at.UnixNano())
 				}
 				// Named, and an invisible jetway helper (#572) left out, as the
 				// scan ends (trafficNames.fill): the scan still ends on a
