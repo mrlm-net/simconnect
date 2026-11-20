@@ -48,6 +48,9 @@ type Injector struct {
 	byRequest        map[uint32]uint32    // ground request ID → object ID
 	slots            [injectMaxAircraft]bool
 	sent             map[uint32]string
+	// simless: no simulator behind the client (SimlessAI, Vector): what is
+	// written is the pose a host draws, not an instruction to MSFS.
+	simless bool
 	// rests: by aircraft title, how a model rests standing (CG height,
 	// pitch) as last seen before we placed one: for one not seen standing
 	// (an arrival, created in the air), so it is placed at its rest pitch
@@ -117,6 +120,9 @@ type injected struct {
 	// set the simulator puts the wheels on the ground at its own height,
 	// whatever we send: a change of the flag blends (smoothCG).
 	sentGround int8
+	// takeoffDown: with no simulator (Injector.simless), its last write was
+	// a take-off with the main wheels on the runway (takeoffWheelsDown).
+	takeoffDown bool
 	// strutsUp: raised on its struts ahead of rotation (strutsAhead), the
 	// only place their reach is learnt.
 	strutsUp bool
@@ -326,6 +332,7 @@ func NewInjector(client engine.Client, opts ...InjectorOption) *Injector {
 		reach:     map[int]float64{},
 		gearStep:  map[string]int{},
 	}
+	_, i.simless = client.(*SimlessAI)
 	for _, o := range opts {
 		o(i)
 	}
@@ -957,6 +964,14 @@ func (i *Injector) PlaceAir(objectID uint32, pose ApproachPose) error {
 	}
 	if pose.OnGround && pose.PitchDeg <= 0 { // wheels down, nose down: on all its wheels (MovingPitchDeg)
 		p.Pitch = o.staticPitch
+	}
+	// With no simulator the flag written is the one a host draws (#1605):
+	// on the runway through the whole take-off roll and rotation, off from
+	// the first write with the main wheels above it. MSFS gets the roll
+	// without it (Unpinned, liftsOff) and keeps that: only the flag here
+	// differs, the height and pitch are the same.
+	if i.simless && takeoffWheelsDown(o, pose) {
+		p.OnGround = 1
 	}
 	o.placed = true
 	// Placed: no rest learnt from the samples of a roll (live, TVS495 on its
