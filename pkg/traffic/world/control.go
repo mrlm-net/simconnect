@@ -4004,6 +4004,8 @@ func typeSaid(icao string) string {
 		return "Citation" // C56X Excel, C68A Latitude, C700 Longitude
 	case strings.HasPrefix(icao, "C25"):
 		return "Citation" // C25A, C25B: the CJs
+	case icao == "DHC6":
+		return "Twin Otter"
 	case icao == "C208":
 		return "Caravan"
 	case icao == "DA42" || icao == "DA62":

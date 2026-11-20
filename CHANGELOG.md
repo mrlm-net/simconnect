@@ -7,6 +7,12 @@ This project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 ---
 
+## [0.187.0] - 2026-11-20
+
+### Fixed
+
+- Traffic schedule: game mode now spawns flights at St Maarten (TNCM), St Barthelemy (TFFJ) and Los Angeles (KLAX). Before, `traffic.DefaultScheduleConfig()` had no airline serving them, so every draw failed with `no airline flies to <ICAO>`. The default schedule adds American, Delta, United and JetBlue from the US east coast to TNCM and KLAX, Alaska and Southwest at KLAX, Qantas, Cathay Pacific and EVA Air flying across the Pacific to KLAX, KLM's 747 to TNCM (new `B744` limits: 2300 m runway, 1200 NM and more), and Winair's Twin Otter between TNCM and TFFJ. `DHC6` is a new type in the aircraft table, with its wake, performance, spoken name ("Twin Otter"), no-jetway and tug entries, and schedule limits for a 600 m runway. The schedule also skips an airline when no type in its fleet fits the field's runway, so long-haul carriers serving everywhere no longer use up the draws at a short field. When no airline serves a game airport, the error names what is missing: the schedule, the airport's base or region, and the runway length a type must fit. A test checks that every airport in the schedule and each of VECTOR.PRO's ten launch airports gets arrivals and departures, and that TFFJ's flights fit its 642 m runway (#1610)
+
 ## [0.186.4] - 2026-11-20
 
 ### Fixed

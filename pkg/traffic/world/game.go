@@ -112,9 +112,23 @@ func (cc *controlCenter) gameFlight(r *SpawnRequest, graph *airport.Graph, now t
 		return nil
 	}
 	if !drew {
-		return fmt.Errorf("no airline flies to %s", r.ICAO)
+		return noAirlineError(r.ICAO, graph)
 	}
 	return fmt.Errorf("no model of a flight drawn for %s", r.ICAO)
+}
+
+// noAirlineError names the data a game's airport lacks (#1610): no airline
+// of the schedule (traffic.DefaultScheduleConfig) has it as a base or its
+// region among its regions, with a type of its fleet that fits its runway.
+func noAirlineError(icao string, graph *airport.Graph) error {
+	runway := 0.0
+	if graph != nil && graph.Layout != nil {
+		for _, rw := range graph.Layout.Runways {
+			runway = max(runway, rw.Length)
+		}
+	}
+	return fmt.Errorf("no airline flies to %s: the schedule (traffic.DefaultScheduleConfig) has no airline with %s as a base or region %q, flying a type that fits its %.0f m runway",
+		icao, icao, icao[:min(2, len(icao))], runway)
 }
 
 // gameTick runs the game once a second, in the connection goroutine.

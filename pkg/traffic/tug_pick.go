@@ -71,7 +71,7 @@ var tugForType = map[string]string{
 	"GLF4": TugLowTitle, "GLF5": TugLowTitle, "GLF6": TugLowTitle, "G280": TugLowTitle,
 	"E50P": TugLowTitle, "E55P": TugLowTitle, "E545": TugLowTitle, "E550": TugLowTitle, "H25B": TugLowTitle, "HDJT": TugLowTitle,
 	"F2TH": TugLowTitle, "FA7X": TugLowTitle, "FA8X": TugLowTitle, "F900": TugLowTitle,
-	"PC12": TugLowTitle, "PC24": TugLowTitle, "BE20": TugLowTitle, "BE9L": TugLowTitle, "B350": TugLowTitle,
+	"PC12": TugLowTitle, "PC24": TugLowTitle, "BE20": TugLowTitle, "BE9L": TugLowTitle, "B350": TugLowTitle, "DHC6": TugLowTitle,
 }
 
 // tugTypeKeys: tugForType's keys, longest first.

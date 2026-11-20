@@ -161,6 +161,13 @@ var knownTypes = []typeSpec{
 		vapp: 105, pitch: 1, flarePitch: 4, flareFt: 15, tdFpm: -100, takeoff: toLightTprop(100, 125, 2000), brake: 2.0, taxi: 12, flaps: flapsBiz},
 	{match: []string{"BE20", "KING AIR 200", "KING AIR 250", "KING AIR 260", "KING AIR"}, Type: "BE20", Category: CategoryTurboprop, span: 17.65, length: 13.4, wheelbase: 4.55, cg: 1.6, tod: 643,
 		vapp: 104, pitch: 1, flarePitch: 4, flareFt: 15, tdFpm: -100, takeoff: toLightTprop(85, 115, 1900), brake: 2.0, taxi: 12, flaps: flapsBiz},
+	// Twin Otter (DHC-6-300, #1610): span, length, conventional take-off
+	// distance to 50 ft and stall speed published (Wikipedia, "de Havilland
+	// Canada DHC-6 Twin Otter", retrieved 2026-11-20); vapp is 1.3 times the
+	// stall speed; wheelbase, CG height, climb and the other speeds are
+	// estimates.
+	{match: []string{"DHC6", "DHC-6", "TWIN OTTER"}, Type: "DHC6", Category: CategoryTurboprop, span: 19.81, length: 15.77, wheelbase: 4.5, cg: 1.5, tod: 450,
+		vapp: 73, pitch: 1, flarePitch: 4, flareFt: 15, tdFpm: -100, takeoff: toLightTprop(65, 85, 1500), brake: 2.0, taxi: 12, flaps: flapsBiz},
 	{match: []string{"DA62", "DA 62"}, Type: "DA62", Category: CategoryPiston, span: 14.55, length: 9.19, wheelbase: 2.3, cg: 1.1, tod: 883,
 		vapp: 88, pitch: 2, flarePitch: 6, flareFt: 10, tdFpm: -100, takeoff: toPiston(80, 100, 1028), brake: 2.0, taxi: 10, flaps: flapsBiz},
 	{match: []string{"DA42", "DA 42", "TWIN STAR"}, Type: "DA42", Category: CategoryPiston, span: 13.55, length: 8.56, wheelbase: 2.1, cg: 1.0, tod: 649,
