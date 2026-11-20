@@ -7,6 +7,12 @@ This project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 ---
 
+## [0.186.4] - 2026-11-20
+
+### Fixed
+
+- traffic: the written landing pose no longer steps. A model that lands flat lowers its nose over the last 10 ft of the flare, at about 3°/s, instead of snapping it from the flare attitude to level in one write (5° and 0.4 ft at once, still airborne). Every other model touches down on its main gear at the flare attitude, and its height now eases down with the nose to where it rests nose-down, so nothing steps when the nose wheel comes down (0.5 ft for an A320, 0.9 ft for a B744 before) (#1606)
+
 ## [0.186.3] - 2026-11-20
 
 ### Fixed

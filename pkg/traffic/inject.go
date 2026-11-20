@@ -145,6 +145,9 @@ type injected struct {
 	// reference point: what the simulator shows then is its mains height.
 	touchdown bool
 	mainArm   float64
+	// touchPitch: the pitch it touched down at on its main gear (PlaceAir),
+	// the nose coming down from it since; 0 when not derotating.
+	touchPitch float64
 	// nose: its nose wheel steering (steer.go).
 	nose nosewheel
 	// wheels: which way it travels, for the wheel spin (wheels.go).
@@ -857,8 +860,20 @@ func (i *Injector) PlaceAir(objectID uint32, pose ApproachPose) error {
 	if pose.OnGround {
 		onGround = 1
 	}
-	if pose.OnGround && pose.Landing && i.landsFlat(o) {
-		pose.PitchDeg = 0 // its nose down with its mains (strutsFlatFt)
+	// A model that lands flat (strutsFlatFt) has its nose down with its
+	// mains: nose up on the runway the simulator shows it on its extended
+	// struts and drops it from them at its static pitch, whatever is sent.
+	// The nose is let down over the last flatNoseFt of the flare, so it
+	// meets the runway level; set down at touchdown instead, the pitch
+	// snapped from the flare attitude in one write and the height stepped
+	// with the turn on the main gear (#1606, TNCM 10, KLM685 B744: 5° and
+	// 0.4 ft in a frame, still airborne).
+	if pose.Landing && i.landsFlat(o) {
+		if pose.OnGround {
+			pose.PitchDeg = 0
+		} else if pose.PitchDeg > 0 {
+			pose.PitchDeg *= math.Max(0, math.Min(1, pose.HeightFt/flatNoseFt))
+		}
 	}
 	// On the runway the aircraft rests on its gear as Place puts it (its
 	// rest height and pitch), the take-off or landing pitch on top; the
@@ -888,6 +903,9 @@ func (i *Injector) PlaceAir(objectID uint32, pose ApproachPose) error {
 		cg = math.Max(cg, i.mainsCG(o))
 	}
 	o.touchdown = false
+	if !pose.OnGround || !pose.Landing || pose.PitchDeg <= 0 {
+		o.touchPitch = 0
+	}
 	switch {
 	case pose.OnGround && pose.Landing && pose.PitchDeg > 0:
 		// Touched down, the nose still up: on its main gear at the height it
@@ -900,6 +918,18 @@ func (i *Injector) PlaceAir(objectID uint32, pose ApproachPose) error {
 		// CSA1383 A320 12.87 → 12.44 ft, THY948 A321 at 135 kt).
 		if s := i.strutsOf(o); s > 0 {
 			cg = math.Max(cg, o.cgFt+s)
+		}
+		// The nose coming down: the height eased with it to where it is
+		// placed the frame the nose is down (below: its static height, its
+		// struts held up to their reach with the flag), so nothing steps
+		// there (#1606: 0.5 ft for an A320, 0.9 for a B744 in one write).
+		// The simulator shows it on its extended struts whatever is sent
+		// until then, and takes ours that frame: the same height as before.
+		if o.touchPitch <= 0 {
+			o.touchPitch = pose.PitchDeg
+		}
+		if end := o.cgFt + i.strutsHeld(o); end < cg {
+			cg = end + (cg-end)*math.Min(1, pose.PitchDeg/o.touchPitch)
 		}
 	case pose.OnGround:
 		cg = o.cgFt
@@ -1137,6 +1167,11 @@ func (i *Injector) SetModel(objectID uint32, title string) {
 // rollingFadeDeg: the rolling pitch (movingPitch) fades out as the nose
 // comes up to this pitch, at rotation and in the flare.
 const rollingFadeDeg = 3.0
+
+// flatNoseFt: a model that lands flat has its nose let down from the flare
+// attitude over the last this many feet above the runway (PlaceAir): about
+// 2.5–3°/s at the flare's sink rate there (300–350 fpm), level at touchdown.
+const flatNoseFt = 10.0
 
 // airAltitude is the main wheels' altitude MSL for a pose over ground at
 // groundFt: the runway's elevation plus the height (a steady glide path,

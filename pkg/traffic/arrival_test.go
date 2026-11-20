@@ -676,7 +676,9 @@ func TestArrivalControllerInjectedApproach(t *testing.T) {
 	if !inj.Driven(77) || ctl.State() != ArrivalApproaching {
 		t.Fatalf("not taken over on final: %v", ctl.State())
 	}
-	inj.Handle(groundMsg(DefaultInjectRequestBase+1, 77, 1200, 12))
+	// An A320's static CG height: 12.00 ft is the easyJet A20N's, a model
+	// that lands flat, its nose let down before touchdown (#1606).
+	inj.Handle(groundMsg(DefaultInjectRequestBase+1, 77, 1200, 12.25))
 	for i := 0; i < 60*1200 && ctl.State() != ArrivalParked; i++ {
 		now = now.Add(time.Second / 60)
 		ctl.Handle(arrivalPositionMsg(mon, 77, p.End.Threshold, 0, 0, 0, false)) // a frame tick
