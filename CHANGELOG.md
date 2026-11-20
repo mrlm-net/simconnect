@@ -7,6 +7,12 @@ This project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 ---
 
+## [0.186.3] - 2026-11-20
+
+### Fixed
+
+- Traffic with no simulator (`SimlessAI`, a host such as Vector): a departure's written poses carry `onGround` from lined up through the whole take-off roll and rotation, and the first write without it is the first with the main wheels above the runway. Before, the roll was written without the flag (TNCM 10, an A320: 33 s of a 39 s roll), so a host drawing from it hung the gear and took the airborne height on the runway. Only the flag changes, and only without a simulator: MSFS still gets the roll unpinned (no strut pops), with the same height, pitch and gear hold (#1605).
+
 ## [0.186.2] - 2026-11-20
 
 ### Fixed

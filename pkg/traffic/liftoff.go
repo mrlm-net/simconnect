@@ -19,3 +19,12 @@ func (i *Injector) liftsOff(o *injected, pose ApproachPose, onGround types.DWORD
 	s := i.strutsOf(o)
 	return s > 0 && above >= o.cgFt+s
 }
+
+// takeoffWheelsDown tells whether pose is a take-off with o's main wheels
+// on the runway: lined up, rolling, rotating (Unpinned), and the frame the
+// mover turns airborne while its wheels are still at the runway (height 0,
+// right after one on it). i.mu held.
+func takeoffWheelsDown(o *injected, pose ApproachPose) bool {
+	o.takeoffDown = !pose.Landing && (pose.Unpinned || o.takeoffDown && !pose.OnGround && pose.HeightFt <= 0)
+	return o.takeoffDown
+}
