@@ -434,10 +434,17 @@ func (g *scheduler) flight(focus ScheduleAirport, shares map[string]float64, at 
 		case !contains(a.Regions, prefix) && !contains(a.Regions, "*"):
 			w = 0
 		}
+		if !g.fitsRunway(a, focus.RunwayM) {
+			w = 0
+		}
 		weights = append(weights, w)
 	}
 	for _, a := range focus.Carriers {
-		weights = append(weights, a.Weight*homeWeight(shares[a.ICAO]))
+		w := a.Weight * homeWeight(shares[a.ICAO])
+		if !g.fitsRunway(a, focus.RunwayM) {
+			w = 0
+		}
+		weights = append(weights, w)
 	}
 	for tries := 0; tries < 8; tries++ {
 		ai := pick(g.rng, weights)
@@ -521,6 +528,22 @@ func (g *scheduler) fleetType(al Airline, dist, runwayM float64) (string, bool) 
 	return types[i], true
 }
 
+// fitsRunway reports whether any type of al's fleet fits a runway of
+// runwayM (0: unknown, any). An airline that cannot land there is not
+// drawn: at a short field (TFFJ, 642 m, #1610) the long-haul airlines
+// serving everywhere took the draws, each one failing on the runway.
+func (g *scheduler) fitsRunway(al Airline, runwayM float64) bool {
+	if runwayM <= 0 {
+		return true
+	}
+	for t, w := range al.Fleet {
+		if w > 0 && g.limits(t).RunwayM <= runwayM {
+			return true
+		}
+	}
+	return false
+}
+
 func (g *scheduler) limits(t string) TypeLimits {
 	return g.cfg.limits(t)
 }
@@ -560,6 +583,8 @@ func cruiseKts(typ string) float64 {
 	switch typ {
 	case "AT76", "AT75", "DH8D", "ATR":
 		return 290
+	case "DHC6":
+		return 170
 	case "B77W", "B789", "B788", "A359", "A333":
 		return 480
 	}

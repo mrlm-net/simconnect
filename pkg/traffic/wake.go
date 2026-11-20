@@ -114,7 +114,7 @@ var wakeTypes = map[string]Wake{
 	"C25A": {WakeLight, RecatF}, "C25B": {WakeLight, RecatF}, "LJ25": {WakeLight, RecatF}, "SF50": {WakeLight, RecatF}, "TBM9": {WakeLight, RecatF},
 	"C152": {WakeLight, RecatF}, "P28A": {WakeLight, RecatF}, "DA40": {WakeLight, RecatF},
 	// MTOW 7 t or less as well (live, OKFHP: a King Air 350 taken for a medium).
-	"B350": {WakeLight, RecatF}, "DA62": {WakeLight, RecatF}, "BE58": {WakeLight, RecatF}, "C510": {WakeLight, RecatF},
+	"B350": {WakeLight, RecatF}, "DHC6": {WakeLight, RecatF}, "DA62": {WakeLight, RecatF}, "BE58": {WakeLight, RecatF}, "C510": {WakeLight, RecatF},
 	"E50P": {WakeLight, RecatF}, "C182": {WakeLight, RecatF}, "PA46": {WakeLight, RecatF},
 }
 

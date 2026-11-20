@@ -7,7 +7,8 @@ import (
 )
 
 // DefaultScheduleConfig is the built-in schedule data: European airlines
-// with their fleets and bases, the airports they fly to, and a day of
+// and some of the Americas and the Pacific (#1610), with their fleets and
+// bases, the airports they fly to, and a day of
 // waves (quiet night, morning and evening peaks). Save it with
 // SaveScheduleConfig to edit it.
 func DefaultScheduleConfig() ScheduleConfig {
@@ -34,6 +35,13 @@ func DefaultScheduleConfig() ScheduleConfig {
 			"B38M": {MinNM: 150, MaxNM: 3500, RunwayM: 2100},
 			"B789": {MinNM: 1200, MaxNM: 7500, RunwayM: 2800},
 			"B77W": {MinNM: 1200, MaxNM: 7300, RunwayM: 3000},
+			// The 747 KLM flew to St Maarten (TNCM, 2300 m), #1610.
+			"B744": {MinNM: 1200, MaxNM: 7000, RunwayM: 2300},
+			// The Twin Otter: STOL take-off distance to 50 ft 370 m, landing
+			// from 50 ft 460 m conventionally (Wikipedia, "de Havilland Canada
+			// DHC-6 Twin Otter", retrieved 2026-11-20); St Barthelemy's
+			// 642 m runway (#1610).
+			"DHC6": {MinNM: 10, MaxNM: 300, RunwayM: 600},
 			"LJ25": {MinNM: 100, MaxNM: 1200, RunwayM: 1600}, // a reserved airline's (WTD)
 		},
 	}
@@ -49,7 +57,7 @@ func defaultAirlines() []Airline {
 		{ICAO: "DLH", Name: "Lufthansa", Telephony: "LUFTHANSA", Fleet: map[string]float64{"A20N": 3, "A320": 2, "A321": 2, "CRJ9": 1, "B789": 0.5}, Bases: []string{"EDDF", "EDDM"}, Regions: []string{"*"}, Weight: 2},
 		{ICAO: "AUA", Name: "Austrian", Telephony: "AUSTRIAN", Fleet: map[string]float64{"A320": 2, "E190": 1, "DH8D": 1}, Bases: []string{"LOWW"}, Regions: eu, Weight: 1},
 		{ICAO: "SWR", Name: "Swiss", Telephony: "SWISS", Fleet: map[string]float64{"A20N": 1, "A320": 2, "A321": 1}, Bases: []string{"LSZH", "LSGG"}, Regions: eu, Weight: 1},
-		{ICAO: "KLM", Name: "KLM", Telephony: "KLM", Fleet: map[string]float64{"B738": 2, "E190": 2, "B789": 0.5, "B77W": 0.3}, Bases: []string{"EHAM"}, Regions: []string{"*"}, Weight: 1.5},
+		{ICAO: "KLM", Name: "KLM", Telephony: "KLM", Fleet: map[string]float64{"B738": 2, "E190": 2, "B789": 0.5, "B77W": 0.3, "B744": 0.2}, Bases: []string{"EHAM"}, Regions: []string{"*"}, Weight: 1.5},
 		{ICAO: "AFR", Name: "Air France", Telephony: "AIRFRANS", Fleet: map[string]float64{"A320": 2, "A321": 1, "B77W": 0.3}, Bases: []string{"LFPG"}, Regions: []string{"*"}, Weight: 1.5},
 		{ICAO: "BAW", Name: "British Airways", Telephony: "SPEEDBIRD", Fleet: map[string]float64{"A320": 2, "A20N": 1, "A321": 1, "B77W": 0.3, "B789": 0.3}, Bases: []string{"EGLL", "EGKK"}, Regions: []string{"*"}, Weight: 1.5},
 		// LOT: the ICAO designator is POLLOT, but "LOT" is what is said in practice.
@@ -70,6 +78,21 @@ func defaultAirlines() []Airline {
 		{ICAO: "FDX", Name: "FedEx", Telephony: "FEDEX", Cargo: true, Fleet: map[string]float64{"B738": 1, "B77L": 1}, Bases: []string{"LFPG"}, Regions: []string{"*"}, Weight: 0.15},
 		{ICAO: "ABR", Name: "ASL Airlines Ireland", Telephony: "CONTRACT", Cargo: true, Fleet: map[string]float64{"B738": 1}, Bases: []string{"EIDW"}, Regions: eu, Weight: 0.1},
 		{ICAO: "ENT", Name: "Enter Air", Telephony: "ENTER", Fleet: map[string]float64{"B738": 1}, Bases: []string{"EPWA", "EPKT"}, Regions: append([]string{"HE", "GC"}, central...), Weight: 0.5},
+		// The Americas and the Pacific (#1610): St Maarten (TNCM), St
+		// Barthelemy (TFFJ) and Los Angeles (KLAX). Telephony from
+		// telephony.tsv. A US airline's regions are the two-letter prefixes
+		// of the fields it serves: "TN" St Maarten, "KL" Los Angeles.
+		{ICAO: "AAL", Name: "American Airlines", Telephony: "AMERICAN", Fleet: map[string]float64{"B738": 3, "A321": 2}, Bases: []string{"KMIA", "KCLT"}, Regions: []string{"TN", "KL"}, Weight: 2},
+		{ICAO: "DAL", Name: "Delta", Telephony: "DELTA", Fleet: map[string]float64{"A321": 2, "B738": 1}, Bases: []string{"KATL", "KJFK"}, Regions: []string{"TN", "KL"}, Weight: 2},
+		{ICAO: "UAL", Name: "United", Telephony: "UNITED", Fleet: map[string]float64{"B738": 2, "A320": 1}, Bases: []string{"KEWR", "KORD"}, Regions: []string{"TN", "KL"}, Weight: 1.5},
+		{ICAO: "JBU", Name: "JetBlue", Telephony: "JETBLUE", Fleet: map[string]float64{"A320": 2, "A321": 1}, Bases: []string{"KJFK", "KBOS"}, Regions: []string{"TN", "KL"}, Weight: 1.5},
+		{ICAO: "ASA", Name: "Alaska Airlines", Telephony: "ALASKA", Fleet: map[string]float64{"B738": 2, "B38M": 1}, Bases: []string{"KSEA"}, Regions: []string{"KL"}, Weight: 1},
+		{ICAO: "SWA", Name: "Southwest", Telephony: "SOUTHWEST", Fleet: map[string]float64{"B738": 2, "B38M": 1}, Bases: []string{"KLAS", "KPHX", "KDEN", "KOAK"}, Regions: []string{"KL"}, Weight: 1.5},
+		{ICAO: "QFA", Name: "Qantas", Telephony: "QANTAS", Fleet: map[string]float64{"B789": 1}, Bases: []string{"YSSY"}, Regions: []string{"KL"}, Weight: 0.4},
+		{ICAO: "CPA", Name: "Cathay Pacific", Telephony: "CATHAY", Fleet: map[string]float64{"B77W": 1}, Bases: []string{"VHHH"}, Regions: []string{"KL"}, Weight: 0.4},
+		{ICAO: "EVA", Name: "EVA Air", Telephony: "EVA", Fleet: map[string]float64{"B77W": 1}, Bases: []string{"RCTP"}, Regions: []string{"KL"}, Weight: 0.4},
+		// Winair: the Twin Otter between St Maarten and St Barthelemy.
+		{ICAO: "WIA", Name: "Winair", Telephony: "WINDWARD", Fleet: map[string]float64{"DHC6": 1}, Bases: []string{"TNCM"}, Regions: []string{"TF"}, Weight: 0.5},
 	}
 }
 
@@ -92,6 +115,9 @@ var scheduleAirportNames = map[string]string{
 	"LTFM": "Istanbul", "LTAI": "Antalya", "GCTS": "Tenerife South", "GCLP": "Gran Canaria",
 	"HEGN": "Hurghada", "HESH": "Sharm el Sheikh", "OJAQ": "Aqaba", "DTTJ": "Djerba",
 	"OMDB": "Dubai", "OTHH": "Doha", "RKSI": "Seoul Incheon", "KJFK": "New York Kennedy", "KORD": "Chicago O'Hare", "CYYZ": "Toronto",
+	"TNCM": "St Maarten", "TFFJ": "St Barthelemy", "KLAX": "Los Angeles", "KMIA": "Miami", "KCLT": "Charlotte", "KATL": "Atlanta",
+	"KEWR": "Newark", "KBOS": "Boston", "KSEA": "Seattle", "KLAS": "Las Vegas", "KPHX": "Phoenix", "KDEN": "Denver", "KOAK": "Oakland",
+	"YSSY": "Sydney", "VHHH": "Hong Kong", "RCTP": "Taipei",
 }
 
 func defaultScheduleAirports() []ScheduleAirport {
@@ -122,5 +148,12 @@ func defaultScheduleAirports() []ScheduleAirport {
 		// Long haul
 		a("OMDB", 25.2528, 55.3644, 3, 4447), a("OTHH", 25.2731, 51.6081, 3, 4850), a("RKSI", 37.4602, 126.4407, 3, 4000),
 		a("KJFK", 40.6398, -73.7789, 3, 4423), a("KORD", 41.9786, -87.9048, 3, 3962), a("CYYZ", 43.6772, -79.6306, 3, 3389),
+		// The Americas and the Pacific (#1610): position and longest runway
+		// from the simconnect-data layouts.
+		a("TNCM", 18.0409, -63.1090, 1, 2300), a("TFFJ", 17.9044, -62.8439, 1, 642),
+		a("KLAX", 33.9425, -118.4080, 3, 3939), a("KMIA", 25.7954, -80.2901, 2, 3969), a("KCLT", 35.2137, -80.9491, 2, 3049), a("KATL", 33.6367, -84.4279, 2, 3778),
+		a("KEWR", 40.6925, -74.1687, 2, 3353), a("KBOS", 42.3629, -71.0064, 2, 3090), a("KSEA", 47.4490, -122.3093, 2, 3624), a("KLAS", 36.0800, -115.1522, 2, 4525),
+		a("KPHX", 33.4343, -112.0116, 2, 3501), a("KDEN", 39.8617, -104.6732, 2, 4914), a("KOAK", 37.7212, -122.2211, 1, 3205),
+		a("YSSY", -33.9461, 151.1772, 2, 3963), a("VHHH", 22.3089, 113.9147, 2, 3973), a("RCTP", 25.0803, 121.2322, 2, 3687),
 	}
 }

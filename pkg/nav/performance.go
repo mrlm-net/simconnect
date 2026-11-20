@@ -89,6 +89,7 @@ var performances = map[string]Performance{
 	"TBM9": {CruiseTASKts: 320, ClimbTASKts: 200, DescentTASKts: 260, MaxFL: 280, ClimbFPM: 1800, DescentFPM: 1800, DescentIASKts: 230, BurnKgH: 220, TaxiKg: 15},
 	"B350": {CruiseTASKts: 300, ClimbTASKts: 210, DescentTASKts: 260, MaxFL: 270, ClimbFPM: 2000, DescentFPM: 1800, DescentIASKts: 240, BurnKgH: 350, TaxiKg: 20},
 	"BE20": {CruiseTASKts: 280, ClimbTASKts: 200, DescentTASKts: 250, MaxFL: 250, ClimbFPM: 1800, DescentFPM: 1800, DescentIASKts: 230, BurnKgH: 300, TaxiKg: 20},
+	"DHC6": {CruiseTASKts: 170, ClimbTASKts: 110, DescentTASKts: 150, MaxFL: 120, ClimbFPM: 1000, DescentFPM: 1000, DescentIASKts: 140, BurnKgH: 280, TaxiKg: 10},
 }
 
 // genericPerformance is a medium twin jet, for unknown types.

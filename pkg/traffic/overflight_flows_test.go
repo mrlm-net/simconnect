@@ -139,10 +139,12 @@ func TestOverflightFlowsFallback(t *testing.T) {
 	prague := FallbackOverflightsPerHour(cfg, flowsLKPR, 100, []string{"LKPR"})
 	east := FallbackOverflightsPerHour(cfg, kosice, 100, []string{"LZKZ"})
 	remote := FallbackOverflightsPerHour(cfg, airport.LatLon{Lat: 62.0, Lon: -7.0}, 100, nil) // the Faroes
-	pacific := FallbackOverflightsPerHour(cfg, airport.LatLon{Lat: -17.7, Lon: 168.3}, 100, nil)
-	t.Logf("fallback peak per hour: Prague %.1f, Košice %.1f, the Faroes %.1f, Vanuatu %.1f; %d drawn at Košice in 48 h", prague, east, remote, pacific, len(flights))
-	if !(prague > 2*remote) || pacific != 0 || east <= 0 {
-		t.Errorf("fallback: Prague %.1f, Košice %.1f, the Faroes %.1f, Vanuatu %.1f", prague, east, remote, pacific)
+	// Off every route of the config. Vanuatu was, until Sydney to Los
+	// Angeles crossed it (#1610).
+	nowhere := FallbackOverflightsPerHour(cfg, airport.LatLon{Lat: -37.1, Lon: -12.3}, 100, nil) // Tristan da Cunha
+	t.Logf("fallback peak per hour: Prague %.1f, Košice %.1f, the Faroes %.1f, Tristan da Cunha %.1f; %d drawn at Košice in 48 h", prague, east, remote, nowhere, len(flights))
+	if !(prague > 2*remote) || nowhere != 0 || east <= 0 {
+		t.Errorf("fallback: Prague %.1f, Košice %.1f, the Faroes %.1f, Tristan da Cunha %.1f", prague, east, remote, nowhere)
 	}
 }
 
