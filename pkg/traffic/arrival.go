@@ -1307,6 +1307,7 @@ func (c *ArrivalController) exitTurnReach(nose airport.LatLon) float64 {
 	}
 	at := localDist(nose, route[0])
 	path.LimitRange(at, at, exitKts, ro.BrakeDecel)
+	path.limitTurnOff(c.plan.End.Heading, 0, path.Length(), ro.ExitKts)
 	return path.limit[0]
 }
 

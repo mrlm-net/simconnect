@@ -126,6 +126,32 @@ func (g *GroundPath) limitRange(from, to, kts float64, decelAt func(float64) flo
 			g.limit[i] = math.Min(g.limit[i], vmax)
 		}
 	}
+	g.brakeAhead(decelAt)
+}
+
+// limitTurnOff caps the speed at kts, with the path's own braking planned
+// before it, wherever between from and to the path heads SharpTurnAngleDeg
+// or more off heading (#1586): a turn off the runway through a right angle
+// is taken at the exit speed whatever its radius. A high-speed exit that
+// sweeps round onto a cross taxiway is otherwise held to the lateral limit
+// only, which on a wide curve is the taxi speed, so the speed through the
+// turn followed the aircraft's taxi speed draw (a B77W at 15.3 kt).
+func (g *GroundPath) limitTurnOff(heading, from, to, kts float64) {
+	vmax := kts * ktsToMS
+	for i := 1; i < len(g.pts); i++ {
+		if g.cum[i] < from || g.cum[i-1] > to {
+			continue
+		}
+		if math.Abs(headingDiff(heading, localBearing(g.pts[i-1], g.pts[i]))) >= SharpTurnAngleDeg {
+			g.limit[i-1] = math.Min(g.limit[i-1], vmax)
+			g.limit[i] = math.Min(g.limit[i], vmax)
+		}
+	}
+	g.brakeAhead(g.decelAt)
+}
+
+// brakeAhead plans braking at decelAt before every lower limit.
+func (g *GroundPath) brakeAhead(decelAt func(float64) float64) {
 	for i := len(g.limit) - 2; i >= 0; i-- {
 		g.limit[i] = math.Min(g.limit[i], math.Sqrt(g.limit[i+1]*g.limit[i+1]+2*decelAt(g.cum[i])*(g.cum[i+1]-g.cum[i])))
 	}

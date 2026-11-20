@@ -209,6 +209,9 @@ func (c *ArrivalController) takeover(m arrivalMonitor, pos airport.LatLon, onRun
 			path.LimitRange(exitAt, fast, BacktrackKts, ro.BrakeDecel)
 		} else {
 			path.LimitRange(math.Max(onRwy-rolloutExitLeadM, 0), fast, exitKts, math.Min(math.Max(even, rolloutMinDecel), ro.BrakeDecel))
+			// Turning a right angle off the runway before the vacate stop:
+			// at the exit speed there too, a high-speed exit included.
+			path.limitTurnOff(c.plan.End.Heading, 0, math.Max(fast, hold), c.turnOffKts())
 		}
 		// Then to taxi speed, planned firmly so it does not reach back over
 		// the rollout.
@@ -720,6 +723,16 @@ func DefaultRolloutProfile() RolloutProfile {
 
 func (c *ArrivalController) rolloutProfile() RolloutProfile {
 	return withDefaults(c.req.Rollout, DefaultRolloutProfile())
+}
+
+// turnOffKts is the speed through a right-angle turn off the runway
+// (GroundPath.limitTurnOff): the rollout's ExitKts, faster when expediting.
+func (c *ArrivalController) turnOffKts() float64 {
+	kts := c.rolloutProfile().ExitKts
+	if c.rush {
+		kts += RushExitKts
+	}
+	return kts
 }
 
 // ClearUpTo clears an injected arrival to taxi up to a node of its route and

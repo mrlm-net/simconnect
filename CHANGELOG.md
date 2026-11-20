@@ -7,6 +7,12 @@ This project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 ---
 
+## [0.186.2] - 2026-11-20
+
+### Fixed
+
+- Traffic: an arrival turning off the runway through a right angle slows to its exit speed (`RolloutProfile.ExitKts`, 12 kt) before the turn, including a high-speed exit that curves round onto a cross taxiway. Before, a wide exit curve was limited only by lateral acceleration, so the aircraft took it at its own random taxi speed. A heavy could reach the turn at more than 15 kt (LKPR 06 B77W: 15.3 kt in the nightly race run). It now reaches the turn at 12 kt with every taxi speed and frame length, and braking stays at the taxi rate. The exit check for an aircraft that is too fast plans the same limit (#1586) (#1603).
+
 ## [0.186.1] - 2026-11-19
 
 ### Fixed
