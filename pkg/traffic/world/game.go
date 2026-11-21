@@ -180,7 +180,7 @@ func (cc *controlCenter) gameTick(now time.Time) {
 		g.arrival = !g.arrival
 		// Runway "active": the runway in use at spawn time.
 		r := SpawnRequest{Kind: kind, ICAO: icao, Stand: -1, Runway: g.Runway,
-			Gates: true, Tug: kind == "departure", Procedure: true, Deice: "auto"}
+			Gates: true, Tug: kind == "departure", Procedure: true, Deice: "auto", game: true}
 		tail := "A flight"
 		var err error
 		if err = cc.gameFlight(&r, graph, now, used); err == nil {
