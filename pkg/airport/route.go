@@ -282,8 +282,7 @@ func (g *Graph) runwayRoute(from, prev NodeID, runwayEnd string, opts RouteOptio
 		tol = DefaultIntersectionTolerance
 	}
 	sort.Slice(cands, func(i, j int) bool { return cands[i].fromThresh < cands[j].fromThresh })
-	best := cands[0]
-	cost := func(c cand) float64 { return c.route + opts.HoldShortQueue[c.id] }
+	window := cands[:1]
 	for _, c := range cands[1:] {
 		if c.fromThresh-cands[0].fromThresh > tol {
 			break
@@ -294,17 +293,27 @@ func (g *Graph) runwayRoute(from, prev NodeID, runwayEnd string, opts RouteOptio
 		if cands[0].fromThresh <= FullLengthMeters && c.fromThresh > FullLengthMeters {
 			break
 		}
-		if cost(c) < cost(best) {
-			best = c
+		window = append(window, c)
+	}
+	// The cheapest, queue included, of those reached without crossing the
+	// departure runway itself: across it, the line-up backs onto it from
+	// the far side (#1627: EGLL 27L, south-side departures sent over the
+	// runway to N1B by its queue, backed 94 m to line up).
+	var best *Route
+	bestCost, bestCrosses := math.Inf(1), true
+	for _, c := range window {
+		r, err := s.route(g, c.id)
+		if err != nil {
+			return nil, err
+		}
+		crosses := slices.Contains(r.RunwayCrossings, rwy.Name())
+		cost := c.route + opts.HoldShortQueue[c.id]
+		if best == nil || bestCrosses && !crosses || crosses == bestCrosses && cost < bestCost {
+			best, bestCost, bestCrosses = r, cost, crosses
 		}
 	}
-
-	r, err := s.route(g, best.id)
-	if err != nil {
-		return nil, err
-	}
-	r.Runway, r.RunwayEnd = rwy.Name(), end.Name
-	return r, nil
+	best.Runway, best.RunwayEnd = rwy.Name(), end.Name
+	return best, nil
 }
 
 // RouteToParking returns a taxi-in route from any node to a parking spot.

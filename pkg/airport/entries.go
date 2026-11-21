@@ -131,6 +131,8 @@ func (g *Graph) entryRoute(from, prev NodeID, runwayEnd, entry string, opts Rout
 	s := g.shortestPaths(from, prev, opts)
 	var best *RunwayEntry
 	var target NodeID
+	var bestRoute *Route
+	bestCrosses := true
 	for i := range entries {
 		e := &entries[i]
 		if !strings.EqualFold(e.Taxiway, entry) {
@@ -146,11 +148,18 @@ func (g *Graph) entryRoute(from, prev NodeID, runwayEnd, entry string, opts Rout
 		if math.IsInf(s.dist[t], 1) {
 			continue
 		}
-		// The same runway ahead (entries meeting the runway at one node):
-		// the nearer one, not whichever came first (#43: LKPR "30 at D"
-		// went either way, once across a runway).
-		if best == nil || e.Remaining > best.Remaining || e.Remaining == best.Remaining && s.dist[t] < s.dist[target] {
-			best, target = e, t
+		r, err := s.route(g, t)
+		if err != nil {
+			return nil, err
+		}
+		// One held short of without crossing the departure runway itself
+		// first (#1627: across it, the line-up backed onto it). Then the
+		// same runway ahead (entries meeting the runway at one node): the
+		// nearer one, not whichever came first (#43: LKPR "30 at D" went
+		// either way, once across a runway).
+		crosses := slices.Contains(r.RunwayCrossings, rwy.Name())
+		if best == nil || bestCrosses && !crosses || crosses == bestCrosses && (e.Remaining > best.Remaining || e.Remaining == best.Remaining && s.dist[t] < s.dist[target]) {
+			best, target, bestRoute, bestCrosses = e, t, r, crosses
 		}
 	}
 	if best == nil {
@@ -164,10 +173,7 @@ func (g *Graph) entryRoute(from, prev NodeID, runwayEnd, entry string, opts Rout
 		}
 		return nil, fmt.Errorf("%w: %s at %s", ErrUnknownEntry, end.Name, entry)
 	}
-	r, err := s.route(g, target)
-	if err != nil {
-		return nil, err
-	}
+	r := bestRoute
 	r.Runway, r.RunwayEnd, r.Entry = rwy.Name(), end.Name, best.Taxiway
 	return r, nil
 }
