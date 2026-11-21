@@ -130,6 +130,104 @@ func RescueStandby(l *airport.Layout, runwayEnd string, n int) []GroundPose {
 	return out
 }
 
+// RescueStandbyWay is the way a rescue vehicle drives from depot to its
+// standby point at, by the roads and taxiways: ending at the point where
+// the way first passes it (#1622: not on to the taxiway node past it and
+// back, overshooting and reversing). False without a way.
+func RescueStandbyWay(l *airport.Layout, depot, at airport.LatLon) ([]airport.LatLon, bool) {
+	route, err := l.VehicleRouteJoin(depot, at, false, true)
+	if err != nil || len(route) < 2 {
+		return nil, false
+	}
+	for i := 1; i < len(route); i++ {
+		if pointSegDist(at, route[i-1], route[i]) <= rescueOnWayMeters {
+			return append(route[:i:i], at), true
+		}
+	}
+	return append(route, at), true
+}
+
+// rescueOnWayMeters: a standby point this close to a way's segment lies on
+// it.
+const rescueOnWayMeters = 2.0
+
+// RescueAssign gives the vehicles of a crew their standby points (#1622):
+// depots are where each leaves from, in the order they go (nil: the depot
+// nearest its point, as Standby takes it), spots the points (RescueStandby).
+// Each in turn takes, of the points left, the one fewest of the others lie
+// on the way to, the one nearest the expected stop among equals: the first
+// to leave the farthest point along a way they share, so none waiting at
+// standby stands on the way of one coming after it. Without a layout or
+// ways, spots as given.
+func RescueAssign(l *airport.Layout, depots []*airport.LatLon, spots []GroundPose) []GroundPose {
+	n := min(len(depots), len(spots))
+	if l == nil || n < 2 {
+		return spots
+	}
+	type key struct{ depot, spot airport.LatLon }
+	ways := map[key][]airport.LatLon{}
+	way := func(v, s int) []airport.LatLon {
+		at := spots[s].Position
+		d, ok := airport.LatLon{}, false
+		if depots[v] != nil {
+			d, ok = *depots[v], true
+		} else {
+			d, ok = nearestDepot(l, at)
+		}
+		if !ok {
+			return nil
+		}
+		k := key{d, at}
+		if w, seen := ways[k]; seen {
+			return w
+		}
+		w, _ := RescueStandbyWay(l, d, at)
+		ways[k] = w
+		return w
+	}
+	on := func(w []airport.LatLon, p airport.LatLon) bool {
+		for i := 1; i < len(w); i++ {
+			if pointSegDist(p, w[i-1], w[i]) < rescueLaneMeters {
+				return true
+			}
+		}
+		return false
+	}
+	used := make([]bool, len(spots))
+	out := make([]GroundPose, 0, len(spots))
+	for v := 0; v < n; v++ {
+		best, bestCost := -1, math.MaxInt
+		for s := range spots {
+			if used[s] {
+				continue
+			}
+			cost := 0
+			for o := range spots {
+				if used[o] || o == s {
+					continue
+				}
+				for k := v + 1; k < n; k++ {
+					if on(way(k, o), spots[s].Position) {
+						cost++
+						break
+					}
+				}
+			}
+			if cost < bestCost {
+				best, bestCost = s, cost
+			}
+		}
+		used[best] = true
+		out = append(out, spots[best])
+	}
+	for s := range spots {
+		if !used[s] {
+			out = append(out, spots[s])
+		}
+	}
+	return out
+}
+
 // RescueStandbyAsideMeters: without a holding position to wait at, standby
 // points lie at least this far beside the runway's edge (and past the
 // strip).

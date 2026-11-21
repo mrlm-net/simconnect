@@ -373,6 +373,13 @@ func (cc *controlCenter) sendRescue(name string, a traffic.TrackedAircraft, medi
 		cc.log.printf("%-6s rescue: runway %s unknown at %s", name, rwy, a.Airport)
 		return
 	}
+	// In the order they will reach them: none waiting on the way of
+	// another to its point (#1622).
+	depots := make([]*airport.LatLon, len(legs))
+	for i, leg := range legs {
+		depots[i] = leg.depot
+	}
+	spots = traffic.RescueAssign(g.Layout, depots, spots)
 	defBase, reqBase, err := cc.ids.Acquire()
 	if err != nil {
 		cc.log.printf("%-6s rescue: %v", name, err)

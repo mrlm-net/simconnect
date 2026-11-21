@@ -7,6 +7,12 @@ This project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 ---
 
+## [0.188.3] - 2026-11-21
+
+### Fixed
+
+- Rescue standby: the vehicles of a crew get their standby points in the order they will reach them (`traffic.RescueAssign`): the first to leave takes the point farthest along a way they share, so no vehicle waiting at standby stands on another's way to its point; the second fire truck no longer stops behind the first short of its point. The way to standby (`traffic.RescueStandbyWay`) ends at the standby point instead of the taxiway node past it, so the vehicle no longer overshoots and reverses. `SimObjectRescue.Track` trims the way ahead by the vehicle's distance along its path, not by the nearest path point, so the way ahead no longer runs empty before the point (#1622)
+
 ## [0.188.2] - 2026-11-21
 
 ### Fixed
