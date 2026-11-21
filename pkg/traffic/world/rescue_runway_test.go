@@ -49,9 +49,17 @@ func segDist(p, a, b airport.LatLon) float64 {
 // driving the crew every frame. It checks that no vehicle is ever on the
 // runway while the aircraft is airborne close in or rolling above taxi
 // speed, that none jumps or stands on another, and returns the crew and
-// the vehicles' first points on the runway.
+// the vehicles' first points on the runway. Since #1622 also that each
+// reaches its own standby point before the touchdown, never overshooting
+// it nor reversing, and that its way ahead (Track) never runs empty
+// before its end.
 func rescueLanding(t *testing.T, icao string, goAround bool) {
-	l := testLayout(t, icao)
+	rescueLandingOn(t, icao, testLayout(t, icao), goAround)
+}
+
+// rescueLandingOn is rescueLanding on layout l of icao.
+func rescueLandingOn(t *testing.T, icao string, l *airport.Layout, goAround bool) {
+	t.Helper()
 	cc, c, w := rescueBed(t, l, rescueTestTitles)
 	g, _ := cc.graph(icao)
 	rwyName := cc.runwayFor(g, true, -1)
@@ -61,8 +69,10 @@ func rescueLanding(t *testing.T, icao string, goAround bool) {
 	}
 	w.PriorityFor("CSA1", traffic.EmergencyFire)
 	prio := map[string]bool{"CSA1": true}
-	// along: metres past the landing threshold; kts its speed; agl feet.
-	along, kts, agl := -12*1852.0, 140.0, 0.0
+	// along: metres past the landing threshold, from where the crew is
+	// sent (#1622: rescueDispatchNM from the airport, a mile in hand);
+	// kts its speed; agl feet.
+	along, kts, agl := -(rescueDispatchNM-1)*1852.0, 140.0, 0.0
 	aircraft := func(now time.Time) traffic.TrackedAircraft {
 		lat, lon := calc.DisplaceByHeading(end.Threshold.Lat, end.Threshold.Lon, end.Heading, along)
 		a := traffic.TrackedAircraft{Airport: icao, Updated: now}
@@ -96,6 +106,8 @@ func rescueLanding(t *testing.T, icao string, goAround bool) {
 	entered := map[int]bool{}
 	touched, lifted, slowAt, withSeen := false, false, time.Time{}, false
 	var downAt time.Time
+	own, minD := map[int]airport.LatLon{}, map[int]float64{}
+	checkedDown := false
 	for step := 0; step < 30*60*10; step++ {
 		for ; handled < len(c.req); handled++ {
 			cc.rescueHandle(assignedObject(c.req[handled], 800+c.req[handled]))
@@ -117,6 +129,15 @@ func rescueLanding(t *testing.T, icao string, goAround bool) {
 			kts = math.Max(0, kts-1.5/0.5144*dt)
 		}
 		along += kts * 0.5144 * dt
+		if touched && !checkedDown {
+			checkedDown = true
+			for i := range crew.trucks {
+				d, seen := minD[i]
+				if !seen || d > 15 {
+					t.Errorf("%s: vehicle %d never within 15 m of its standby point before the touchdown (nearest %.0f m, seen %v)", icao, i, d, seen)
+				}
+			}
+		}
 		if step%10 == 0 {
 			cc.rescueStep(now, prio, []traffic.TrackedAircraft{aircraft(now)})
 		}
@@ -127,9 +148,34 @@ func rescueLanding(t *testing.T, icao string, goAround bool) {
 		}
 		var pts []airport.LatLon
 		for i, tr := range crew.trucks {
-			p, _, ok := tr.Track()
+			p, route, ok := tr.Track()
 			if !ok {
 				continue
+			}
+			if route != nil && len(route) < 2 {
+				t.Fatalf("%s: vehicle %d: way ahead empty %.1f m from its end (state %d)", icao, i, calc.HaversineMeters(p.Position.Lat, p.Position.Lon, own[i].Lat, own[i].Lon), crew.state)
+			}
+			if _, seen := own[i]; !seen && len(route) >= 2 {
+				own[i], minD[i] = route[len(route)-1], math.Inf(1)
+				if turn := endTurn(route, 30); turn > 135 {
+					t.Fatalf("%s: vehicle %d: way to standby turns %.0f° in its last 30 m: past its point and back", icao, i, turn)
+				}
+			} else if !seen && route == nil {
+				// No way from a depot: it appears at its standby point.
+				own[i], minD[i] = p.Position, math.Inf(1)
+			}
+			if o, seen := own[i]; seen && (crew.state == rescueStandby || crew.state == rescueDown) {
+				d := calc.HaversineMeters(p.Position.Lat, p.Position.Lon, o.Lat, o.Lon)
+				if minD[i] < 15 && d > minD[i]+2 {
+					t.Fatalf("%s: vehicle %d overshot its standby point: %.1f m from it after %.1f m", icao, i, d, minD[i])
+				}
+				minD[i] = math.Min(minD[i], d)
+				if q, moved := prev[i]; moved && p.GroundSpeedKts > 0.5 {
+					dir := calc.BearingDegrees(q.Lat, q.Lon, p.Position.Lat, p.Position.Lon)
+					if calc.HaversineMeters(q.Lat, q.Lon, p.Position.Lat, p.Position.Lon) > 0.05 && math.Abs(math.Remainder(dir-p.Heading, 360)) > 90 {
+						t.Fatalf("%s: vehicle %d reversing to standby (heading %.0f, moving %.0f)", icao, i, p.Heading, dir)
+					}
+				}
 			}
 			if q, seen := prev[i]; seen && calc.HaversineMeters(p.Position.Lat, p.Position.Lon, q.Lat, q.Lon) > traffic.RescueFollowKts*0.5144*dt+0.5 {
 				t.Fatalf("%s: vehicle %d jumped %.1f m", icao, i, calc.HaversineMeters(p.Position.Lat, p.Position.Lon, q.Lat, q.Lon))
@@ -294,6 +340,28 @@ func TestRescueStandbyGiven(t *testing.T) {
 	if len(got) != 3 || !has {
 		t.Errorf("06: %v, want the given one and two derived", got)
 	}
+}
+
+// endTurn is how far (degrees) the way's direction in its last within
+// metres strays from its final one: near 180 for a way going past its end
+// and back.
+func endTurn(way []airport.LatLon, within float64) float64 {
+	final, has := 0.0, false
+	worst, walked := 0.0, 0.0
+	for i := len(way) - 1; i > 0 && walked < within; i-- {
+		a, b := way[i-1], way[i]
+		d := calc.HaversineMeters(a.Lat, a.Lon, b.Lat, b.Lon)
+		if d < 0.2 {
+			continue
+		}
+		brg := calc.BearingDegrees(a.Lat, a.Lon, b.Lat, b.Lon)
+		if !has {
+			final, has = brg, true
+		}
+		worst = math.Max(worst, math.Abs(math.Remainder(brg-final, 360)))
+		walked += d
+	}
+	return worst
 }
 
 // axis is p along the runway end's direction from its threshold and

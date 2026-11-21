@@ -86,8 +86,8 @@ func (r *SimObjectRescue) Standby(at GroundPose) error {
 			d, ok = nearestDepot(r.Layout, at.Position)
 		}
 		if ok {
-			if route, err := r.Layout.VehicleRouteJoin(d, at.Position, false, true); err == nil && len(route) >= 2 {
-				if path, err := NewArcPath(append(route, at.Position), fuelRoadProfile(), 8); err == nil {
+			if route, ok := RescueStandbyWay(r.Layout, d, at.Position); ok {
+				if path, err := NewArcPath(route, fuelRoadProfile(), 8); err == nil {
 					r.mover = NewGroundMoverFrom(path, rescueRoadProfile(), localBearing(path.PointAt(0), path.PointAt(math.Min(5, path.Length()))), 0)
 					r.pose, r.depot, r.hasDepot = r.mover.Pose(), d, true
 				}
@@ -262,7 +262,9 @@ func (r *SimObjectRescue) Home() error {
 }
 
 // Track is where it is and, driving to its standby or home, the way still
-// ahead; false before it is in the simulator or once gone.
+// ahead: the path's points past the mover's distance along it (#1622: not
+// past the path point nearest it, which on a way doubling back is one
+// near its end); false before it is in the simulator or once gone.
 func (r *SimObjectRescue) Track() (pose GroundPose, route []airport.LatLon, ok bool) {
 	r.mu.Lock()
 	defer r.mu.Unlock()
@@ -270,14 +272,13 @@ func (r *SimObjectRescue) Track() (pose GroundPose, route []airport.LatLon, ok b
 		return GroundPose{}, nil, false
 	}
 	if r.mover != nil {
-		pts := r.mover.Path().Points()
-		near, best := 0, math.Inf(1)
-		for i, p := range pts {
-			if d := localDist(p, r.pose.Position); d < best {
-				near, best = i, d
+		path, s := r.mover.Path(), r.mover.Pose().Distance
+		route = []airport.LatLon{r.pose.Position}
+		for i, p := range path.pts {
+			if path.cum[i] > s {
+				route = append(route, p)
 			}
 		}
-		route = append([]airport.LatLon{r.pose.Position}, pts[min(near+1, len(pts)):]...)
 	}
 	return r.pose, route, true
 }
