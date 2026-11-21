@@ -196,8 +196,9 @@ func (p Procedures) STARFrom(runway, fix string) (Procedure, string, bool) {
 }
 
 // BestApproach picks the approach to a runway as ATC would assign it:
-// ILS, then RNAV (GPS), localizer, VOR, NDB, any other; the first in the
-// facility data among equals.
+// ILS, then GLS (the other precision approach, ahead of RNAV), RNAV
+// (GPS), localizer, VOR, NDB, any other; the first in the facility data
+// among equals.
 func (p Procedures) BestApproach(runway string) (Approach, bool) {
 	best, rank := Approach{}, -1
 	for _, a := range p.ApproachesFor(runway) {
@@ -212,17 +213,19 @@ func approachRank(t types.SIMCONNECT_FACILITY_APPROACH_TYPE) int {
 	switch t {
 	case types.SIMCONNECT_FACILITY_APPROACH_TYPE_ILS:
 		return 0
-	case types.SIMCONNECT_FACILITY_APPROACH_TYPE_RNAV, types.SIMCONNECT_FACILITY_APPROACH_TYPE_GPS:
+	case types.SIMCONNECT_FACILITY_APPROACH_TYPE_GLS:
 		return 1
+	case types.SIMCONNECT_FACILITY_APPROACH_TYPE_RNAV, types.SIMCONNECT_FACILITY_APPROACH_TYPE_GPS:
+		return 2
 	case types.SIMCONNECT_FACILITY_APPROACH_TYPE_LOCALIZER, types.SIMCONNECT_FACILITY_APPROACH_TYPE_LDA,
 		types.SIMCONNECT_FACILITY_APPROACH_TYPE_SDF, types.SIMCONNECT_FACILITY_APPROACH_TYPE_LOCALIZER_BACK_COURSE:
-		return 2
-	case types.SIMCONNECT_FACILITY_APPROACH_TYPE_VOR, types.SIMCONNECT_FACILITY_APPROACH_TYPE_VORDME:
 		return 3
-	case types.SIMCONNECT_FACILITY_APPROACH_TYPE_NDB, types.SIMCONNECT_FACILITY_APPROACH_TYPE_NDBDME:
+	case types.SIMCONNECT_FACILITY_APPROACH_TYPE_VOR, types.SIMCONNECT_FACILITY_APPROACH_TYPE_VORDME:
 		return 4
+	case types.SIMCONNECT_FACILITY_APPROACH_TYPE_NDB, types.SIMCONNECT_FACILITY_APPROACH_TYPE_NDBDME:
+		return 5
 	}
-	return 5
+	return 6
 }
 
 // Arrival is the whole arrival to a runway from a flight plan's entry

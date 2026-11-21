@@ -7,6 +7,12 @@ This project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 ---
 
+## [0.188.0] - 2026-11-21
+
+### Added
+
+- GLS approaches: `types.SIMCONNECT_FACILITY_APPROACH_TYPE_GLS` (12, written and read as `"GLS"`) for procedures read from files, such as the EDDF GLS Z/Y approaches transcribed from AIP Germany. The value is not from SimConnect, since the simulator has no GLS approaches. Before, a procedures file with `"type":"GLS"` failed to load as an unknown approach type. A GLS approach is named `GLS 25L Z` and resolves like an ILS: transition, final to the threshold and missed approach. It needs no localizer frequency. `BestApproach` ranks it after the ILS and ahead of RNAV, so a runway with an ILS still gets the ILS. The traffic says it as `GLS`: "vectoring for GLS approach runway 25L", "cleared GLS approach runway 25L", "Established GLS runway 25L". A `.pln` names no approach type for it (`ApproachTypeFP` is left out). The data model (`ApproachType`) and the docs list it (#1619).
+
 ## [0.187.3] - 2026-11-21
 
 ### Fixed

@@ -174,6 +174,12 @@ const (
 	SIMCONNECT_FACILITY_APPROACH_TYPE_NDBDME                                                         // 9
 	SIMCONNECT_FACILITY_APPROACH_TYPE_RNAV                                                           // 10
 	SIMCONNECT_FACILITY_APPROACH_TYPE_LOCALIZER_BACK_COURSE                                          // 11
+	// SIMCONNECT_FACILITY_APPROACH_TYPE_GLS is a GBAS landing system
+	// approach: a precision final to the threshold, flown without a
+	// localizer frequency. Not a SimConnect value (the simulator has no GLS
+	// approaches): it is for procedures read from files, e.g. transcribed
+	// from an AIP.
+	SIMCONNECT_FACILITY_APPROACH_TYPE_GLS // 12
 )
 
 // SIMCONNECT_FACILITY_HELIPAD_TYPE represents the type of helipad.

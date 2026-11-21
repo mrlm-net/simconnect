@@ -1071,7 +1071,9 @@ func insertProfilePoint(wps []Waypoint, d float64, ident string, altFt float64) 
 	return wps
 }
 
-// plnApproachType spells an approach type as a .pln file does.
+// plnApproachType spells an approach type as a .pln file does; "" for
+// GLS, which the simulator has no approaches of (the plan then names no
+// approach).
 func plnApproachType(t types.SIMCONNECT_FACILITY_APPROACH_TYPE) string {
 	switch t {
 	case types.SIMCONNECT_FACILITY_APPROACH_TYPE_GPS:
