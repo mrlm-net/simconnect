@@ -5105,7 +5105,16 @@ func (it *controlled) handoff(ev TaxiOrArrival) {
 	// At a field without a tower that is its announcement inbound (#1305).
 	if ev.arr != nil && pos == traffic.PosTower && it.view.Rules != "VFR" {
 		if _, ok := it.cc.uncontrolled(it.ICAO); ok {
-			checkIn = withParams(checkIn, map[string]string{traffic.ParamCircuit: positionSaid(it.graph.Layout, ev.arr.Position)})
+			// Where it is: on the hand-over at its spawn the event has no
+			// position yet, its plan's spawn point is where it appears
+			// (#1618: "3858 miles east", from 0°N 0°E).
+			at := ev.arr.Position
+			if at == (airport.LatLon{}) && it.arr != nil {
+				if p := it.arr.Plan(); p != nil {
+					at = airport.LatLon{Lat: p.Spawn.Latitude, Lon: p.Spawn.Longitude}
+				}
+			}
+			checkIn = withParams(checkIn, map[string]string{traffic.ParamCircuit: positionSaid(it.graph.Layout, at)})
 		}
 	}
 	it.say(it.initial(checkIn))

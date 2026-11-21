@@ -114,6 +114,10 @@ func (c *ArrivalController) takeover(m arrivalMonitor, pos airport.LatLon, onRun
 	if onRunway && !replan {
 		c.exitInReach(m.GroundKts, nose) // too fast for its exit: a later one (#1586)
 	}
+	var turn []airport.LatLon
+	if onRunway && !replan {
+		turn = c.endTurn(m.GroundKts, nose) // none in reach: round at the end and back (#1618)
+	}
 	route := c.plan.Route.Points
 
 	// The path: from the nose gear on along the route, ending straight along
@@ -127,8 +131,12 @@ func (c *ArrivalController) takeover(m arrivalMonitor, pos airport.LatLon, onRun
 	stopNose := NoseGear(c.plan.Stop, c.standHeading, prof)
 	last, axisM := standJoin(route, from, nose, stopNose, c.standHeading)
 	axis := offsetHeading(stopNose, c.standHeading, -axisM)
-	pts := []airport.LatLon{nose}
+	pts := append([]airport.LatLon{nose}, turn...)
 	hold, clear, onRwy := 0.0, 0.0, localDist(nose, route[0])
+	turnFrom, turnTo := 0.0, 0.0 // the turn round at the end, path meters
+	if len(turn) > 0 {
+		onRwy, turnFrom, turnTo = localDist(nose, turn[0]), localDist(nose, turn[0]), pathLen(pts)
+	}
 	exitAt := 0.0 // the exit's first node off the runway; clear the same, but after a backtrack
 	var holds []holdOnPath
 	// Keep the route up to its last point before the stand axis start: the
@@ -202,7 +210,15 @@ func (c *ArrivalController) takeover(m arrivalMonitor, pos airport.LatLon, onRun
 		if hold > clear {
 			fast = math.Min(fast, hold)
 		}
-		if c.plan.Backtrack && clear > exitAt {
+		if len(turn) > 0 {
+			// Rolling to the end (endTurn): one even deceleration to the
+			// turn speed at the turn round, then back along the runway and
+			// off it at the slower of the backtrack and turn-off speeds.
+			vt := TurnSpeedKts * ktsToMS
+			evenT := (v0*v0 - vt*vt) / (2 * math.Max(turnFrom, 1))
+			path.LimitRange(turnFrom, turnTo, TurnSpeedKts, math.Min(math.Max(evenT, rolloutMinDecel), ro.BrakeDecel))
+			path.LimitRange(turnTo, fast, math.Min(BacktrackKts, c.turnOffKts()), ro.BrakeDecel)
+		} else if c.plan.Backtrack && clear > exitAt {
 			// Turning round off the exit and back along the runway at
 			// BacktrackKts (#1563), the exit speed only to the exit.
 			path.LimitRange(math.Max(onRwy-rolloutExitLeadM, 0), exitAt, exitKts, math.Min(math.Max(even, rolloutMinDecel), ro.BrakeDecel))
@@ -501,7 +517,7 @@ func (c *ArrivalController) startInjectedApproach(startMeters float64) error {
 	c.approachLightsSet = false
 	c.approach = NewApproachMover(c.plan.End.LandingThreshold(), c.plan.End.Heading, startMeters, c.approachProfile())
 	c.approach.SetCrosswind(c.req.CrosswindKts)
-	c.approach.SetAimShift(TouchdownSpreadMeters * (2*c.rng.Float64() - 1))
+	c.approach.SetAimShift(c.aimShift(startMeters, TouchdownSpreadMeters*(2*c.rng.Float64()-1)))
 	c.approach.SetSideShift(TouchdownSideMeters * (2*c.rng.Float64() - 1))
 	// Its own phases, seeded by the object: no draw from c.rng, whose
 	// sequence the other choices keep.
@@ -513,6 +529,37 @@ func (c *ArrivalController) startInjectedApproach(startMeters float64) error {
 	c.lastStep = c.now()
 	c.setState(ArrivalApproaching, nil)
 	return nil
+}
+
+// Short fields (#1618: TFFJ 10, 642 m, its one exit 271 m in): below
+// shortFieldMeters of landing distance an injected landing aims to touch
+// down shortFieldShare of it past the threshold, at least
+// shortFieldMinTouchdownM, with a tenth of the usual spread. At its usual
+// point (about 300 m for a DHC6) it touched down past the exit and swung
+// round to it at 64 kt.
+const (
+	shortFieldMeters        = 1200.0
+	shortFieldShare         = 0.1
+	shortFieldMinTouchdownM = 60.0
+)
+
+// aimShift is the injected approach's aim shift from startMeters out: the
+// touchdown spread drawn, or on a short field the shift to its early
+// touchdown.
+func (c *ArrivalController) aimShift(startMeters, spread float64) float64 {
+	landing := c.plan.Runway.Length - c.plan.End.DisplacedM
+	if landing <= 0 || landing >= shortFieldMeters {
+		return spread
+	}
+	probe := NewApproachMover(c.plan.End.LandingThreshold(), c.plan.End.Heading, startMeters, c.approachProfile())
+	for i := 0; i < 100000 && probe.phase < ApproachDerotate; i++ {
+		probe.step(0.05)
+	}
+	if probe.phase < ApproachDerotate {
+		return spread
+	}
+	target := math.Max(shortFieldMinTouchdownM, shortFieldShare*landing)
+	return math.Min(0, target-probe.touchX) + spread/10
 }
 
 // onApproachFrame flies the injected approach one frame and hands over to

@@ -144,6 +144,8 @@ type ApproachMover struct {
 	// aim shifts the whole path along the runway, meters (SetAimShift): the
 	// touchdown point varies from landing to landing.
 	aim float64
+	// x0 is where it started, m past the threshold (negative).
+	x0 float64
 	// side shifts it across, meters right of the centreline (SetSideShift),
 	// faded in on short final.
 	side float64
@@ -153,8 +155,25 @@ type ApproachMover struct {
 }
 
 // SetAimShift moves the aiming point, and so the touchdown, by meters
-// along the runway (negative: earlier).
+// along the runway (negative: earlier). It fades in over aimFadeShare of
+// the final (aimNow): set after the aircraft appeared at the
+// mover's start, all at once it moved it by the shift in one frame
+// (#1618: a straight-in 32 m off its spawn point).
 func (m *ApproachMover) SetAimShift(meters float64) { m.aim = meters }
+
+// aimFadeShare: the share of the final the aim shift fades in over, done
+// before the flare. Over 1500 m its pace added up to 4% to the speed
+// (a B77W 1.51 m a frame, TestStandTurnInNoDrift).
+const aimFadeShare = 0.8
+
+// aimNow is the aim shift as far as it has faded in.
+func (m *ApproachMover) aimNow() float64 {
+	span := -aimFadeShare * m.x0
+	if span <= 0 {
+		return m.aim
+	}
+	return m.aim * math.Max(0, math.Min(1, (m.x-m.x0)/span))
+}
 
 // TouchdownSpreadMeters: an injected landing touches down up to this much
 // before or past its type's usual point (the user: every one landed on the
@@ -231,24 +250,25 @@ const maxCrabSin = 0.3
 // NewApproachMover starts startMeters before the threshold of a runway end
 // (threshold position, true heading), on the glide path at StartKts.
 func NewApproachMover(threshold airport.LatLon, heading, startMeters float64, p ApproachProfile) *ApproachMover {
-	m := &ApproachMover{p: p, thr: threshold, heading: heading, x: -startMeters, v: p.StartKts * ktsToMS, pitch: p.ApproachPitchDeg, startNm: startMeters / 1852}
+	m := &ApproachMover{p: p, thr: threshold, heading: heading, x: -startMeters, x0: -startMeters, v: p.StartKts * ktsToMS, pitch: p.ApproachPitchDeg, startNm: startMeters / 1852}
 	m.h = p.ThresholdHeightFt + startMeters*math.Tan(p.GlideSlopeDeg*math.Pi/180)/0.3048
 	return m
 }
 
 // Pose returns the current pose.
 func (m *ApproachMover) Pose() ApproachPose {
-	pos := offsetHeading(m.thr, m.heading, m.x+m.aim)
+	aim := m.aimNow()
+	pos := offsetHeading(m.thr, m.heading, m.x+aim)
 	if m.side != 0 {
-		fade := math.Max(0, math.Min(1, (m.x+m.aim+sideFadeFromMeters)/sideFadeMeters))
+		fade := math.Max(0, math.Min(1, (m.x+aim+sideFadeFromMeters)/sideFadeMeters))
 		pos = offsetHeading(pos, m.heading+90, m.side*fade)
 	}
 	dRoll, dPitch, dHdg := m.balanceNow()
 	return ApproachPose{
 		Position: pos, Heading: math.Mod(m.heading+m.crabDeg()+dHdg+360, 360),
 		HeightFt: m.h, PitchDeg: m.pitch + dPitch, BankDeg: m.bankDeg() + dRoll, GroundSpeedKts: m.v / ktsToMS, VerticalFpm: m.vs,
-		Distance: m.x + m.aim, Phase: m.phase, OnGround: m.phase >= ApproachDerotate,
-		Touchdown: m.touchX + m.aim, TouchdownFpm: m.touchFpm,
+		Distance: m.x + aim, Phase: m.phase, OnGround: m.phase >= ApproachDerotate,
+		Touchdown: m.touchX + aim, TouchdownFpm: m.touchFpm,
 	}
 }
 
