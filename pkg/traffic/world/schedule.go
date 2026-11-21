@@ -483,12 +483,7 @@ func (s *scheduler) spawnWith(f traffic.ManagedFlight, pre *planned, model strin
 	}
 	req := SpawnRequest{Kind: f.Kind, ICAO: f.Airport, Stand: -1, Tail: f.Callsign, Tug: true, Fuel: true, Deice: "auto"}
 	vfr := f.Rules == "VFR"
-	switch {
-	case vfr || f.Operator == "business":
-		req.StandUse = standGA // a light aircraft or a business jet (#568, #619)
-	case s.airlines[airlineOf(f.Callsign)].Cargo:
-		req.StandUse = standCargo
-	}
+	req.StandUse = s.standUse(f)
 	if vfr {
 		// A light aircraft joining the circuit (#568): no plan, no STAR.
 		req.Circuit, req.Tug, req.Fuel, req.Deice = true, false, false, ""
@@ -561,6 +556,11 @@ func (s *scheduler) spawnWith(f traffic.ManagedFlight, pre *planned, model strin
 		models := traffic.ModelsForFlight(cc.modelList(), f.Airline, a.Name, f.Type, f.Callsign, 6)
 		if len(models) == 0 {
 			return fmt.Errorf("no model of a %s", f.Type)
+		}
+		if !f.Departure() {
+			if models = s.parkable(g.Layout, f, models); len(models) == 0 {
+				return fmt.Errorf("%w: no stand at %s fits a %s", traffic.ErrSpawnImpossible, f.Airport, f.Type)
+			}
 		}
 		req.Model = models[(f.Attempts-1)%len(models)] // another one on each attempt
 	}
@@ -682,6 +682,30 @@ func (s *scheduler) spawnWith(f traffic.ManagedFlight, pre *planned, model strin
 	}
 	s.cc.log.printf("%-6s schedule: %s %s → %s, %s, %s at %s", f.Callsign, f.Kind, orUnknown(f.Origin), orUnknown(f.Destination), f.Type, when, stand)
 	return nil
+}
+
+// standUse is the stands f's aircraft takes (stand_use.go): a light
+// aircraft's or a business jet's GA ramps (#568, #619), a cargo airline's
+// cargo stands, else an airliner's gates.
+func (s *scheduler) standUse(f traffic.ManagedFlight) string {
+	switch {
+	case f.Rules == "VFR" || f.Operator == "business":
+		return standGA
+	case s.airlines[airlineOf(f.Callsign)].Cargo:
+		return standCargo
+	}
+	return standAirline
+}
+
+// parkable keeps the models an arrival of f can be given a stand for at
+// its airport of layout l (standFits, the rule its spawn and its handover
+// from en route assign by): none when the field has no stand that fits,
+// and the flight is not made (follow-up to #1616: a B744 to TNCM flew en
+// route for minutes and was cancelled at its handover, "no free suitable
+// stand").
+func (s *scheduler) parkable(l *airport.Layout, f traffic.ManagedFlight, models []string) []string {
+	use := s.standUse(f)
+	return slices.DeleteFunc(slices.Clone(models), func(m string) bool { return !standFits(l, m, use) })
 }
 
 // nearEntry names an airborne aircraft near an arrival's first point, ""
@@ -1135,6 +1159,15 @@ func registerSchedule(mux *http.ServeMux, st *state) {
 			}
 			if f.Type == "" {
 				f.Type = "A320"
+			}
+			// Refused here, not flown en route to be cancelled at its
+			// handover for want of a stand (standFits).
+			for _, icao := range []string{f.Origin, f.Destination} {
+				if l, ok := s.st.cache.Layout(icao); ok && l != nil && len(l.Parking) > 0 && slices.Contains(managed, icao) &&
+					!standFits(l, f.Type, s.standUse(traffic.ManagedFlight{Flight: *f})) {
+					http.Error(w, fmt.Sprintf("%s: no stand at %s fits a %s", f.Callsign, icao, f.Type), http.StatusUnprocessableEntity)
+					return
+				}
 			}
 			// An arrival appears ArrivalLead before its STA to fly the STAR
 			// and approach: one added later than that (and ArrivalLate) is

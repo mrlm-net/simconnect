@@ -1,6 +1,9 @@
 package world
 
 import (
+	"strings"
+
+	"github.com/mrlm-net/simconnect/pkg/airport"
 	"github.com/mrlm-net/simconnect/pkg/traffic"
 	"github.com/mrlm-net/simconnect/pkg/types"
 )
@@ -39,6 +42,36 @@ func standPreferences(use string) [][]types.SIMCONNECT_FACILITY_TAXI_PARKING_TYP
 		return [][]types.SIMCONNECT_FACILITY_TAXI_PARKING_TYPE{cargoStands, gaRamps, civilStands}
 	}
 	return [][]types.SIMCONNECT_FACILITY_TAXI_PARKING_TYPE{gateStands, civilStands}
+}
+
+// standFits reports whether l has a stand that assignStand could give an
+// aircraft of model (a title, with or without its livery, or a type) for
+// use: one of use's stand types wide enough for the half span spawn gives
+// the allocator (traffic.StandHalfSpan, traffic.ParksOn). Free or not.
+func standFits(l *airport.Layout, model, use string) bool {
+	m, _, _ := strings.Cut(model, liverySep)
+	half := traffic.StandHalfSpan(m)
+	for _, kinds := range standPreferences(use) {
+		if traffic.ParksOn(l, half, kinds...) {
+			return true
+		}
+	}
+	return false
+}
+
+// standFreeFor reports whether one of the stands standFits finds is free
+// now (traffic.StandAllocator.Free).
+func standFreeFor(alloc *traffic.StandAllocator, l *airport.Layout, model, use string) bool {
+	m, _, _ := strings.Cut(model, liverySep)
+	half := traffic.StandHalfSpan(m)
+	for _, kinds := range standPreferences(use) {
+		for _, i := range l.SuitableStands(half, kinds...) {
+			if alloc.Free(i, half) {
+				return true
+			}
+		}
+	}
+	return false
 }
 
 // assignStand gives req a stand of use's types, the first that has one

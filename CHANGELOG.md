@@ -7,6 +7,12 @@ This project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 ---
 
+## [0.188.1] - 2026-11-21
+
+### Fixed
+
+- Traffic: the schedule no longer creates an arrival that its destination has no stand for. A B744 EHAM → TNCM, where the largest stand is 28 m, flew en route for minutes and was cancelled at its handover with "no free suitable stand". The schedule now draws one of the airline's other fleet types that fits. An arrival's model is chosen only from those that park there, and a flight added through `POST /api/flights` with a type that fits no stand is refused with 422. All of these checks use the rule the stand allocator assigns by (`traffic.ParksOn`, `traffic.StandHalfSpan`: the stand types for the flight's use and the model's half span), so the spawn check and the handover cannot disagree. When every fitting stand is taken at the handover, the en route arrival keeps flying and is handed over once a stand is free; it is no longer cancelled in the air (follow-up to #1616, #1623)
+
 ## [0.188.0] - 2026-11-21
 
 ### Added

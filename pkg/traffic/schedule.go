@@ -147,7 +147,7 @@ func Schedule(cfg ScheduleConfig, opts ScheduleOptions, from, to time.Time) []Fl
 		opts.Density = 1
 	}
 	rng := rand.New(rand.NewPCG(opts.Seed, 0x5ced))
-	g := scheduler{cfg: cfg, rng: rng, used: map[string]bool{}, airports: map[string]ScheduleAirport{}}
+	g := scheduler{cfg: cfg, rng: rng, used: map[string]bool{}, airports: map[string]ScheduleAirport{}, layouts: opts.Layouts}
 	for cs := range opts.Used {
 		g.used[cs] = true
 	}
@@ -193,7 +193,7 @@ func Schedule(cfg ScheduleConfig, opts ScheduleOptions, from, to time.Time) []Fl
 // the call sign and the other end as Schedule would draw them. opts gives
 // Seed, Layouts and Used. False when nothing flies there.
 func DrawFlight(cfg ScheduleConfig, opts ScheduleOptions, icao string, at time.Time, arrival bool) (Flight, bool) {
-	g := scheduler{cfg: cfg, rng: rand.New(rand.NewPCG(opts.Seed, 0x5ced)), used: map[string]bool{}, airports: map[string]ScheduleAirport{}}
+	g := scheduler{cfg: cfg, rng: rand.New(rand.NewPCG(opts.Seed, 0x5ced)), used: map[string]bool{}, airports: map[string]ScheduleAirport{}, layouts: opts.Layouts}
 	for cs := range opts.Used {
 		g.used[cs] = true
 	}
@@ -228,6 +228,9 @@ type scheduler struct {
 	rng      *rand.Rand
 	used     map[string]bool // call signs
 	airports map[string]ScheduleAirport
+	// layouts: the focus airports' layouts (ScheduleOptions.Layouts): a
+	// type is drawn for a flight there only if it has a stand (FitsStands).
+	layouts map[string]*airport.Layout
 }
 
 // count rounds mean up or down at random, keeping it on average.
@@ -457,7 +460,7 @@ func (g *scheduler) flight(focus ScheduleAirport, shares map[string]float64, at 
 			continue
 		}
 		dist := calc.HaversineMeters(focus.Position.Lat, focus.Position.Lon, other.Position.Lat, other.Position.Lon) / 1852
-		typ, ok := g.fleetType(al, dist, math.Min(focus.RunwayM, other.RunwayM))
+		typ, ok := g.fleetType(al, dist, math.Min(focus.RunwayM, other.RunwayM), focus.ICAO, other.ICAO)
 		if !ok {
 			continue
 		}
@@ -504,9 +507,12 @@ func (g *scheduler) otherEnd(al Airline, focus ScheduleAirport) (ScheduleAirport
 	return cands[i], true
 }
 
-// fleetType draws a type of al's fleet that flies dist and fits a runway
-// of runwayM (0: unknown, any).
-func (g *scheduler) fleetType(al Airline, dist, runwayM float64) (string, bool) {
+// fleetType draws a type of al's fleet that flies dist, fits a runway
+// of runwayM (0: unknown, any) and has a stand at each of ends whose
+// layout and stands are known (FitsStands): another of its fleet where
+// the drawn one has none (a KLM B744 to TNCM, whose largest stand is 28 m, flew en
+// route and was cancelled at its handover).
+func (g *scheduler) fleetType(al Airline, dist, runwayM float64, ends ...string) (string, bool) {
 	var types []string
 	for t := range al.Fleet {
 		types = append(types, t)
@@ -518,6 +524,11 @@ func (g *scheduler) fleetType(al Airline, dist, runwayM float64) (string, bool) 
 		w := al.Fleet[t]
 		if dist < lim.MinNM || dist > lim.MaxNM || (runwayM > 0 && runwayM < lim.RunwayM) {
 			w = 0
+		}
+		for _, end := range ends {
+			if l := g.layouts[end]; l != nil && len(l.Parking) > 0 && !FitsStands(l, t) {
+				w = 0
+			}
 		}
 		weights = append(weights, w)
 	}
