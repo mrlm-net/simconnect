@@ -1110,6 +1110,13 @@ func (cc *controlCenter) spawn(g *airport.Graph, r SpawnRequest) (*controlled, e
 		}
 		r.Runway = rwy
 	}
+	// An airport with no instrument procedure at all (#1618: TFFJ, VFR
+	// only): a departure asked to fly its SID leaves VFR by a VFR exit
+	// (#568); an arrival flies a straight-in visual approach
+	// (errNoArrivalProcedure).
+	if r.Kind == "departure" && r.Procedure && r.planned == nil && !r.Circuit && cc.noProcedures(g.Layout.ICAO) {
+		r.Procedure, r.Circuit = false, true
+	}
 	cc.mu.Lock()
 	cc.next++
 	n := cc.next
@@ -3510,6 +3517,16 @@ func (cc *controlCenter) noSID(icao, runway string) bool {
 	}
 	p, ok := cc.procedures(icao)
 	return ok && len(p.SIDsFor(runway)) == 0
+}
+
+// noProcedures reports an airport whose procedures are known and publish
+// no SID, STAR or approach (#1618: TFFJ): its traffic flies VFR.
+func (cc *controlCenter) noProcedures(icao string) bool {
+	if cc.procedures == nil {
+		return false
+	}
+	p, ok := cc.procedures(icao)
+	return ok && len(p.Departures) == 0 && len(p.Arrivals) == 0 && len(p.Approaches) == 0
 }
 
 // limitsOf are g's airport limits, with its procedures when known.
