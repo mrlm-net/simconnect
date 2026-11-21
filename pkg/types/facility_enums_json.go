@@ -34,7 +34,7 @@ var frequencyNames = [...]string{"NONE", "ATIS", "MULTICOM", "UNICOM", "CTAF", "
 	"DEPARTURE", "CENTER", "FSS", "AWOS", "ASOS", "CPT", "GCO"}
 
 var approachNames = [...]string{"UNDEFINED", "GPS", "VOR", "NDB", "ILS", "LOCALIZER", "SDF", "LDA", "VORDME", "NDBDME", "RNAV",
-	"LOCALIZER_BACK_COURSE"}
+	"LOCALIZER_BACK_COURSE", "GLS"}
 
 var helipadNames = [...]string{"NONE", "H", "SQUARE", "CIRCLE", "MEDICAL"}
 

@@ -380,7 +380,7 @@ components:
     ApproachType:
       anyOf:
         - type: string
-          enum: [UNDEFINED, GPS, VOR, NDB, ILS, LOCALIZER, SDF, LDA, VORDME, NDBDME, RNAV, LOCALIZER_BACK_COURSE]
+          enum: [UNDEFINED, GPS, VOR, NDB, ILS, LOCALIZER, SDF, LDA, VORDME, NDBDME, RNAV, LOCALIZER_BACK_COURSE, GLS]
         - type: integer
 
     LegType:
