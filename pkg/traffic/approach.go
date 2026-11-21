@@ -155,19 +155,20 @@ type ApproachMover struct {
 }
 
 // SetAimShift moves the aiming point, and so the touchdown, by meters
-// along the runway (negative: earlier). It fades in over the first
-// aimFadeMeters flown (aimNow): set after the aircraft appeared at the
+// along the runway (negative: earlier). It fades in over aimFadeShare of
+// the final (aimNow): set after the aircraft appeared at the
 // mover's start, all at once it moved it by the shift in one frame
 // (#1618: a straight-in 32 m off its spawn point).
 func (m *ApproachMover) SetAimShift(meters float64) { m.aim = meters }
 
-// aimFadeMeters: the aim shift fades in over this much of the final, at
-// most half of the final flown.
-const aimFadeMeters = 1500.0
+// aimFadeShare: the share of the final the aim shift fades in over, done
+// before the flare. Over 1500 m its pace added up to 4% to the speed
+// (a B77W 1.51 m a frame, TestStandTurnInNoDrift).
+const aimFadeShare = 0.8
 
 // aimNow is the aim shift as far as it has faded in.
 func (m *ApproachMover) aimNow() float64 {
-	span := math.Min(aimFadeMeters, -m.x0/2)
+	span := -aimFadeShare * m.x0
 	if span <= 0 {
 		return m.aim
 	}
