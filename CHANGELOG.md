@@ -7,6 +7,12 @@ This project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 ---
 
+## [0.188.2] - 2026-11-21
+
+### Fixed
+
+- Parallel route searches on one graph no longer serialise on the runway crossing cache: `BuildGraph` now works out the crossings of every edge once (a few ms, LFPG 7 ms) into a per-edge table that searches read without a lock (a graph built by hand fills it on first use). Routes are unchanged; every stand to every runway end at LKPR and EDDM routes byte-identically, and routing them all on 16 goroutines takes about half the time it did (#1621)
+
 ## [0.188.1] - 2026-11-21
 
 ### Fixed

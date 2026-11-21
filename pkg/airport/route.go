@@ -596,8 +596,8 @@ func (g *Graph) shortestPaths(src, srcPrev NodeID, opts RouteOptions) *search {
 	// dozens of searches, each a few MB of maps and slices otherwise.
 	sc := scratchPool.Get().(*searchScratch)
 	defer sc.put()
-	index, crossed := sc.index, sc.crossed // runway crossings per edge
-	vias, tws := sc.vias[:0], sc.tws[:0]   // per state: via points passed, taxiways followed
+	index := sc.index
+	vias, tws := sc.vias[:0], sc.tws[:0] // per state: via points passed, taxiways followed
 	defer func() { sc.vias, sc.tws = vias, tws }()
 	state := func(node, prev NodeID, via, tw int) int {
 		k := stateKey{node, prev, via, tw}
@@ -683,13 +683,7 @@ func (g *Graph) shortestPaths(src, srcPrev NodeID, opts RouteOptions) *search {
 				d += pen * e.Length
 			}
 			if pen := opts.crossingPenalty(); pen > 0 {
-				k := [2]NodeID{node, e.To}
-				c, ok := crossed[k]
-				if !ok {
-					c = g.crossings(node, e.To)
-					crossed[k] = c
-				}
-				d += pen * float64(c)
+				d += pen * float64(g.edgeCrossing(node, ei))
 			}
 			if g.valid(prev) {
 				d += g.turnCost(prev, node, s.name[st], e, opts)
@@ -798,20 +792,18 @@ type queued struct {
 
 // searchScratch is a route search's working state that does not outlive it.
 type searchScratch struct {
-	index   map[stateKey]int
-	crossed map[[2]NodeID]int
-	vias    []int
-	tws     []int
-	pq      nodeQueue
+	index map[stateKey]int
+	vias  []int
+	tws   []int
+	pq    nodeQueue
 }
 
 var scratchPool = sync.Pool{New: func() any {
-	return &searchScratch{index: map[stateKey]int{}, crossed: map[[2]NodeID]int{}}
+	return &searchScratch{index: map[stateKey]int{}}
 }}
 
 func (sc *searchScratch) put() {
 	clear(sc.index)
-	clear(sc.crossed)
 	sc.pq = sc.pq[:0]
 	scratchPool.Put(sc)
 }
@@ -847,21 +839,45 @@ func (g *Graph) RunwayAt(p LatLon, margin float64) int {
 // crossings counts the runways the edge a → b enters, other than one a is
 // already on (vacating or lining up is not a crossing).
 func (g *Graph) crossings(a, b NodeID) int {
-	k := [2]NodeID{a, b}
-	g.crossMu.Lock()
-	n, ok := g.crossedAt[k]
-	g.crossMu.Unlock()
-	if ok {
-		return n
+	if g.valid(a) {
+		for i, e := range g.Adj[a] {
+			if e.To == b {
+				return g.edgeCrossing(a, i)
+			}
+		}
 	}
-	n = g.edgeCrossings(a, b)
-	g.crossMu.Lock()
-	if g.crossedAt == nil {
-		g.crossedAt = map[[2]NodeID]int{}
+	return g.edgeCrossings(a, b)
+}
+
+// edgeCrossing is crossings for the edge Adj[a][i], from the per-edge
+// table (crossBy), without a lock.
+func (g *Graph) edgeCrossing(a NodeID, i int) int {
+	g.crossOnce.Do(g.fillCrossings)
+	if int(a) < len(g.crossBy) && i < len(g.crossBy[a]) {
+		return int(g.crossBy[a][i])
 	}
-	g.crossedAt[k] = n
-	g.crossMu.Unlock()
-	return n
+	return g.edgeCrossings(a, g.Adj[a][i].To)
+}
+
+// fillCrossings works out crossBy for every edge. Parallel edges between
+// the same two nodes are worked out once.
+func (g *Graph) fillCrossings() {
+	g.crossBy = make([][]int32, len(g.Adj))
+	for a, es := range g.Adj {
+		row := make([]int32, len(es))
+		for i, e := range es {
+			j := 0
+			for j < i && es[j].To != e.To {
+				j++
+			}
+			if j < i {
+				row[i] = row[j]
+			} else {
+				row[i] = int32(g.edgeCrossings(NodeID(a), e.To))
+			}
+		}
+		g.crossBy[a] = row
+	}
 }
 
 func (g *Graph) edgeCrossings(a, b NodeID) int {

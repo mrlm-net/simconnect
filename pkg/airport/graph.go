@@ -149,11 +149,16 @@ type Graph struct {
 	// entryAt: ThresholdEntry by runway end, worked out once.
 	entryMu sync.Mutex
 	entryAt map[string]bool
-	// crossedAt: runway crossings by edge, worked out once for every route
-	// search (#1233: LFPG's taxi-ins warmed at load sampled the same edges
-	// against every runway in each search, 25 s of CPU).
-	crossMu   sync.Mutex
-	crossedAt map[[2]NodeID]int
+	// crossBy: runway crossings by edge, crossBy[a][i] for Adj[a][i], worked
+	// out once for every route search (#1233: LFPG's taxi-ins warmed at load
+	// sampled the same edges against every runway in each search, 25 s of
+	// CPU). Filled by BuildGraph, or on first use under crossOnce for a
+	// graph built by hand, and read-only after: parallel searches read it
+	// without a lock (#1621: a mutex here held 16 route workers to one core).
+	// Crossings depend only on node positions and Layout.Runways, which no
+	// one changes once the graph is built.
+	crossOnce sync.Once
+	crossBy   [][]int32
 }
 
 // Taxiway, runway and parking path types taken into the graph. CLOSED,
@@ -241,6 +246,7 @@ func BuildGraph(l *Layout) (*Graph, error) {
 		}
 	}
 	g.setClearances()
+	g.crossOnce.Do(g.fillCrossings)
 	return g, nil
 }
 
