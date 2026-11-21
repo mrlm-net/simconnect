@@ -7,6 +7,15 @@ This project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 ---
 
+## [0.188.5] - 2026-11-21
+
+### Fixed
+
+- Traffic: an arrival flown straight in on the final no longer jumps when it appears. Its touchdown spread is now faded in over the first 1,500 m of the final; before, the spread was applied in the first frame, which moved the arrival up to 60 m (32 m seen at TFFJ) (#1618)
+- Traffic: on a runway shorter than 1,200 m an injected landing now aims to touch down a tenth of the way along, at least 60 m past the threshold. A DHC6 at TFFJ now touches down about 60 m into the 642 m runway, not 320–390 m in (#1618)
+- Traffic: an arrival that cannot slow to the turn-off speed by any exit ahead, braking at its type's rate, now rolls on to the runway's end slowing evenly. It turns round within the runway's width at taxi speed and backtracks to the first exit of the opposite direction that reaches its stand; the runway stays taken until it has vacated. Before, at TFFJ 10 it swung into exit C at 60 kt (#1618)
+- Traffic: at a field without a tower, the straight-in's first call now gives its real distance and direction. Before, it said "3858 miles east", measured from 0°N 0°E (#1618)
+
 ## [0.188.4] - 2026-11-21
 
 ### Fixed
