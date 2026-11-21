@@ -1207,7 +1207,9 @@ func (cc *controlCenter) spawn(g *airport.Graph, r SpawnRequest) (*controlled, e
 		}
 	} else if r.Procedure {
 		var err error
-		if procRoute, procName, expect, err = cc.procedureFor(g, r); err != nil {
+		if procRoute, procName, expect, err = cc.procedureFor(g, r); errors.Is(err, errNoArrivalProcedure) {
+			procRoute, procName, expect, r.Procedure = nil, "", "", false
+		} else if err != nil {
 			return nil, err
 		}
 	} else if r.Circuit && r.Kind == "departure" {
@@ -3664,6 +3666,9 @@ func (cc *controlCenter) procedureFor(g *airport.Graph, r SpawnRequest) ([]airpo
 		pts, err := p.ResolveSID(sid.Name, r.Runway, "", start, alt)
 		return pts, sid.Name, "", err
 	}
+	if len(p.STARsFor(r.Runway)) == 0 {
+		return approachOnly(p, r)
+	}
 	star, err := pick(p.STARsFor(r.Runway))
 	if err != nil {
 		return nil, "", "", err
@@ -3691,6 +3696,53 @@ func (cc *controlCenter) procedureFor(g *airport.Graph, r SpawnRequest) ([]airpo
 	app, _ := p.BestApproach(r.Runway)
 	kind, _, _ := strings.Cut(app.Name, " ")
 	return pts, star.Name, kind, nil
+}
+
+// errNoArrivalProcedure: the runway has neither a STAR nor an approach;
+// an arrival flies a straight-in (#1616).
+var errNoArrivalProcedure = errors.New("no STAR or approach published")
+
+// approachOnly is the arrival to r's runway without a STAR (#1616: TNCM
+// 10): its best approach from an initial approach fix, r.ProcName's
+// transition or one picked at random, preferring those that start off the
+// final.
+func approachOnly(p airport.Procedures, r SpawnRequest) ([]airport.NavPoint, string, string, error) {
+	app, ok := p.BestApproach(r.Runway)
+	if !ok {
+		return nil, "", "", fmt.Errorf("%w for runway %s", errNoArrivalProcedure, r.Runway)
+	}
+	kind, _, _ := strings.Cut(app.Name, " ")
+	var named, long, all []string
+	for _, t := range app.Transitions {
+		if t.Name == "" {
+			continue
+		}
+		if strings.EqualFold(t.Name, r.ProcName) || strings.EqualFold(t.Name+" "+app.Name, r.ProcName) {
+			named = append(named, t.Name)
+		}
+		if len(t.Legs) > 1 {
+			long = append(long, t.Name)
+		}
+		all = append(all, t.Name)
+	}
+	tr := ""
+	switch {
+	case len(named) > 0:
+		tr = named[0]
+	case len(long) > 0:
+		tr = long[traffic.RandomIntN(len(long))]
+	case len(all) > 0:
+		tr = all[traffic.RandomIntN(len(all))]
+	}
+	pts, err := p.Arrival(r.Runway, tr)
+	if err != nil {
+		return nil, "", "", err
+	}
+	name := app.Name
+	if tr != "" {
+		name = tr + " " + app.Name
+	}
+	return pts, name, kind, nil
 }
 
 // missedFor is the published missed approach of the approach to runway

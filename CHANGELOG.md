@@ -7,6 +7,12 @@ This project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 ---
 
+## [0.187.3] - 2026-11-21
+
+### Fixed
+
+- Traffic: arrivals reach airports whose runway has approaches but no STAR, such as TNCM 10. In game mode each arrival was refused with "runway 10 has no published procedure". In schedule mode the en route arrival failed at the handover with "the procedure has no point before the final" and was cancelled. Without a STAR an arrival now flies the runway's best approach from one of its initial approach fixes, chosen at random, and prefers transitions that start off the final. When the whole route lies on the final, as with DCT AVAKI, the intermediate fix 10 NM out, it flies a straight-in from farther out on the centreline. A runway with neither a STAR nor an approach gets a straight-in in every mode (#1616)
+
 ## [0.187.2] - 2026-11-20
 
 ### Fixed

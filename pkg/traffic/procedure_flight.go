@@ -175,6 +175,13 @@ func PlanArrivalProcedure(route []airport.NavPoint, end airport.RunwayEnd, joinM
 		}
 		pts = append(pts, n)
 	}
+	if len(pts) == 0 && len(route) > 0 {
+		// All of it on the final (#1616: TNCM's RNAV 10 from AVAKI, the
+		// intermediate fix, 10 NM out): a straight-in from farther out on
+		// the centreline.
+		sLat, sLon := calc.DisplaceByHeading(t.Lat, t.Lon, outbound, alignMeters+ProcedureAlignNm*1852)
+		pts = append(pts, airport.NavPoint{Position: airport.LatLon{Lat: sLat, Lon: sLon}, Course: hdg})
+	}
 	if len(pts) == 0 {
 		return nil, fmt.Errorf("%w: the procedure has no point before the final", ErrBadTaxiRequest)
 	}
