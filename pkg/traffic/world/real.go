@@ -532,6 +532,9 @@ func (s *scheduler) spawnArrivalAlong(f traffic.ManagedFlight, pos airport.LatLo
 	if len(models) == 0 {
 		return fmt.Errorf("no model of a %s", f.Type)
 	}
+	if models = s.parkable(g.Layout, f, models); len(models) == 0 {
+		return fmt.Errorf("%w: no stand at %s fits a %s", traffic.ErrSpawnImpossible, f.Airport, f.Type)
+	}
 	model := models[(f.Attempts-1)%len(models)]
 	e := &enrouteAC{f: f, model: model, cruiseKts: kts, arrive: &planned{route: pts, name: name, expect: expect, runway: rwy}}
 	join := pts[0]

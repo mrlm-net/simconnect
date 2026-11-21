@@ -8,6 +8,7 @@ import (
 	"time"
 
 	"github.com/mrlm-net/simconnect/pkg/airport"
+	"github.com/mrlm-net/simconnect/pkg/types"
 )
 
 // VFROptions steer VFRFlights.
@@ -188,14 +189,32 @@ func VFRRegistration(icao string, rng *rand.Rand) string {
 }
 
 // FitsStands reports whether an aircraft of icao type has a stand on l it
-// can park on (Layout.SuitableStands for its half span); true without a
-// layout or a span known.
+// can park on (ParksOn, any stand type); true without a layout.
 func FitsStands(l *airport.Layout, icaoType string) bool {
-	if l == nil {
-		return true
+	return l == nil || ParksOn(l, StandHalfSpan(icaoType))
+}
+
+// StandHalfSpan is the half span the stand allocator gives an aircraft of
+// title or type t (StandAllocator.Assign): its profile's, else
+// DefaultHalfSpanMeters.
+func StandHalfSpan(t string) float64 {
+	if half := ProfileFor(t).Motion.SpanMeters / 2; half > 0 {
+		return half
 	}
-	half := ProfileFor(icaoType).Motion.SpanMeters / 2
-	return half <= 0 || len(l.SuitableStands(half)) > 0
+	return DefaultHalfSpanMeters
+}
+
+// ParksOn reports whether l has a stand of kinds (none: any) wide enough
+// for an aircraft of halfSpan meters (0: DefaultHalfSpanMeters), the rule
+// StandAllocator.Assign picks by (Layout.SuitableStands). The schedule
+// asks it before a flight is made, so that no flight is made that its
+// stand assignment would refuse (an en route B744 to TNCM, whose largest
+// stand is 28 m, cancelled at its handover).
+func ParksOn(l *airport.Layout, halfSpan float64, kinds ...types.SIMCONNECT_FACILITY_TAXI_PARKING_TYPE) bool {
+	if halfSpan <= 0 {
+		halfSpan = DefaultHalfSpanMeters
+	}
+	return len(l.SuitableStands(halfSpan, kinds...)) > 0
 }
 
 // FlightsThatFit leaves out the flights to or from an airport of layouts

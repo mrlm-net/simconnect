@@ -78,6 +78,8 @@ type enrouteAC struct {
 	route     []traffic.RoutePoint
 	fixes     []airFix // the named fixes of route, for shortcuts (conflicts)
 	handing   bool
+	// standWait: its handover waits for a stand, said once (handovers).
+	standWait bool
 	told      *enrouteTold // what the player told it (#1419, enroute_told.go); nil nothing
 	// corridor: one of the traffic along the user's route (#740), not the
 	// schedule's.
@@ -124,9 +126,10 @@ func (s *scheduler) spawnEnroute(f traffic.ManagedFlight) error {
 	}
 	cc, st := s.cc, s.st
 	arrRwy := ""
+	var g *airport.Graph
 	if f.Arrival() {
-		g, err := st.cache.Graph(f.Airport)
-		if err != nil {
+		var err error
+		if g, err = st.cache.Graph(f.Airport); err != nil {
 			return err
 		}
 		arrRwy = cc.pickRunway(g, true, -1)
@@ -135,6 +138,12 @@ func (s *scheduler) spawnEnroute(f traffic.ManagedFlight) error {
 	models := traffic.ModelsForFlight(cc.modelList(), f.Airline, a.Name, f.Type, f.Callsign, 6)
 	if len(models) == 0 {
 		return fmt.Errorf("no model of a %s", f.Type)
+	}
+	if g != nil {
+		// Not flown en route to be refused a stand at its handover.
+		if models = s.parkable(g.Layout, f, models); len(models) == 0 {
+			return fmt.Errorf("%w: no stand at %s fits a %s", traffic.ErrSpawnImpossible, f.Airport, f.Type)
+		}
 	}
 	model := models[(f.Attempts-1)%len(models)]
 	var fp *nav.FlightPlan
@@ -465,6 +474,20 @@ func (s *scheduler) handovers(now time.Time) {
 	s.mu.Unlock()
 	for _, e := range due {
 		go func(e *enrouteAC) {
+			// Every stand it fits taken: not handed over to be refused one
+			// and cancelled in the air, but flown on en route and handed
+			// over once one is free, as an arrival not yet at its entry
+			// waits for its spawn (ErrSpawnBlocked).
+			if !s.standForHandover(e) {
+				s.mu.Lock()
+				said := e.standWait
+				e.handing, e.standWait = false, true
+				s.mu.Unlock()
+				if !said {
+					s.cc.log.printf("%-6s schedule: no stand free at %s: flies on, handed over once one is", e.f.Callsign, e.f.Airport)
+				}
+				return
+			}
 			// The aircraft flies on: the arrival controller adopts it, no
 			// new one at the entry (#643: a jump of 15 km and 11,000 ft).
 			s.handEnroute(e)
@@ -493,6 +516,16 @@ func (s *scheduler) handovers(now time.Time) {
 			}
 		}(e)
 	}
+}
+
+// standForHandover reports whether a stand e's aircraft fits is free at
+// its airport now (standFreeFor); true when that cannot be told.
+func (s *scheduler) standForHandover(e *enrouteAC) bool {
+	g, err := s.st.cache.Graph(e.f.Airport)
+	if err != nil {
+		return true
+	}
+	return standFreeFor(s.cc.allocator(g), g.Layout, e.model, s.standUse(e.f))
 }
 
 // dropEnroute takes an enroute aircraft out of the simulator; a virtual

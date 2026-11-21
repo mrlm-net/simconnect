@@ -82,6 +82,7 @@ func TestDefaultScheduleServesEveryAirport(t *testing.T) {
 		if l := scheduleLayout(t, icao); l != nil {
 			layouts = append(layouts, map[string]*airport.Layout{icao: l})
 		}
+		drawn := map[string]bool{}
 		for _, lm := range layouts {
 			field := runway[icao]
 			if l := lm[icao]; l != nil {
@@ -97,6 +98,9 @@ func TestDefaultScheduleServesEveryAirport(t *testing.T) {
 						continue
 					}
 					got++
+					if lm == nil {
+						drawn[f.Type] = true
+					}
 					other := f.Destination
 					if arrival {
 						other = f.Origin
@@ -109,7 +113,17 @@ func TestDefaultScheduleServesEveryAirport(t *testing.T) {
 						t.Errorf("%s: %s %s to or from %s needs %.0f m, its runway is %.0f m", icao, f.Callsign, f.Type, other, need, r)
 					}
 				}
-				if got < want[icao] {
+				// A layout whose stands take none of the types drawn there
+				// without it (LZKZ offline, 7 m stands) gets no flight: one
+				// drawn could not park.
+				parks := lm == nil || len(lm[icao].Parking) == 0
+				for typ := range drawn {
+					parks = parks || FitsStands(lm[icao], typ)
+				}
+				if !parks && got > 0 {
+					t.Errorf("%s: %d flights drawn, no stand there fits any type", icao, got)
+				}
+				if parks && got < want[icao] {
 					t.Errorf("%s (layout %v), arrival %v: %d of %d draws give a flight, want %d", icao, lm != nil, arrival, got, seeds, want[icao])
 				}
 			}
