@@ -122,7 +122,15 @@ func Start(o Options) (*Harness, error) {
 		}
 	}
 	h.World = world.New(wo)
-	icao, err := h.World.LoadAirportDir(filepath.Join(o.DataDir, strings.ToUpper(o.ICAO)))
+	dir := filepath.Join(o.DataDir, strings.ToUpper(o.ICAO))
+	if !fileExists(filepath.Join(dir, "layout.json")) {
+		// An airport of another kind (#1618: TFFJ, an airfield):
+		// <DataDir>/fields/<kind>/<ident> (world.AirportDataDir).
+		if m, _ := filepath.Glob(filepath.Join(o.DataDir, "fields", "*", strings.ToUpper(o.ICAO), "layout.json")); len(m) > 0 {
+			dir = filepath.Dir(m[0])
+		}
+	}
+	icao, err := h.World.LoadAirportDir(dir)
 	if err != nil {
 		return nil, err
 	}

@@ -7,6 +7,12 @@ This project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 ---
 
+## [0.188.4] - 2026-11-21
+
+### Fixed
+
+- Traffic: game mode works at airports with no instrument procedures, such as TFFJ, which is VFR only. Before, every departure was refused with "runway 10 has no published procedure". When an airport publishes no SID, STAR or approach, a departure that was asked to fly its SID now leaves VFR by a VFR exit, as the schedule's VFR traffic does. An arrival flies a straight-in visual approach and lands (#1618)
+
 ## [0.188.3] - 2026-11-21
 
 ### Fixed
