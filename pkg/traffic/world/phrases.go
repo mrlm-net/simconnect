@@ -163,12 +163,15 @@ func (it *controlled) goAroundAck() traffic.Transmission {
 
 // goAroundLevel is the altitude a go-around climbs to, as said: its
 // circuit's once it flies one, else traffic.GoAroundHeightFt above the
-// field, to the hundred feet.
+// field, to the hundred feet. Said under it.mu too (update's check-in): the
+// limits from its own graph, not taOf, which takes cc.mu (the views take
+// that one first).
 func (it *controlled) goAroundLevel() string {
 	ft := it.graph.Layout.Altitude/0.3048 + traffic.GoAroundHeightFt
 	// The airport's own go-around level where higher (LKPR 5000 ft; live,
 	// WZZ181 told 4200 ft before its go-around circuit was planned).
-	if lim := it.cc.limitsOf(it.graph); lim.GoAroundFt > ft {
+	lim := it.cc.limitsOf(it.graph)
+	if lim.GoAroundFt > ft {
 		ft = lim.GoAroundFt
 	}
 	if it.arr != nil {
@@ -176,5 +179,5 @@ func (it *controlled) goAroundLevel() string {
 			ft = fx[0].AltMin / 0.3048
 		}
 	}
-	return traffic.LevelSaidAbove(math.Round(ft/100)*100, it.cc.taOf(it.ICAO))
+	return traffic.LevelSaidAbove(math.Round(ft/100)*100, lim.TransitionAltitudeFt)
 }

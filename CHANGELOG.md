@@ -7,6 +7,12 @@ This project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 ---
 
+## [0.188.9] - 2026-11-22
+
+### Fixed
+
+- The World no longer locks up for good when departure gives a level in trail, or a go-around checks in, while the aircraft's views are read: both took the control centre's lock while holding the aircraft's, the reverse of the views. (#1644)
+
 ## [0.188.8] - 2026-11-22
 
 ### Fixed

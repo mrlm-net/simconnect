@@ -4629,9 +4629,12 @@ func (it *controlled) levelInTrail() {
 	if taken[ft] {
 		return // all taken: its own, the conflict watch keeps them apart
 	}
+	// Worded before it.mu: taOf takes cc.mu, and the views take that one
+	// first, then it.mu. The other way round both waited for good.
+	said := traffic.LevelSaidAbove(ft, it.cc.taOf(it.ICAO))
 	it.mu.Lock()
 	if ft != it.radarFt {
-		it.radarFt, it.radarSaid = ft, traffic.LevelSaidAbove(ft, it.cc.taOf(it.ICAO))
+		it.radarFt, it.radarSaid = ft, said
 	}
 	it.mu.Unlock()
 }
