@@ -368,7 +368,14 @@ func (cc *controlCenter) sendRescue(name string, a traffic.TrackedAircraft, medi
 		cc.log.printf("%-6s rescue: none to send (runway %q, %d vehicles offered)", name, rwy, len(legs))
 		return
 	}
-	spots := traffic.RescueStandby(g.Layout, rwy, len(legs))
+	// Off the ways it may vacate by (#1632): it does not see the trucks.
+	var keepOff [][]airport.LatLon
+	if it := cc.byTail(name); it != nil && it.arr != nil {
+		if plan := it.arr.Plan(); plan != nil && plan.End.Name == rwy {
+			keepOff = traffic.RescueVacateWays(g, plan)
+		}
+	}
+	spots := traffic.RescueStandbyClear(g.Layout, rwy, len(legs), keepOff, 0)
 	if len(spots) < len(legs) {
 		cc.log.printf("%-6s rescue: runway %s unknown at %s", name, rwy, a.Airport)
 		return
