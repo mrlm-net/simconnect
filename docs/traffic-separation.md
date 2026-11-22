@@ -221,7 +221,7 @@ The controller also watches the next arrival on short final. When it is `GoAroun
 
 A departure already rolling does not count: it is airborne before the arrival arrives.
 
-`ArrivalController.GoAround` releases the injected arrival to MSFS AI. It flies the published missed approach (`ArrivalRequest.MissedApproach`, from `airport.Procedures.MissedApproach`) at its altitude; at LKPR that is straight ahead to 4000 ft for vectors. Without one it flies a circuit instead. Either way it flies round to the join point on the final, where the injected approach takes over again. It joins only from the circuit's last two points: climbing out along the centreline it would otherwise look established at once.
+`ArrivalController.GoAround` releases the injected arrival to MSFS AI. It flies the published missed approach (`ArrivalRequest.MissedApproach`, from `airport.Procedures.MissedApproach`) at its altitude (the highest minimum; a ceiling only where no minimum reaches circuit height and it is no window's top); at LKPR that is straight ahead to 4000 ft for vectors. Without one it flies a circuit instead. Either way it flies round to the join point on the final, where the injected approach takes over again. It joins only from the circuit's last two points: climbing out along the centreline it would otherwise look established at once.
 
 `ApproachSequencer.Rejoin` then sequences it afresh by its new prediction, like a newcomer. It does not keep the place its first approach had, which would push everyone behind it.
 

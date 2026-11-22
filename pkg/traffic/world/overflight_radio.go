@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"maps"
 	"math"
 	"net/http"
 	"strconv"
@@ -44,6 +45,10 @@ const (
 	radioEvery = 5 * time.Second
 	// centreCallsPerMinute: the cap's default.
 	centreCallsPerMinute = 6
+	// slipExtra: the most transmissions a slip adds to a call and its
+	// readback ("say again" and the call again; a wrong readback and its
+	// correction).
+	slipExtra = 2
 	// instructHeadingFor: a heading is flown this long (at its speed, then
 	// back onto the way; traffic.ResolvedRoute flies it for half its
 	// look-ahead).
@@ -241,6 +246,17 @@ func (s *scheduler) centreSay(now time.Time, icao string, st traffic.Station, t 
 	if !s.centreRoom(from, icao, st.Freq, n) {
 		return false
 	}
+	// A slip in the exchange ("say again", a readback corrected, a call
+	// missed) is up to slipExtra more, past the cap where there is room
+	// for the call and its readback only (#1662: peaks of 8, cap 6).
+	if n > 1 && !s.centreRoom(from, icao, st.Freq, n+slipExtra) {
+		p := maps.Clone(t.Params)
+		if p == nil {
+			p = map[string]string{}
+		}
+		p[traffic.ParamNoSlip] = "1"
+		t.Params = p
+	}
 	t.Frequency = st.Freq
 	said := s.cc.radio.Transmit(icao, t)
 	// Each counted when it goes out: the call when said, its readback
@@ -403,6 +419,9 @@ func (s *scheduler) instruct(in EnrouteInstruction) (traffic.Transmission, error
 	s.mu.Lock()
 	route := e.route
 	s.mu.Unlock()
+	if r.Kind == traffic.ResolveHeading || r.Kind == traffic.ResolveDirect {
+		route = s.offNetLeg(cs, route) // their route instruction ends the net's heading
+	}
 	resolved := traffic.ResolvedRoute(route, a, r, look)
 	start, wps, err := traffic.EnrouteStart(resolved)
 	if err != nil {
@@ -426,6 +445,15 @@ func (s *scheduler) instruct(in EnrouteInstruction) (traffic.Transmission, error
 		e.route, e.waypoints = resolved, wps
 		s.mu.Unlock()
 	}
+	s.mu.Lock()
+	e.playerAt = s.cc.clock.Now()
+	switch r.Kind {
+	case traffic.ResolveLevel:
+		e.clearedFt = r.AltFt
+	case traffic.ResolveSpeed:
+		e.speedCleared = true
+	}
+	s.mu.Unlock()
 	tx := traffic.Resolved(traffic.PosCenter, r, a.AltFt, a.Heading, a.GroundKts, traffic.SaidWhere{TAFt: s.cc.taOf(icao), MagVar: s.cc.magVar(icao)})
 	tx.Frequency = st.Freq
 	s.cc.log.printf("%-6s en route: %s (the player on %s)", cs, r.Kind, st.Name)

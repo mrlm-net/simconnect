@@ -29,10 +29,25 @@ type TimeSource interface {
 type Ticker struct {
 	C    <-chan time.Time
 	stop func()
+	// track: Track's, nil on the wall clock.
+	track func() (done func())
 }
 
 // Stop stops the ticker.
 func (t *Ticker) Stop() { t.stop() }
+
+// Track says the ticker's user calls done once it has done each tick's
+// work: a ManualClock then has a taken tick's work under way until done
+// (WorkDone), for a test stepping it to let the time stand still through
+// that work.
+// The work must not wait for the time to move. Call it before the first
+// tick is taken; on the wall clock done does nothing.
+func (t *Ticker) Track() (done func()) {
+	if t.track == nil {
+		return func() {}
+	}
+	return t.track()
+}
 
 // Stopper stops a timer (AfterFunc); false when it had fired or stopped.
 type Stopper interface{ Stop() bool }
@@ -110,6 +125,9 @@ type ManualClock struct {
 	now    time.Time
 	seq    int
 	timers []*manualTimer
+	// idle, once waited for (WorkDone), is closed as the last work under
+	// way is done.
+	idle chan struct{}
 }
 
 type manualTimer struct {
@@ -119,6 +137,10 @@ type manualTimer struct {
 	ch     chan time.Time
 	f      func()
 	dead   bool
+	// tracked (Ticker.Track): undone ticks were sent and their work is
+	// not done yet, taken or not.
+	tracked bool
+	undone  int
 }
 
 // NewManualClock returns a clock standing at start.
@@ -157,11 +179,26 @@ func (c *ManualClock) NewTicker(d time.Duration) *Ticker {
 	ch := make(chan time.Time, 1)
 	t := &manualTimer{at: c.now.Add(d), period: d, ch: ch}
 	c.add(t)
-	return &Ticker{C: ch, stop: func() {
+	stop := func() {
 		c.mu.Lock()
 		t.dead = true
+		c.wake()
 		c.mu.Unlock()
-	}}
+	}
+	track := func() func() {
+		c.mu.Lock()
+		t.tracked, t.undone = true, len(ch)
+		c.mu.Unlock()
+		return func() {
+			c.mu.Lock()
+			if t.undone > 0 {
+				t.undone--
+			}
+			c.wake()
+			c.mu.Unlock()
+		}
+	}
+	return &Ticker{C: ch, stop: stop, track: track}
 }
 
 func (c *ManualClock) AfterFunc(d time.Duration, f func()) Stopper {
@@ -201,6 +238,47 @@ func (c *ManualClock) TicksWaiting() int {
 	return n
 }
 
+// noWork is WorkDone's with no work under way.
+var noWork = func() chan struct{} {
+	ch := make(chan struct{})
+	close(ch)
+	return ch
+}()
+
+// WorkDone is closed once no running tracked ticker (Ticker.Track) has a
+// taken tick's work under way; closed already when none has. A test
+// stepping the clock waits for it as well: moved on during a tick's work,
+// what that read of the time at its start and at its end lay a frame apart.
+func (c *ManualClock) WorkDone() <-chan struct{} {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	if !c.working() {
+		return noWork
+	}
+	if c.idle == nil {
+		c.idle = make(chan struct{})
+	}
+	return c.idle
+}
+
+// working: a taken tick's work is under way. c.mu held.
+func (c *ManualClock) working() bool {
+	for _, t := range c.timers {
+		if !t.dead && t.tracked && t.undone > len(t.ch) {
+			return true
+		}
+	}
+	return false
+}
+
+// wake closes idle once nothing is working. c.mu held.
+func (c *ManualClock) wake() {
+	if c.idle != nil && !c.working() {
+		close(c.idle)
+		c.idle = nil
+	}
+}
+
 // Advance moves the clock d on, firing every timer and ticker due on the
 // way at its own time, earliest first: a ticker's channel gets the time
 // (dropped when its last tick was not taken, as time.Ticker), an
@@ -234,6 +312,7 @@ func (c *ManualClock) Advance(d time.Duration) {
 		case t.period > 0:
 			select {
 			case t.ch <- t.at:
+				t.undone++
 			default:
 			}
 			t.at = t.at.Add(t.period)

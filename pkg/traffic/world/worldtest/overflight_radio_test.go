@@ -7,6 +7,7 @@ import (
 	"math"
 	"os"
 	"path/filepath"
+	"slices"
 	"strings"
 	"testing"
 	"time"
@@ -190,7 +191,11 @@ const centreCap = 6
 func staffedInstructions(t *testing.T, h *Harness, centre airport.LatLon, over map[string]bool) {
 	t.Helper()
 	pick := func() (Object, bool) {
-		for _, ob := range h.Sim.Objects() {
+		// By call sign: Objects is in map order, and the aircraft picked
+		// decided whether the test passed (#1662).
+		list := h.Sim.Objects()
+		slices.SortFunc(list, func(a, b Object) int { return strings.Compare(a.ATCID, b.ATCID) })
+		for _, ob := range list {
 			if !over[ob.ATCID] || ob.OnGround || ob.Lon > centre.Lon || ob.AltFt < 24000 || math.Abs(ob.VSFpm) > 200 {
 				continue
 			}

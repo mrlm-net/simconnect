@@ -7,6 +7,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/mrlm-net/simconnect/pkg/airport"
 	"github.com/mrlm-net/simconnect/pkg/traffic"
 )
 
@@ -95,28 +96,119 @@ func alertKey(c traffic.Conflict) string {
 	return c.A + "/" + c.B
 }
 
+// enrouteStaff is whose an en route aircraft of ours is (enrouteStaffed):
+// the staffed station's airport, position and mode; mode "" the AI's.
+type enrouteStaff struct {
+	icao     string
+	pos      traffic.Position
+	mode     string
+	playerAt time.Time // the player's last instruction to it
+}
+
+// enrouteStaffed is who works e, en route at at. It has no controlled item,
+// so neither gates nor aiMode know it (#1662: the conflict watch steered an
+// overflight off the descent the player had given it a second before). An
+// overflight or transit is the player's while the centre station working
+// it, the one InstructEnroute asks, is staffed; an arrival before its STAR
+// once approach has told it something, while approach is staffed
+// (enroute_told.go: untold, it flies as before).
+func (s *scheduler) enrouteStaffed(e *enrouteAC, at airport.LatLon) enrouteStaff {
+	s.mu.Lock()
+	out := enrouteStaff{playerAt: e.playerAt}
+	told := ""
+	if e.told != nil {
+		told = e.told.icao
+	}
+	focus := ""
+	if len(s.focus) > 0 {
+		focus = s.focus[0]
+	}
+	s.mu.Unlock()
+	if len(s.cc.core.staff.list()) == 0 {
+		return out
+	}
+	switch {
+	case told != "":
+		if st, ok := s.cc.approachStaffed(told); ok {
+			out.icao, out.pos, out.mode = told, traffic.PosApproach, stationMode(st.Mode)
+		}
+	case focus != "" && e.f.Overflight():
+		on, ok := traffic.PickStation(s.cc.stations(focus), traffic.PosCenter, traffic.Where{At: &at})
+		if !ok {
+			break
+		}
+		if st, ok := s.cc.core.staffedAt(focus, traffic.PosCenter, on.Name); ok {
+			out.icao, out.pos, out.mode = focus, traffic.PosCenter, stationMode(st.Mode)
+		}
+	}
+	return out
+}
+
+// staffing is whose a is: by its en route flight where it is one of those
+// (e), else by its controlled item, as aiMode has it.
+func (w *conflictWatch) staffing(a traffic.TrackedAircraft, e *enrouteAC) (st enrouteStaff, ours bool) {
+	if e != nil {
+		return w.s.enrouteStaffed(e, a.Position), true
+	}
+	it := w.s.cc.byTail(a.Tail)
+	if it == nil {
+		return st, false
+	}
+	st.mode = it.aiMode()
+	if at := it.playerAt.Load(); at != 0 {
+		st.playerAt = time.Unix(0, at)
+	}
+	if st.mode != "" {
+		it.mu.Lock()
+		st.icao, st.pos = it.ICAO, it.atc
+		it.mu.Unlock()
+	}
+	return st, true
+}
+
+// maySteerEnroute reports whether the AI may steer e, en route at at: not
+// the player's, or the safety net's due on it (mayAct for those en route).
+func (w *conflictWatch) maySteerEnroute(e *enrouteAC, at airport.LatLon) bool {
+	if w.s.enrouteStaffed(e, at).mode == "" {
+		return true
+	}
+	w.mu.Lock()
+	defer w.mu.Unlock()
+	return w.net[e.f.Callsign]
+}
+
+// stopIsPlayers reports whether e, stopped for traffic by the watch (st),
+// is no longer the watch's to clear on: the player has instructed it
+// since, or it is the player's and the safety net did not stop it.
+func (w *conflictWatch) stopIsPlayers(e *enrouteAC, at airport.LatLon, st stoppedLevel) bool {
+	who := w.s.enrouteStaffed(e, at)
+	if !who.playerAt.IsZero() && !who.playerAt.Before(st.since) {
+		return true // their clearance stands
+	}
+	return who.mode != "" && !st.net
+}
+
 // staffedConflict looks at conflict c for aircraft on staffed stations: an
 // alert for those in assist or safety net, kept by pair, and the safety net
 // given the go (w.net) once its deadline passes. False when the AI has
 // nothing to do in it: everything ours in it is staffed and no safety net
-// is due.
-func (w *conflictWatch) staffedConflict(now time.Time, c traffic.Conflict, suggest func(cs string) string) bool {
+// is due. who is whose each call sign is (staffing).
+func (w *conflictWatch) staffedConflict(now time.Time, c traffic.Conflict, who func(cs string) (enrouteStaff, bool), suggest func(cs string) string) bool {
 	staffed := map[string]string{}
 	var lastPlayer time.Time
 	others := false
 	for _, cs := range []string{c.A, c.B} {
-		it := w.s.cc.byTail(cs)
-		if it == nil {
+		st, ours := who(cs)
+		if !ours {
 			continue
 		}
-		m := it.aiMode()
-		if m == "" {
+		if st.mode == "" {
 			others = true
 			continue
 		}
-		staffed[cs] = m
-		if at := it.playerAt.Load(); at != 0 && time.Unix(0, at).After(lastPlayer) {
-			lastPlayer = time.Unix(0, at)
+		staffed[cs] = st.mode
+		if st.playerAt.After(lastPlayer) {
+			lastPlayer = st.playerAt
 		}
 	}
 	if len(staffed) == 0 {

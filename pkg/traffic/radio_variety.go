@@ -38,6 +38,12 @@ const IntentPilotSayAgain Intent = "pilot_say_again"
 // crew's "say again" (#721).
 const ParamRepeat = "repeat"
 
+// ParamNoSlip on a controller's transmission: "1", read back at once and
+// right, as a call said again is: no "say again", readback error or missed
+// call, each of which makes the exchange one or two transmissions longer.
+// For a frequency with room for the call and its readback only (#1662).
+const ParamNoSlip = "noSlip"
+
 // CrewStyle is how a crew talks on the radio (#721), the same for a call
 // sign through its flight: Quick or slow to answer, Chatty with "good day"
 // and "bye" or terse.
@@ -276,17 +282,18 @@ func (r *Radio) readBack(airport string, t Transmission, busy bool) {
 	style := v.StyleOf(t.Callsign)
 	pause := style.pause(r.rng)
 	roll := r.rng.Float64()
-	sayAgain := t.Params[ParamRepeat] == "" && t.Intent != IntentCorrection && roll < v.rate(v.SayAgain, 0.005)
+	maySlip := t.Params[ParamRepeat] == "" && t.Params[ParamNoSlip] == ""
+	sayAgain := maySlip && t.Intent != IntentCorrection && roll < v.rate(v.SayAgain, 0.005)
 	var wrong Transmission
 	var heard map[string]string
 	wrongOK := false
 	// One slip per exchange: a clearance said again (a missed call, a
 	// "say again") is read back right (live, TVS1539: "say again", then
 	// "6010 feet" read back and the right readback after it, uncorrected).
-	if !sayAgain && t.Params[ParamRepeat] == "" && t.Intent != IntentCorrection && roll < v.rate(v.SayAgain, 0.005)+v.rate(v.ReadbackError, 0.01) {
+	if !sayAgain && maySlip && t.Intent != IntentCorrection && roll < v.rate(v.SayAgain, 0.005)+v.rate(v.ReadbackError, 0.01) {
 		wrong, heard, wrongOK = wrongReadback(t, rb, r.rng)
 	}
-	missed := !sayAgain && !wrongOK && t.Intent == IntentContact && t.Params[ParamRepeat] == "" && r.rng.Float64() < v.rate(v.MissedCall, 0.03)
+	missed := !sayAgain && !wrongOK && t.Intent == IntentContact && maySlip && r.rng.Float64() < v.rate(v.MissedCall, 0.03)
 	silence := time.Duration((6 + 4*r.rng.Float64()) * float64(time.Second))
 	if !sayAgain {
 		rb = r.variedReadback(t, rb, busy)

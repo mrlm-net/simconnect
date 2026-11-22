@@ -14,6 +14,7 @@ import (
 	"math"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"time"
 	"unsafe"
 
@@ -99,6 +100,30 @@ type Loopback struct {
 	calls ledger
 	// simRate: SIMULATION RATE as set (SetSimRate); 0 real time.
 	simRate float64
+	// slowCall, where a test sets it, runs first in a creation in the air
+	// and in a scan of positions, outside the lock: a call on a slow
+	// machine. Not in a scan of names: asked as an answer is handled,
+	// not in a tick, and it reads no pose.
+	slowCall atomic.Pointer[func(call, tail string)]
+}
+
+// readsPlaces: a definition reads positions.
+func (l *Loopback) readsPlaces(definitionID uint32) bool {
+	l.mu.Lock()
+	defer l.mu.Unlock()
+	for _, d := range l.defs[definitionID] {
+		if d.name == "PLANE LATITUDE" {
+			return true
+		}
+	}
+	return false
+}
+
+// slow runs slowCall.
+func (l *Loopback) slow(call, tail string) {
+	if f := l.slowCall.Load(); f != nil {
+		(*f)(call, tail)
+	}
 }
 
 // NewLoopback returns a loopback with the user aircraft at lat, lon on
@@ -190,6 +215,9 @@ func (l *Loopback) RequestDataOnSimObject(requestID uint32, definitionID uint32,
 }
 
 func (l *Loopback) RequestDataOnSimObjectType(requestID uint32, definitionID uint32, dwRadiusMeters uint32, objectType types.SIMCONNECT_SIMOBJECT_TYPE) error {
+	if l.slowCall.Load() != nil && l.readsPlaces(definitionID) {
+		l.slow(CallScan, "")
+	}
 	l.mu.Lock()
 	defer l.mu.Unlock()
 	l.count(CallScan, 0)
@@ -284,6 +312,7 @@ func (l *Loopback) createNonATC(title, tail string, p types.SIMCONNECT_DATA_INIT
 	kts := 0.0
 	if p.OnGround == 0 {
 		kts = float64(p.Airspeed)
+		l.slow(CallCreate, tail)
 	}
 	return l.createObject(title, tail, p.Latitude, p.Longitude, p.Altitude, p.Heading, kts, p.OnGround != 0, false, requestID)
 }

@@ -6,6 +6,7 @@ import (
 	"math"
 	"time"
 
+	"github.com/mrlm-net/simconnect/internal/missed"
 	"github.com/mrlm-net/simconnect/pkg/airport"
 	"github.com/mrlm-net/simconnect/pkg/calc"
 	"github.com/mrlm-net/simconnect/pkg/convert"
@@ -302,12 +303,16 @@ func (c *ArrivalController) GoAround() error {
 	// The published missed approach where known: its points (none when it
 	// climbs straight ahead for vectors, as at LKPR) at its altitude, which
 	// the circuit keeps too; then round the circuit onto the final.
-	missed, circuitFt := missedWaypoints(climbOutMissed(c.req.MissedApproach, end.LandingThreshold(), end.Heading, c.goAroundClimbNM()*1852), circuitFt)
+	// Its ceilings are judged against circuit height, not against a higher
+	// final approach fix: that would make a hold's ceiling the climb level
+	// again (#1659).
+	missed, missedFt := missedWaypoints(climbOutMissed(c.req.MissedApproach, end.LandingThreshold(), end.Heading, c.goAroundClimbNM()*1852), fieldFt+GoAroundHeightFt)
+	circuitFt = math.Max(circuitFt, missedFt)
 	if lim := c.req.Airport; lim != nil && lim.GoAroundFt > circuitFt {
 		circuitFt = lim.GoAroundFt // the airport's own (LKPR 5000 ft)
-		for i := range missed {
-			missed[i].Altitude = circuitFt
-		}
+	}
+	for i := range missed {
+		missed[i].Altitude = circuitFt
 	}
 	// Without a published missed approach: out and back onto its own
 	// STAR's downwind, sequenced again with the others there (live,
@@ -431,13 +436,16 @@ func climbOutMissed(missed []airport.NavPoint, t airport.LatLon, hdg, climbM flo
 	return out
 }
 
-func missedWaypoints(missed []airport.NavPoint, minFt float64) ([]types.SIMCONNECT_DATA_WAYPOINT, float64) {
-	top := minFt
-	for _, n := range missed {
-		top = math.Max(top, math.Max(n.AltMin, n.AltMax)*ftPerMeter)
+// missedWaypoints are a missed approach's points at the altitude it climbs
+// to (missed.ClimbFt, as airport.Procedures.MissedOf), minFt at least.
+func missedWaypoints(points []airport.NavPoint, minFt float64) ([]types.SIMCONNECT_DATA_WAYPOINT, float64) {
+	limits := make([]missed.Limit, 0, len(points))
+	for _, n := range points {
+		limits = append(limits, missed.Limit{MinFt: n.AltMin * ftPerMeter, MaxFt: n.AltMax * ftPerMeter})
 	}
+	top := math.Max(minFt, missed.ClimbFt(limits, minFt))
 	var wps []types.SIMCONNECT_DATA_WAYPOINT
-	for _, n := range missed {
+	for _, n := range points {
 		if n.Position.Lat == 0 && n.Position.Lon == 0 {
 			continue
 		}

@@ -285,10 +285,14 @@ func (h *Harness) Until(max time.Duration, cond func() bool) bool {
 // past the once-a-second control tick, whose missed ticks were dropped:
 // clearances, the controllers' calls and the schedule then ran seconds
 // apart in traffic time, and a test ran out of its traffic time.
+// A tick's work still running after the moment for what was taken is
+// waited for too (#1645). The moment comes first: the work runs in it, and
+// only work longer than it costs the step any time.
 func (h *Harness) step(d time.Duration) {
 	h.Clock.Advance(d)
 	h.Sim.Step()
-	for deadline := time.Now().Add(stepTimeout); len(h.Sim.out) != 0 || h.World.Queued() != 0 || h.Clock.TicksWaiting() != 0; {
+	deadline := time.Now().Add(stepTimeout)
+	for len(h.Sim.out) != 0 || h.World.Queued() != 0 || h.Clock.TicksWaiting() != 0 {
 		if time.Now().After(deadline) {
 			panic("worldtest: the World did not take a frame within " + stepTimeout.String())
 		}
@@ -297,6 +301,21 @@ func (h *Harness) step(d time.Duration) {
 	// The last message taken is being handled, and what it started (a
 	// controller's events) runs on: a moment for them.
 	time.Sleep(300 * time.Microsecond)
+	// Woken by the last of the work, no poll: a 50 µs sleep takes about
+	// half a millisecond on Windows.
+	done := h.Clock.WorkDone()
+	select {
+	case <-done:
+		return
+	default:
+	}
+	late := time.NewTimer(time.Until(deadline))
+	defer late.Stop()
+	select {
+	case <-done:
+	case <-late.C:
+		panic("worldtest: the World did not finish a tick's work within " + stepTimeout.String())
+	}
 }
 
 // WaitFor checks cond every 100 ms until it holds (true) or timeout passes
