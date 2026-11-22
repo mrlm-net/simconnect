@@ -244,15 +244,42 @@ func (f *SimObjectFuelTruck) Update(pose GroundPose, leave bool, dt float64) err
 		// off to the side without a depot: never across the aircraft.
 		p, h := offsetHeading(f.pose.Position, f.pose.Heading, fuelProfile().WheelbaseMeters), f.pose.Heading
 		f.clearDist = f.clearOf(pose, p)
-		ahead := offsetHeading(p, h, f.clearDist)
-		pts := []airport.LatLon{p, ahead}
+		// Along the fuselage, not on along its own heading: parked a few
+		// degrees in, that ran under the tail (#1630, LKPR N51).
+		axis := pose.Heading
+		if math.Abs(headingDiff(h, axis)) > 90 {
+			axis = normDeg(axis + 180)
+		}
+		pts := []airport.LatLon{p}
+		if math.Abs(headingDiff(h, axis)) > 3 {
+			pts = append(pts, offsetHeading(p, h, fuelLeadMeters))
+		}
+		ahead := offsetHeading(pts[len(pts)-1], axis, f.clearDist)
+		pts = append(pts, ahead)
 		if f.hasDepot {
 			if route, err := f.Layout.VehicleRoute(ahead, f.depot); err == nil {
-				pts, f.homing = append(pts, route...), true
+				// Home back the way it came (a road behind it): round in a
+				// loop on the side away from the aircraft, not on the spot
+				// and back under the fuselage (#1630); then round its
+				// aircraft, not under it.
+				if len(route) >= 2 && math.Abs(headingDiff(localBearing(route[0], route[1]), axis)) > 90 {
+					frame := aircraftFrame{nose: NoseGear(pose.Position, pose.Heading, f.prof), hdg: pose.Heading, prof: f.prof}
+					side := pose.Heading + 90
+					if x, _ := frame.to(p); x < 0 {
+						side = pose.Heading - 90
+					}
+					a := offsetHeading(ahead, axis, FuelTurnMeters)
+					b := offsetHeading(a, side, FuelTurnWidthMeters)
+					c := offsetHeading(b, axis+180, FuelTurnMeters)
+					if back, err := f.Layout.VehicleRoute(c, f.depot); err == nil {
+						pts, route = append(pts, a, b), back
+					}
+				}
+				pts, f.homing = append(pts[:len(pts)-1:len(pts)-1], roundRoute(append([]airport.LatLon{pts[len(pts)-1]}, route...), pose, f.prof)...), true
 			}
 		}
 		if !f.homing {
-			pts = append(pts, offsetHeading(ahead, h+FuelDriveOffTurnDeg, FuelDriveOffMeters))
+			pts = append(pts, offsetHeading(ahead, axis+FuelDriveOffTurnDeg, FuelDriveOffMeters))
 		}
 		path, err := NewArcPath(pts, fuelRoadProfile(), 8)
 		if err != nil {
@@ -319,6 +346,10 @@ func (f *SimObjectFuelTruck) clearOf(pose GroundPose, p airport.LatLon) float64 
 	}
 	return math.Max(FuelLeaveAheadMeters, along+f.prof.TailMeters+FuelLeaveAheadMeters)
 }
+
+// fuelLeadMeters: a truck leaving drives this far on along its heading
+// before it lines up with the fuselage.
+const fuelLeadMeters = 4.0
 
 // fuelNoseMeters: the nose sits about this far ahead of the nose gear.
 const fuelNoseMeters = 5.0
