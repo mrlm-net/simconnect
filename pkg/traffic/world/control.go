@@ -1059,6 +1059,9 @@ type SpawnRequest struct {
 	DeiceSec float64 `json:"deiceSec"`
 
 	planned *planned // Other's flight plan, resolved before the spawn
+	// game: drawn by the game (gameTick): an arrival is never handed to
+	// the player already short of spacing (gameSpaced).
+	game bool
 
 	adopt  uint32    // departure: the aircraft already on the stand (turnaround)
 	pushAt time.Time // departure: stay on the stand until then (its STD)
@@ -1218,6 +1221,11 @@ func (cc *controlCenter) spawn(g *airport.Graph, r SpawnRequest) (*controlled, e
 			procRoute, procName, expect, r.Procedure = nil, "", "", false
 		} else if err != nil {
 			return nil, err
+		}
+		if r.game && r.Kind == "arrival" && len(procRoute) > 0 {
+			if procRoute, procName, expect, err = cc.gameSpaced(g, r, procRoute, procName, expect); err != nil {
+				return nil, err
+			}
 		}
 	} else if r.Circuit && r.Kind == "departure" {
 		// VFR out of the circuit towards its exit (#568).

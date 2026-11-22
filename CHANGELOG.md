@@ -7,11 +7,17 @@ This project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 ---
 
-## [0.188.6] - 2026-11-21
+## [0.188.7] - 2026-11-22
 
 ### Fixed
 
 - A departure no longer backs onto its runway to line up. The World's overflow queue sends departures to the first of a runway's end entrances. That could route a departure across its own departure runway to a holding point on the far side, and the line-up then backed onto the runway from there (EGLL 27L: from the south over the runway via S1 to N1B, about 94 m backwards). Route planning (`RouteToRunway`, `RouteToRunwayEntry`, `RouteToRunwayFrom`) now picks a holding point reached without crossing the departure runway whenever there is one: the cheapest of those within the full-length window, or one of the same name for a named entry. A taxiing aircraft's `GroundSpeedKts` is now the speed its reference point moves at, not its nose gear's, so `gs` matches the distance moved in turns (it gave 5 kt while moving 0.8 m/s in a tight line-up turn). The main gear still tracks its heading through every turn; the reference point ahead of it swings out in tight turns, as on the real aircraft (#1627, #1628).
+
+## [0.188.6] - 2026-11-21
+
+### Fixed
+
+- Traffic: game mode no longer hands the player an arrival that is already short of spacing. Game arrivals are the player's to control, so the AI gives them no speed or vector. A new one is now drawn only when its distance to go to the runway is at least the spacing plus 4 NM from every arrival in the runway's sequence. Otherwise another of the runway's procedures is tried, or the game waits for its next draw. Before, at TNCM two game arrivals were spawned 30 s apart on converging RNAV transitions, 49 and 50 NM to go, and met at 6,600 ft 1.2 NM apart before the player could act (#1638)
 
 ## [0.188.5] - 2026-11-21
 
