@@ -268,6 +268,15 @@ func (t *SimObjectTug) RetryCreate() bool {
 	return true
 }
 
+// roadBeyond reports whether join (where a way from stand meets the
+// roads) lies beyond stand seen from p: through the stand is on the way.
+func roadBeyond(p, stand, join airport.LatLon) bool {
+	if localDist(stand, join) < 1 {
+		return false
+	}
+	return math.Abs(headingDiff(localBearing(p, stand), localBearing(stand, join))) < 90
+}
+
 // TugRetryAheadMeters: a tug created again appears this far along its way
 // in (RetryCreate).
 const TugRetryAheadMeters = 40.0
@@ -286,13 +295,13 @@ func (t *SimObjectTug) inbound(pose GroundPose) (*GroundPath, airport.LatLon, bo
 	if !ok {
 		return nil, airport.LatLon{}, false
 	}
-	route, err := t.Layout.VehicleRoute(depot, front)
+	route, err := arriveWay(t.Layout, depot, front, pose.Heading+180, pose, t.prof)
 	if err != nil {
 		return nil, airport.LatLon{}, false
 	}
 	// Round the aircraft, not through it: off the road to the nose, and where
 	// the road itself passes under it.
-	route = roundRoute(route, pose, t.prof)
+	route = serviceWay(t.Layout, route, pose, t.prof)
 	// The path is followed by the tug's front axle, its reference point a
 	// wheelbase behind: the path ends that far past the attach point, so the
 	// tug stops on it and is not snapped forward as it connects (live, a
@@ -305,6 +314,34 @@ func (t *SimObjectTug) inbound(pose GroundPose) (*GroundPath, airport.LatLon, bo
 		return nil, airport.LatLon{}, false
 	}
 	return path, depot, true
+}
+
+// throughStand is the tug's way home from p through the stand the
+// aircraft now at pose has left, round that aircraft; false where the stand
+// is no short cut (#1630): no road near it; none beyond it (with the road
+// behind the tails, between the stand and the taxilane, it drove down to
+// the stand and back up to the same road); the way on from it coming back
+// past the aircraft pushed (LKPR C24); or the way over another stand (LROP
+// 119B: the one facing it; LKPR C26: C27, on the way round the nose).
+func (t *SimObjectTug) throughStand(p airport.LatLon, pose GroundPose) ([]airport.LatLon, bool) {
+	if !t.Layout.NearVehicleRoad(t.stand) {
+		return nil, false
+	}
+	via, err := t.Layout.VehicleRoute(t.stand, t.depot)
+	if err != nil || len(via) < 2 || !roadBeyond(p, t.stand, via[1]) {
+		return nil, false
+	}
+	f := aircraftFrame{nose: NoseGear(pose.Position, pose.Heading, t.prof), hdg: pose.Heading, prof: t.prof}
+	for i := 1; i < len(via); i++ {
+		if !f.clear(via[i-1], via[i]) {
+			return nil, false
+		}
+	}
+	way := serviceWay(t.Layout, append([]airport.LatLon{p}, via...), pose, t.prof)
+	if wayAcrossStand(t.Layout, t.stand, way) {
+		return nil, false
+	}
+	return way, true
 }
 
 // tugTurnMeters is the radius a tug turns on.
@@ -472,15 +509,13 @@ func (t *SimObjectTug) Update(pose GroundPose, pushing bool, dt float64) error {
 	// taxiway among the aircraft.
 	if t.haveDepot && !t.homing {
 		p, h := offsetHeading(t.pose.Position, t.pose.Heading, tugProfile().WheelbaseMeters), t.pose.Heading
-		route, err := t.Layout.VehicleRoute(p, t.depot)
-		if t.Layout.NearVehicleRoad(t.stand) {
-			if via, verr := t.Layout.VehicleRoute(t.stand, t.depot); verr == nil {
-				route, err = append([]airport.LatLon{p}, via...), nil
-			}
-		}
+		route, err := homeWay(t.Layout, p, h, t.depot, pose, t.prof)
 		if err == nil && len(route) >= 2 {
 			// From the nose to the road: round the aircraft just pushed.
-			route = roundRoute(route, pose, t.prof)
+			route = serviceWay(t.Layout, route, pose, t.prof)
+		}
+		if via, ok := t.throughStand(p, pose); ok {
+			route, err = via, nil
 		}
 		if err == nil {
 			if path, err := NewArcPath(route, tugRoadProfile(), 6); err == nil {

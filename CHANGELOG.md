@@ -7,6 +7,30 @@ This project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 ---
 
+## [0.188.13] - 2026-11-22
+
+### Added
+
+- `airport.Layout.VehicleRoutePose(a, aHdg, b, bHdg)`: a vehicle way from a pose to a pose. It weighs every road within `VehicleRoadReachM` (or, without one, the nodes near the nearest) by the length of the way with its turns priced, joining the roads the way the vehicle faces and arriving the way it must face (#1630)
+- `airport.Layout.VehicleAcrossStand(own, p, q, clear)`: whether a vehicle's leg crosses another stand than the one `own` is on and those overlapping it (#1630)
+
+### Fixed
+
+- Service vehicles no longer double back, hook or drive through aircraft at the ends of their ways (#1630):
+  - The fuel truck, the stairs, the bus and the tug join the roads where they are heading and arrive facing their spot. Where the way would run back, they loop beside the aircraft or leave by the side, off the other stands.
+  - Ways join the graph only at taxi points and vehicle depots, never at a stand's parking point. A stand's lead-in costs four times an apron.
+  - Ways round an aircraft weigh their turns, can cross round the nose or tail to the other side or run abeam to a spot beside it, and keep their corners off the other stands where they can.
+  - The stairs back round to the side whose way home is shorter, and the fuel truck approaches from the side whose way in is shorter, turns included. The bus turns out on the side the roads lie when driving forward would turn it back.
+  - A tug goes home through the stand it left only when the road lies beyond it and the way neither comes back past the aircraft pushed nor crosses another stand.
+  - A tug whose nearest join leads to no depot takes another instead of driving off a few metres and vanishing (LROP 131).
+- A rescue vehicle's ways out to standby and home have their spikes cut and their corners rounded to its wheelbase. Before, it drove out and back along spurs of the taxiways and stood in one step at sharp corners (#1630)
+- A rescue vehicle sent home from standby no longer sets off backwards and swings round where the road to its depot lies behind it. It turns out to the side, or on round, and joins the road from there (#1630)
+- A rescue vehicle sent home as it drives carries its speed on: it keeps to its way as far as it takes to brake, and on to where the taxiways are in reach, then turns for the depot, or with no way brakes to a stand first. Before, it set off again from 0 kt in one frame (#1630)
+- A rescue vehicle sent home as it follows the aircraft brakes to a stand if it rolls, then, where the roads or taxiways are in reach, turns out forwards and takes its place in the crew's order home. Out of their reach it is still removed, standing (#1630)
+- A rescue vehicle without a layout or depot that is sent home as it drives brakes to a stand before it is removed. Before, it was gone from speed (#1630)
+- A crew sent home together keeps off each other: each turns out clear of those standing, and to one depot they go in the order of what is left of their ways there, a vehicle's spacing apart (#1630)
+- A service vehicle measures the room to an aircraft from its true nose, wing tips and tailplane tips. Before, each was sampled every 2 m and up to 2 m of it was not there (#1630)
+
 ## [0.188.12] - 2026-11-22
 
 ### Fixed

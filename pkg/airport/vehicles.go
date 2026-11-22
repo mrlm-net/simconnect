@@ -30,6 +30,10 @@ const (
 	// start or end straight across the apron (through an empty stand), not
 	// by the taxiway the nearest node may be on.
 	VehicleRoadReachM = 150.0
+	// vehicleParkingCost: a stand's lead-in (PARKING) costs this many
+	// times an apron's: a last resort, down to where an aircraft may stand
+	// (#1630).
+	vehicleParkingCost = 4.0
 )
 
 type vehicleEdge struct {
@@ -38,9 +42,15 @@ type vehicleEdge struct {
 }
 
 type vehicleGraph struct {
-	pos   []LatLon // taxi points, then parking spots
-	adj   [][]vehicleEdge
-	roads [][2]int // the vehicle road segments (VEHICLE, ROAD)
+	// np is the taxi points' count: pos[:np], the parking spots following.
+	np int
+	// depot and radius are, by parking spot (pos[np+k]), whether it is a
+	// vehicle depot and its radius.
+	depot  []bool
+	radius []float64
+	pos    []LatLon // taxi points, then parking spots
+	adj    [][]vehicleEdge
+	roads  [][2]int // the vehicle road segments (VEHICLE, ROAD)
 }
 
 // vehicleGraphs caches each layout's vehicle graph, keyed weakly: an entry
@@ -54,21 +64,25 @@ func (l *Layout) vehicleGraph() *vehicleGraph {
 		return g.(*vehicleGraph)
 	}
 	np := len(l.TaxiPoints)
-	g := &vehicleGraph{pos: make([]LatLon, np+len(l.Parking)), adj: make([][]vehicleEdge, np+len(l.Parking))}
+	g := &vehicleGraph{np: np, pos: make([]LatLon, np+len(l.Parking)), adj: make([][]vehicleEdge, np+len(l.Parking))}
 	for i, t := range l.TaxiPoints {
 		g.pos[i] = t.Position
 	}
+	g.depot, g.radius = make([]bool, len(l.Parking)), make([]float64, len(l.Parking))
 	for k, p := range l.Parking {
 		g.pos[np+k] = p.Position
+		g.depot[k] = p.Type == types.SIMCONNECT_FACILITY_TAXI_PARKING_TYPE_VEHICLE
+		g.radius[k] = p.Radius
 	}
 	for _, p := range l.TaxiPaths {
 		w := 0.0
 		switch p.Type {
 		case types.SIMCONNECT_FACILITY_TAXI_PATH_TYPE_VEHICLE, types.SIMCONNECT_FACILITY_TAXI_PATH_TYPE_ROAD:
 			w = 1
-		case types.SIMCONNECT_FACILITY_TAXI_PATH_TYPE_PATH, types.SIMCONNECT_FACILITY_TAXI_PATH_TYPE_TAXI,
-			types.SIMCONNECT_FACILITY_TAXI_PATH_TYPE_PARKING:
+		case types.SIMCONNECT_FACILITY_TAXI_PATH_TYPE_PATH, types.SIMCONNECT_FACILITY_TAXI_PATH_TYPE_TAXI:
 			w = vehicleOffRoad
+		case types.SIMCONNECT_FACILITY_TAXI_PATH_TYPE_PARKING:
+			w = vehicleOffRoad * vehicleParkingCost
 		default:
 			continue // runway, closed, painted line
 		}
@@ -98,11 +112,12 @@ func (l *Layout) vehicleGraph() *vehicleGraph {
 	return got.(*vehicleGraph)
 }
 
-// nearest is the connected node nearest p, within vehicleSnapM.
+// nearest is the connected node nearest p, within vehicleSnapM: a taxi
+// point or a depot, never a stand (under a parked aircraft, #1630).
 func (g *vehicleGraph) nearest(p LatLon) (int, bool) {
 	best, bestD := -1, vehicleSnapM
 	for i, q := range g.pos {
-		if len(g.adj[i]) == 0 {
+		if len(g.adj[i]) == 0 || !g.joinable(i) {
 			continue
 		}
 		if d := distM(p, q); d < bestD {
@@ -137,6 +152,12 @@ func (g *vehicleGraph) end(p LatLon) (vehicleEnd, bool) {
 		return vehicleEnd{}, false
 	}
 	return vehicleEnd{at: g.pos[n], seg: [2]int{n, n}}, true
+}
+
+// joinable reports whether a way may join the graph at node i: a taxi
+// point or a vehicle depot, not a stand.
+func (g *vehicleGraph) joinable(i int) bool {
+	return i < g.np || g.depot[i-g.np]
 }
 
 // join is end, or with atNode the nearest node.

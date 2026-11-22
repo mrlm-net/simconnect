@@ -113,7 +113,7 @@ func (f *SimObjectFuelTruck) Attach(pose GroundPose) error {
 		spot = f.Spot(pose, f.prof)
 	}
 	f.pose = spot
-	if path, depot, ok := f.inbound(&spot); ok {
+	if path, depot, ok := f.inbound(pose, &spot); ok {
 		f.arrive, f.depot, f.hasDepot = NewGroundMoverFrom(path, fuelRoadProfile(), localBearing(path.PointAt(0), path.PointAt(math.Min(5, path.Length()))), 0), depot, true
 		f.pose = f.arrive.Pose()
 	}
@@ -132,19 +132,20 @@ func (f *SimObjectFuelTruck) DriveIn(pose GroundPose) time.Duration {
 	if f.Spot != nil {
 		spot = f.Spot(pose, f.prof)
 	}
-	path, _, ok := f.inbound(&spot)
+	path, _, ok := f.inbound(pose, &spot)
 	if !ok {
 		return 0
 	}
 	return time.Duration(path.Length() / (FuelTruckKts * 1852 / 3600) * 1.25 * float64(time.Second))
 }
 
-// inbound is the way in: from the nearest depot along the vehicle roads to
-// a point FuelApproachMeters before the spot, then straight along the
-// fuselage onto it. It comes from the nose or the tail, whichever way the
-// road's last leg runs (at LKPR the stand roads come in at the nose: it
-// parks facing the tail), and spot turns to face that way.
-func (f *SimObjectFuelTruck) inbound(spot *GroundPose) (*GroundPath, airport.LatLon, bool) {
+// inbound is the way in for the aircraft at pose: from the nearest depot
+// along the vehicle roads to a point FuelApproachMeters before the spot,
+// round the aircraft, then straight along the fuselage onto it. It comes
+// from the nose or the tail, whichever way is shorter, turns included
+// (wayCost, #1630; at LKPR the stand roads come in at the nose: it parks
+// facing the tail), and spot turns to face that way.
+func (f *SimObjectFuelTruck) inbound(pose GroundPose, spot *GroundPose) (*GroundPath, airport.LatLon, bool) {
 	if f.Layout == nil {
 		return nil, airport.LatLon{}, false
 	}
@@ -160,12 +161,13 @@ func (f *SimObjectFuelTruck) inbound(spot *GroundPose) (*GroundPath, airport.Lat
 		if !ok {
 			return nil, airport.LatLon{}, false
 		}
-		r, err := f.Layout.VehicleRoute(d, before)
+		r, err := arriveWay(f.Layout, d, before, h, pose, f.prof)
 		if err != nil || len(r) < 2 {
 			continue
 		}
-		if off := math.Abs(headingDiff(localBearing(r[len(r)-2], r[len(r)-1]), h)); off < best {
-			route, depot, heading, best = r, d, h, off
+		r = serviceWay(f.Layout, r, pose, f.prof)
+		if c := wayCost(r, h); c < best {
+			route, depot, heading, best = r, d, h, c
 		}
 	}
 	if route == nil {
@@ -257,25 +259,11 @@ func (f *SimObjectFuelTruck) Update(pose GroundPose, leave bool, dt float64) err
 		ahead := offsetHeading(pts[len(pts)-1], axis, f.clearDist)
 		pts = append(pts, ahead)
 		if f.hasDepot {
-			if route, err := f.Layout.VehicleRoute(ahead, f.depot); err == nil {
-				// Home back the way it came (a road behind it): round in a
-				// loop on the side away from the aircraft, not on the spot
-				// and back under the fuselage (#1630); then round its
-				// aircraft, not under it.
-				if len(route) >= 2 && math.Abs(headingDiff(localBearing(route[0], route[1]), axis)) > 90 {
-					frame := aircraftFrame{nose: NoseGear(pose.Position, pose.Heading, f.prof), hdg: pose.Heading, prof: f.prof}
-					side := pose.Heading + 90
-					if x, _ := frame.to(p); x < 0 {
-						side = pose.Heading - 90
-					}
-					a := offsetHeading(ahead, axis, FuelTurnMeters)
-					b := offsetHeading(a, side, FuelTurnWidthMeters)
-					c := offsetHeading(b, axis+180, FuelTurnMeters)
-					if back, err := f.Layout.VehicleRoute(c, f.depot); err == nil {
-						pts, route = append(pts, a, b), back
-					}
-				}
-				pts, f.homing = append(pts[:len(pts)-1:len(pts)-1], roundRoute(append([]airport.LatLon{pts[len(pts)-1]}, route...), pose, f.prof)...), true
+			// Home back the way it came (a road behind it): round in a
+			// loop on the side away from the aircraft, not on the spot and
+			// back under the fuselage; then round its aircraft (#1630).
+			if route, err := homeWay(f.Layout, ahead, axis, f.depot, pose, f.prof); err == nil {
+				pts, f.homing = append(pts[:len(pts)-1:len(pts)-1], route...), true
 			}
 		}
 		if !f.homing {
@@ -311,7 +299,7 @@ func (f *SimObjectFuelTruck) turnBack(pose GroundPose) error {
 	}
 	c := offsetHeading(b, h+180, FuelTurnMeters)
 	pts := []airport.LatLon{p, a, b, c}
-	if route, err := f.Layout.VehicleRoute(c, f.depot); err == nil {
+	if route, err := f.Layout.VehicleRoutePose(c, h+180, f.depot, noHeading); err == nil {
 		pts, f.homing = append(pts, route...), true
 	} else {
 		pts = append(pts, offsetHeading(c, h+180, FuelDriveOffMeters))

@@ -80,6 +80,20 @@ func (f aircraftFrame) clear(a, b airport.LatLon) bool {
 // aircraft dropped (a vehicle road can run under a parked aircraft: LKPR N51,
 // LOWW F21) and a way round it wherever a leg crosses it. The ends stay.
 func roundRoute(route []airport.LatLon, pose GroundPose, prof MotionProfile) []airport.LatLon {
+	return roundRouteOn(nil, route, pose, prof)
+}
+
+// serviceWay is a service vehicle's way route cleaned (cleanWay), round
+// the aircraft at pose off the other stands of l (roundRouteOn) and
+// without knots (nearWay).
+func serviceWay(l *airport.Layout, route []airport.LatLon, pose GroundPose, prof MotionProfile) []airport.LatLon {
+	return nearWay(roundRouteOn(l, cleanWay(route), pose, prof))
+}
+
+// roundRouteOn is roundRoute with its corners off the other stands of l
+// (nil: any), where a way round keeps off them (#1630: LROP 120A's tail
+// corner fell on stand 120B's parking point).
+func roundRouteOn(l *airport.Layout, route []airport.LatLon, pose GroundPose, prof MotionProfile) []airport.LatLon {
 	f := aircraftFrame{nose: NoseGear(pose.Position, pose.Heading, prof), hdg: pose.Heading, prof: prof}
 	kept := make([]airport.LatLon, 0, len(route))
 	for i, p := range route {
@@ -89,7 +103,29 @@ func roundRoute(route []airport.LatLon, pose GroundPose, prof MotionProfile) []a
 	}
 	out := kept[:1:1]
 	for i := 1; i < len(kept); i++ {
-		out = append(append(out, roundAircraft(kept[i-1], kept[i], pose, prof)...), kept[i])
+		// Weighing the turns onto and off the way round with the legs
+		// either side (#1630: the shortest went to a corner and straight
+		// back, a hairpin).
+		var prev, next *airport.LatLon
+		if len(out) >= 2 {
+			prev = &out[len(out)-2]
+		}
+		if i+1 < len(kept) {
+			next = &kept[i+1]
+		}
+		via := roundAircraftOn(l, prev, kept[i-1], kept[i], next, pose, prof)
+		out = append(append(out, via...), kept[i])
+		// Off a corner of the way round onto a point it turns back from
+		// (LKPR C19's stairs: round the front corner, on to the road's
+		// join ahead of the nose and back west along the road): straight
+		// on to the point after it where that is clear.
+		if len(via) > 0 && next != nil {
+			c := via[len(via)-1]
+			turn := math.Abs(headingDiff(localBearing(c, kept[i]), localBearing(kept[i], *next)))
+			if turn > wayTurnBackDeg && f.clear(c, *next) {
+				out = out[:len(out)-1]
+			}
+		}
 	}
 	return out
 }
@@ -98,9 +134,34 @@ func roundRoute(route []airport.LatLon, pose GroundPose, prof MotionProfile) []a
 // points to pass between them (none when the straight leg is clear), the
 // shortest of going by either wingtip, abeam the nose and the tail.
 func roundAircraft(a, b airport.LatLon, pose GroundPose, prof MotionProfile) []airport.LatLon {
+	return roundAircraftTurns(nil, a, b, nil, pose, prof)
+}
+
+// roundAircraftTurns is roundAircraft choosing by the way's length with
+// its turns priced (wayCost), from prev (nil: none) before a to next after
+// b.
+func roundAircraftTurns(prev *airport.LatLon, a, b airport.LatLon, next *airport.LatLon, pose GroundPose, prof MotionProfile) []airport.LatLon {
+	return roundAircraftOn(nil, prev, a, b, next, pose, prof)
+}
+
+// roundAircraftOn is roundAircraftTurns keeping its corners off the other
+// stands of l where some way round does (nil: any).
+func roundAircraftOn(l *airport.Layout, prev *airport.LatLon, a, b airport.LatLon, next *airport.LatLon, pose GroundPose, prof MotionProfile) []airport.LatLon {
+	if l != nil {
+		if via, ok := roundAircraftPick(l, prev, a, b, next, pose, prof); ok {
+			return via
+		}
+	}
+	via, _ := roundAircraftPick(nil, prev, a, b, next, pose, prof)
+	return via
+}
+
+// roundAircraftPick is the way round of roundAircraftOn, false when none
+// keeps off the aircraft (and the stands, l not nil).
+func roundAircraftPick(l *airport.Layout, prev *airport.LatLon, a, b airport.LatLon, next *airport.LatLon, pose GroundPose, prof MotionProfile) ([]airport.LatLon, bool) {
 	f := aircraftFrame{nose: NoseGear(pose.Position, pose.Heading, prof), hdg: pose.Heading, prof: prof}
 	if f.clear(a, b) {
-		return nil
+		return nil, true
 	}
 	wb, tail := prof.WheelbaseMeters, prof.TailMeters
 	if wb <= 0 {
@@ -112,20 +173,39 @@ func roundAircraft(a, b airport.LatLon, pose GroundPose, prof MotionProfile) []a
 	wide := prof.SpanMeters/2 + roundWideM
 	var best []airport.LatLon
 	bestD := math.Inf(1)
+	_, yb := f.to(b)
 	for _, side := range []float64{-1, 1} {
 		front := f.from(side*wide, roundAheadM)
 		back := f.from(side*wide, -(wb + tail + roundWideM))
-		for _, via := range [][]airport.LatLon{{front}, {back}, {back, front}, {front, back}} {
+		vias := [][]airport.LatLon{{front}, {back}, {back, front}, {front, back}}
+		// Abeam an end beside the aircraft (#1630, LROP 119K's stairs: in
+		// from behind to a door, round the front corner and back, a hairpin):
+		// along the side to level with it, then across.
+		// Across, round the nose or the tail, to the other side (LROP
+		// 107R's tug, backed off to the nose's right, its road on the
+		// left: under the fuselage).
+		front2, back2 := f.from(-side*wide, roundAheadM), f.from(-side*wide, -(wb+tail+roundWideM))
+		vias = append(vias, []airport.LatLon{front, front2}, []airport.LatLon{back, back2})
+		if abeam := f.from(side*wide, yb); yb > -(wb+tail+roundWideM) && yb < roundAheadM {
+			vias = append(vias, []airport.LatLon{back, abeam}, []airport.LatLon{front, abeam}, []airport.LatLon{abeam})
+			vias = append(vias, []airport.LatLon{front2, front, abeam}, []airport.LatLon{back2, back, abeam})
+		}
+		for _, via := range vias {
 			pts := append(append([]airport.LatLon{a}, via...), b)
-			d, ok := 0.0, true
+			ok := true
 			for i := 1; i < len(pts) && ok; i++ {
-				ok = f.clear(pts[i-1], pts[i])
-				d += localDist(pts[i-1], pts[i])
+				ok = f.clear(pts[i-1], pts[i]) && (l == nil || !l.VehicleAcrossStand(pose.Position, pts[i-1], pts[i], standOnWayMeters))
 			}
-			if ok && d < bestD {
+			if prev != nil {
+				pts = append([]airport.LatLon{*prev}, pts...)
+			}
+			if next != nil {
+				pts = append(pts, *next)
+			}
+			if d := wayCost(pts, noHeading); ok && d < bestD {
 				best, bestD = via, d
 			}
 		}
 	}
-	return best
+	return best, best != nil
 }
