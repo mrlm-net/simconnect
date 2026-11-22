@@ -3,7 +3,6 @@ package worldtest
 import (
 	"math"
 	"net/http"
-	"path/filepath"
 	"slices"
 	"strings"
 	"testing"
@@ -15,27 +14,35 @@ import (
 
 // TestWayOffLeavesPlayerAlone (#1640, #1096): with a departure holding
 // short on its way off, the AI plans its own arrival clear, and never
-// plans, re-stands or sends around a player's.
+// plans, re-stands or sends around a player's. At XBAK, written by the
+// test, wherever it runs; at TFFJ too where its data is present.
 func TestWayOffLeavesPlayerAlone(t *testing.T) {
 	if testing.Short() {
 		t.Skip("runs the World")
 	}
-	data := dataDir(t)
-	if m, _ := filepath.Glob(filepath.Join(data, "fields", "*", "TFFJ", "layout.json")); len(m) == 0 {
-		t.Skip("no TFFJ data")
+	checked := 0
+	run := func(t *testing.T, at meetField, data string) {
+		for _, c := range []struct {
+			name   string
+			player bool
+		}{{"ai", false}, {"player", true}} {
+			t.Run(c.name, func(t *testing.T) {
+				wayOffPlayerRun(t, at, data, c.player)
+				checked++
+			})
+		}
 	}
-	for _, c := range []struct {
-		name   string
-		player bool
-	}{{"ai", false}, {"player", true}} {
-		t.Run(c.name, func(t *testing.T) { wayOffPlayerRun(t, data, c.player) })
+	t.Run(meetXBAK.icao, func(t *testing.T) { run(t, meetXBAK, backtrackFieldDir(t)) })
+	t.Run(meetTFFJ.icao, func(t *testing.T) { run(t, meetTFFJ, hasTFFJ(t)) })
+	if checked == 0 {
+		t.Error("no arrival checked")
 	}
 }
 
-func wayOffPlayerRun(t *testing.T, data string, player bool) {
-	const title = "FSLTL_DHC6_WIA-Winair"
+func wayOffPlayerRun(t *testing.T, at meetField, data string, player bool) {
+	title := at.title
 	log := &lockedBuf{}
-	o := Options{DataDir: data, ICAO: "TFFJ", Manual: true, FrameRate: 10,
+	o := Options{DataDir: data, ICAO: at.icao, Manual: true, FrameRate: 10,
 		AircraftTitles: append(slices.Clone(DefaultAircraftTitles), title)}
 	o.World.Output = log
 	h, err := Start(o)
@@ -44,26 +51,28 @@ func wayOffPlayerRun(t *testing.T, data string, player bool) {
 	}
 	t.Cleanup(h.Close)
 	h.SetUser(func(u *Object) { u.Lat, u.AltFt, u.OnGround, u.GroundKts = u.Lat+1.5, 35000, false, 450 })
-	_, end, ok := h.Layout.RunwayEnd("10")
+	_, end, ok := h.Layout.RunwayEnd(at.runway)
 	if !ok {
-		t.Fatal("no runway 10 at TFFJ")
+		t.Fatalf("no runway %s at %s", at.runway, at.icao)
 	}
 	wx := nav.StaticWeather(math.Mod(end.Heading+360, 360), 5, 9999, 100, 25, 1013)
 	h.World.SetWeather(&wx)
-	h.World.UseRunway("TFFJ", "10")
+	h.World.UseRunway(at.icao, at.runway)
 	h.Advance(2 * time.Second)
-	stand := -1
-	for i, p := range h.Layout.Parking {
-		if p.Label() == "4P" {
-			stand = i
+	stand := at.standFor("departure")
+	if !at.built {
+		for i, p := range h.Layout.Parking {
+			if p.Label() == "4P" {
+				stand = i
+			}
 		}
 	}
 	if stand < 0 {
-		t.Fatal("no stand 4P at TFFJ")
+		t.Fatalf("no stand for the departure at %s", at.icao)
 	}
 	spawn := func(r world.SpawnRequest) {
 		t.Helper()
-		r.ICAO, r.Runway, r.Model = "TFFJ", "10", title
+		r.ICAO, r.Runway, r.Model = at.icao, at.runway, title
 		if _, err := h.World.Do(http.MethodPost, "/api/control", r); err != nil {
 			t.Fatalf("%s: %v", r.Kind, err)
 		}
@@ -75,7 +84,7 @@ func wayOffPlayerRun(t *testing.T, data string, player bool) {
 	}) {
 		t.Fatal("the departure never held short")
 	}
-	spawn(world.SpawnRequest{Kind: "arrival", Tail: "MTA1", Stand: -1, InjectApproach: true, Gates: player})
+	spawn(world.SpawnRequest{Kind: "arrival", Tail: "MTA1", Stand: at.standFor("arrival"), InjectApproach: true, Gates: player})
 	was := ""
 	planned := h.Until(2*time.Minute, func() bool {
 		if v, ok := h.Aircraft("MTA1"); ok && was == "" {
@@ -83,6 +92,9 @@ func wayOffPlayerRun(t *testing.T, data string, player bool) {
 		}
 		return strings.Contains(log.String(), "way off the runway")
 	})
+	if was == "" {
+		t.Fatal("nothing checked: the arrival was never seen")
+	}
 	switch {
 	case !player && !planned:
 		t.Error("the AI's arrival was not planned clear of the departure")

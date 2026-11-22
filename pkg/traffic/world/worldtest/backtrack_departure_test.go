@@ -4,7 +4,6 @@ import (
 	"fmt"
 	"math"
 	"net/http"
-	"path/filepath"
 	"slices"
 	"strings"
 	"testing"
@@ -53,6 +52,8 @@ func noseToBody(x, y, mine, theirs float64, p traffic.MotionProfile) float64 {
 // taxis out along or holds short on. At whatever moment of the arrival the
 // departure appears it never stands nose to nose with one holding short,
 // keeps the clearance from its true nose on the way off, and neither jumps.
+// At XBAK, written by the test, wherever it runs (the two moments that
+// always meet there); at TFFJ too where its data is present.
 func TestBacktrackMeetsDeparture(t *testing.T) {
 	meetCases(t, false)
 }
@@ -62,16 +63,13 @@ func meetCases(t *testing.T, apron bool) {
 	if testing.Short() {
 		t.Skip("runs the World")
 	}
-	d := dataDir(t)
-	if m, _ := filepath.Glob(filepath.Join(d, "fields", "*", "TFFJ", "layout.json")); len(m) == 0 {
-		t.Skip("no TFFJ data")
-	}
-	cases := []struct {
+	type meetCase struct {
 		name  string
 		first string
 		until string
 		after time.Duration
-	}{
+	}
+	cases := []meetCase{
 		{"holdingShort", "departure", "holding short", 0},
 		{"taxiingOut", "departure", "taxiing", 0},
 		{"together", "arrival", "", 0},
@@ -81,15 +79,32 @@ func meetCases(t *testing.T, apron bool) {
 		{"rollingOut", "arrival", "rollout", 0},
 		{"vacating", "arrival", "vacating", 0},
 	}
-	for _, c := range cases {
-		t.Run(c.name, func(t *testing.T) { meetRun(t, d, c.first, c.until, c.after, apron) })
+	checked := 0
+	run := func(t *testing.T, at meetField, data string, cases []meetCase) {
+		for _, c := range cases {
+			t.Run(c.name, func(t *testing.T) {
+				meetRunAt(t, at, data, c.first, c.until, c.after, apron)
+				checked++
+			})
+		}
+	}
+	// The departure first: it holds short as the arrival comes off. Only
+	// those two, for the time the package may take on the Linux director.
+	t.Run(meetXBAK.icao, func(t *testing.T) { run(t, meetXBAK, backtrackFieldDir(t), cases[:2]) })
+	t.Run(meetTFFJ.icao, func(t *testing.T) { run(t, meetTFFJ, hasTFFJ(t), cases) })
+	if checked == 0 {
+		t.Error("no meeting checked")
 	}
 }
 
 func meetRun(t *testing.T, data, first, until string, after time.Duration, apron bool) {
-	const title = "FSLTL_DHC6_WIA-Winair"
+	meetRunAt(t, meetTFFJ, data, first, until, after, apron)
+}
+
+func meetRunAt(t *testing.T, at meetField, data, first, until string, after time.Duration, apron bool) {
+	title := at.title
 	log := &lockedBuf{}
-	o := Options{DataDir: data, ICAO: "TFFJ", Manual: true, FrameRate: 10,
+	o := Options{DataDir: data, ICAO: at.icao, Manual: true, FrameRate: 10,
 		AircraftTitles: append(slices.Clone(DefaultAircraftTitles), title)}
 	o.World.Output = log
 	h, err := Start(o)
@@ -98,19 +113,19 @@ func meetRun(t *testing.T, data, first, until string, after time.Duration, apron
 	}
 	t.Cleanup(h.Close)
 	h.SetUser(func(u *Object) { u.Lat, u.AltFt, u.OnGround, u.GroundKts = u.Lat+1.5, 35000, false, 450 })
-	_, end, ok := h.Layout.RunwayEnd("10")
+	_, end, ok := h.Layout.RunwayEnd(at.runway)
 	if !ok {
-		t.Fatal("no runway 10 at TFFJ")
+		t.Fatalf("no runway %s at %s", at.runway, at.icao)
 	}
 	wx := nav.StaticWeather(math.Mod(end.Heading+360, 360), 5, 9999, 100, 25, 1013)
 	h.World.SetWeather(&wx)
-	h.World.UseRunway("TFFJ", "10")
+	h.World.UseRunway(at.icao, at.runway)
 	h.Advance(2 * time.Second)
 	jumps := len(h.Sim.Jumps())
 	tails := map[string]string{"arrival": "MTA1", "departure": "MTD1"}
 	spawn := func(kind string) {
 		t.Helper()
-		r := world.SpawnRequest{Kind: kind, ICAO: "TFFJ", Tail: tails[kind], Runway: "10", Stand: -1, Model: title, InjectApproach: kind == "arrival"}
+		r := world.SpawnRequest{Kind: kind, ICAO: at.icao, Tail: tails[kind], Runway: at.runway, Stand: at.standFor(kind), Model: title, InjectApproach: kind == "arrival"}
 		if _, err := h.World.Do(http.MethodPost, "/api/control", r); err != nil {
 			t.Fatalf("%s: %v", kind, err)
 		}
@@ -126,6 +141,9 @@ func meetRun(t *testing.T, data, first, until string, after time.Duration, apron
 	var states [2][]string
 	var lastAt [2][2]float64
 	var out, in bool
+	// What a built field's case is there for: the arrival seen coming back
+	// along the runway, the departure holding short as it comes off.
+	var backtracked, met bool
 	closest, opposed, longest := math.Inf(1), time.Time{}, time.Duration(0)
 	longestAt := ""
 	var holdLongest time.Duration
@@ -160,6 +178,16 @@ func meetRun(t *testing.T, data, first, until string, after time.Duration, apron
 			}
 			if v.OnGround && v.ObjectID != 0 {
 				on[i], hdg[i], lastAt[i] = true, v.Heading, [2]float64{v.Position.Lat, v.Position.Lon}
+			}
+		}
+		if on[0] {
+			a, _ := h.Aircraft(tails["arrival"])
+			if slices.Contains(meetWayOffStates, a.State) {
+				backtracked = backtracked || math.Abs(math.Remainder(hdg[0]-end.Heading, 360)) >= meetHeadOnDeg
+				if on[1] {
+					b, _ := h.Aircraft(tails["departure"])
+					met = met || backtracked && b.State == "holding short"
+				}
 			}
 		}
 		if on[0] && on[1] {
@@ -224,6 +252,9 @@ func meetRun(t *testing.T, data, first, until string, after time.Duration, apron
 	}
 	if holdLongest > meetStandoffFor {
 		t.Errorf("nose to nose with the departure holding short for %v", holdLongest)
+	}
+	if at.built && (!spawned || !backtracked || !met) {
+		t.Errorf("nothing checked: both spawned %v, backtracked %v, departure holding short as the arrival came off %v", spawned, backtracked, met)
 	}
 	t.Logf("true nose to body %.2f m (%s); on the way off %.2f m (%s)", nearest, nearestAt, wayOffGap, wayOffAt)
 	if least := traffic.TrafficGapMeters - traffic.TrafficOverrunMeters; wayOffGap < least {
