@@ -55,6 +55,12 @@ const (
 )
 
 func exitTurnRun(t *testing.T, d, icao, rwy, model string, exit *int) {
+	exitTurnRunWith(t, d, icao, rwy, model, exit, "")
+}
+
+// exitTurnRunWith is exitTurnRun with the arrival declaring an emergency
+// at level (mayday, pan) on the approach when level is not empty (#1631).
+func exitTurnRunWith(t *testing.T, d, icao, rwy, model string, exit *int, level string) {
 	titles := append(slices.Clone(DefaultAircraftTitles), "FSLTL_FAIB_B77W_UAE-Emirates")
 	o := Options{DataDir: d, ICAO: icao, Manual: true, FrameRate: 20, AircraftTitles: titles}
 	if testing.Verbose() {
@@ -77,6 +83,12 @@ func exitTurnRun(t *testing.T, d, icao, rwy, model string, exit *int) {
 	if _, err := h.World.Do(http.MethodPost, "/api/control", world.SpawnRequest{Kind: "arrival", ICAO: icao, Tail: "TEX1", Runway: rwy, Stand: -1, Model: model, Exit: exit, InjectApproach: true}); err != nil {
 		t.Fatal(err)
 	}
+	if level != "" {
+		h.Advance(5 * time.Second)
+		if _, err := h.World.Do(http.MethodPost, "/api/emergency", map[string]any{"tail": "TEX1", "kind": "engine-failure", "level": level}); err != nil {
+			t.Fatal(err)
+		}
+	}
 	if !h.Until(15*time.Minute, func() bool { v, _ := h.Aircraft("TEX1"); return v.State == "rollout" }) {
 		t.Fatal("TEX1 never landed")
 	}
@@ -89,7 +101,7 @@ func exitTurnRun(t *testing.T, d, icao, rwy, model string, exit *int) {
 	var prev *sample
 	entered, worstLat, worstKts, worstRate := -1.0, 0.0, 0.0, 0.0
 	worstAt, worstState, worstDev := 0.0, "", 0.0
-	h.Until(5*time.Minute, func() bool {
+	h.Until(8*time.Minute, func() bool { // a roll to the end and back included (#1631)
 		v, _ := h.Aircraft("TEX1")
 		if v.State != "rollout" && v.State != "vacating" {
 			return true

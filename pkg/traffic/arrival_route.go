@@ -268,24 +268,42 @@ func bestExit(g *airport.Graph, runwayEnd string, parking int, opts airport.Rout
 // airliner's firm braking, not its limit.
 const firmExitDecel = 2.5
 
+// firmRollout is the distance from the landing threshold to where the
+// aircraft has slowed to exitKts braking firmly (#1631): from its own
+// touchdown speed, the airliner's planned one at least, at its own
+// BrakeDecel (firmExitDecel when not given).
+func (x exitReach) firmRollout(exitKts float64) float64 {
+	td, _ := x.speeds()
+	td = math.Max(td, x.touchdownKts)
+	decel := firmExitDecel
+	if x.decel > 0 {
+		decel = x.decel
+	}
+	at := exitTouchdownMeters
+	if x.light() {
+		at = exitLightTouchdownMeters
+	}
+	v0, v1 := td*knot, math.Min(exitKts, td)*knot
+	return at + (v0*v0-v1*v1)/(2*decel)
+}
+
+// makes reports whether the aircraft makes exit e off runwayEnd at its
+// turn-off speed braking firmly (firmRollout).
+func (x exitReach) makes(g *airport.Graph, runwayEnd string, e airport.RunwayExit) bool {
+	return landingAlong(g, runwayEnd, e) >= x.firmRollout(ExitSpeed(e))
+}
+
 // firmExit is bestExit's next try when no exit past the rollout reaches
 // the stand: the cheapest exit that does, reached braking at
 // firmExitDecel (the planned rollout's braking otherwise); false none.
 func firmExit(g *airport.Graph, runwayEnd string, exits []airport.RunwayExit, parking int, opts airport.RouteOptions, reach exitReach) (airport.RunwayExit, *airport.Route, bool) {
-	td, decel := reach.speeds()
-	decel = math.Max(decel, firmExitDecel)
-	at := exitTouchdownMeters
-	if reach.light() {
-		at = exitLightTouchdownMeters
-	}
 	var (
 		best      airport.RunwayExit
 		bestRoute *airport.Route
 		bestCost  = math.Inf(1)
 	)
 	for _, e := range exits {
-		v0, v1 := td*knot, math.Min(ExitSpeed(e), td)*knot
-		if landingAlong(g, runwayEnd, e) < at+(v0*v0-v1*v1)/(2*decel) {
+		if !reach.makes(g, runwayEnd, e) {
 			continue
 		}
 		r, err := g.RouteFromRunway(e, parking, opts)
@@ -502,6 +520,13 @@ type ArrivalPlan struct {
 	// stays taken until it is off it, at Route point ClearIndex.
 	Backtrack  bool
 	ClearIndex int
+	// EndTurn: no exit ahead is in reach of the touchdown (#1631), so it
+	// rolls past Exit to the runway's far end, turns round there and comes
+	// back to leave by Exit, an exit of the opposite direction (Backtrack,
+	// arrival_endturn.go); Exit.Along is from End's threshold. EndTurnMeters
+	// is its way on the runway past Exit and back.
+	EndTurn       bool
+	EndTurnMeters float64
 }
 
 // ClearAt is the Route point where the aircraft is off the landing
@@ -519,6 +544,9 @@ func (p *ArrivalPlan) ClearAt() int {
 func (p *ArrivalPlan) BacktrackMeters() float64 {
 	if !p.Backtrack || p.Route == nil {
 		return 0
+	}
+	if p.EndTurn {
+		return p.EndTurnMeters
 	}
 	m := 0.0
 	for i := len(p.Exit.Path); i <= p.ClearAt() && i < len(p.Route.Points); i++ {
@@ -568,14 +596,28 @@ func PlanArrival(g *airport.Graph, runwayEnd string, parking int, o ArrivalOptio
 		x     airport.RunwayExit
 		route *airport.Route
 		err   error
+		turnM = -1.0 // the end turn's runway meters (endTurnPlan); -1 none
 	)
 	if exit != nil {
 		x = *exit
 		if route, err = g.RouteFromRunway(x, parking, opts); err != nil {
 			return nil, err
 		}
-	} else if x, route, err = bestExit(g, runwayEnd, parking, opts, exitReach{o.TouchdownKts, o.BrakeDecel}); err != nil {
-		return nil, err
+	} else {
+		// Never an exit the type only makes too fast (#1631: the last one
+		// ahead, mid-length, taken at 100 kt): out of its reach, the roll
+		// to the end and back to an exit, planned from the start.
+		reach := exitReach{o.TouchdownKts, o.BrakeDecel}
+		x, route, err = bestExit(g, runwayEnd, parking, opts, reach)
+		if err != nil || !reach.makes(g, runwayEnd, x) {
+			if tx, tr, m, ok := endTurnPlan(g, runwayEnd, parking, o, reach); ok {
+				x, route, err, turnM = tx, tr, nil, m
+				x.Along = rwy.Length - tx.Along
+			}
+		}
+		if err != nil {
+			return nil, err
+		}
 	}
 	elev := convert.MetersToFeet(g.Layout.Altitude)
 	ground := groundAlt{feet: elev, agl: groundAGL}
@@ -608,6 +650,12 @@ func PlanArrival(g *airport.Graph, runwayEnd string, parking int, o ArrivalOptio
 	exitKts := ExitSpeed(x)
 	vx, v0 := exitKts*knot, TouchdownSpeedKts*knot
 	toExit := x.Along - end.DisplacedM // Along is from the pavement end, s from t
+	if turnM >= 0 {
+		// Rolling to the end: slowing to the turn round there.
+		r, a0 := endTurnRadius(rwy)
+		toExit, exitKts = rwy.Length-end.DisplacedM-(a0+2*r), TurnSpeedKts
+		vx = exitKts * knot
+	}
 	for s := TouchdownMeters; s < toExit; s += RolloutSpacingMeters {
 		lat, lon := calc.DisplaceByHeading(t.Lat, t.Lon, end.Heading, s)
 		v := math.Min(v0, math.Sqrt(vx*vx+2*RolloutDecel*(toExit-s))) / knot
@@ -623,6 +671,10 @@ func PlanArrival(g *airport.Graph, runwayEnd string, parking int, o ArrivalOptio
 	if clear, ok := backtrackClear(g, route, x, rwy); ok {
 		p.Backtrack, p.ClearIndex = true, clear
 		vacx.Path, vacx.HoldShort = route.Nodes[:clear+1], backtrackHold(g, route, clear, rwy)
+		maxKts = math.Min(maxKts, BacktrackKts)
+	}
+	if turnM >= 0 {
+		p.Backtrack, p.ClearIndex, p.EndTurn, p.EndTurnMeters = true, len(x.Path)-1, true, turnM
 		maxKts = math.Min(maxKts, BacktrackKts)
 	}
 	p.VacateIndex, p.VacateBackMeters = vacateShort(g, route, vacx, vacateIndex(g, route, vacx, rwy))
