@@ -7,6 +7,12 @@ This project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 ---
 
+## [0.188.14] - 2026-11-22
+
+### Fixed
+
+- On a manual clock the time stands still until the World has done a tick's work, not only taken the tick: a test stepping it no longer moves the clock on between an overflight's pose and its creation (BAW1760 created 50.3 m, one frame at 490 kt, off its track). A ticker opts in with the new `traffic.Ticker.Track`; on the wall clock nothing changes (#1645).
+
 ## [0.188.13] - 2026-11-22
 
 ### Added

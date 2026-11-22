@@ -29,10 +29,24 @@ type TimeSource interface {
 type Ticker struct {
 	C    <-chan time.Time
 	stop func()
+	// track: Track's, nil on the wall clock.
+	track func() (done func())
 }
 
 // Stop stops the ticker.
 func (t *Ticker) Stop() { t.stop() }
+
+// Track says the ticker's user calls done once it has done each tick's
+// work: a ManualClock then counts a tick as waiting until done, not only
+// until taken (TicksWaiting), so the time stands still through that work.
+// The work must not wait for the time to move. Call it before the first
+// tick is taken; on the wall clock done does nothing.
+func (t *Ticker) Track() (done func()) {
+	if t.track == nil {
+		return func() {}
+	}
+	return t.track()
+}
 
 // Stopper stops a timer (AfterFunc); false when it had fired or stopped.
 type Stopper interface{ Stop() bool }
@@ -119,6 +133,10 @@ type manualTimer struct {
 	ch     chan time.Time
 	f      func()
 	dead   bool
+	// tracked (Ticker.Track): undone ticks were sent and their work is
+	// not done yet, taken or not.
+	tracked bool
+	undone  int
 }
 
 // NewManualClock returns a clock standing at start.
@@ -157,11 +175,24 @@ func (c *ManualClock) NewTicker(d time.Duration) *Ticker {
 	ch := make(chan time.Time, 1)
 	t := &manualTimer{at: c.now.Add(d), period: d, ch: ch}
 	c.add(t)
-	return &Ticker{C: ch, stop: func() {
+	stop := func() {
 		c.mu.Lock()
 		t.dead = true
 		c.mu.Unlock()
-	}}
+	}
+	track := func() func() {
+		c.mu.Lock()
+		t.tracked, t.undone = true, len(ch)
+		c.mu.Unlock()
+		return func() {
+			c.mu.Lock()
+			if t.undone > 0 {
+				t.undone--
+			}
+			c.mu.Unlock()
+		}
+	}
+	return &Ticker{C: ch, stop: stop, track: track}
 }
 
 func (c *ManualClock) AfterFunc(d time.Duration, f func()) Stopper {
@@ -185,16 +216,18 @@ func (s manualStop) Stop() bool {
 	return was
 }
 
-// TicksWaiting is how many running tickers hold a tick not taken yet. A
-// test stepping the clock waits for 0 before it moves on: a tick still
-// waiting when the next one is due is dropped (as time.Ticker), and a
-// once-a-second ticker that misses ticks runs its work seconds late.
+// TicksWaiting is how many running tickers hold a tick not taken yet, or
+// (Ticker.Track) one taken whose work is not done yet. A test stepping the
+// clock waits for 0 before it moves on: a tick still waiting when the next
+// one is due is dropped (as time.Ticker), and a once-a-second ticker that
+// misses ticks runs its work seconds late; moved on during a tick's work,
+// what it read of the time at its start and at its end lay a frame apart.
 func (c *ManualClock) TicksWaiting() int {
 	c.mu.Lock()
 	defer c.mu.Unlock()
 	n := 0
 	for _, t := range c.timers {
-		if !t.dead && t.period > 0 && len(t.ch) > 0 {
+		if !t.dead && t.period > 0 && (len(t.ch) > 0 || t.tracked && t.undone > 0) {
 			n++
 		}
 	}
@@ -234,6 +267,7 @@ func (c *ManualClock) Advance(d time.Duration) {
 		case t.period > 0:
 			select {
 			case t.ch <- t.at:
+				t.undone++
 			default:
 			}
 			t.at = t.at.Add(t.period)
