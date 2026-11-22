@@ -66,9 +66,37 @@ func rescueAxis(end airport.RunwayEnd, p airport.LatLon) (along, cross float64) 
 // the expected stop first; each faces the runway. A layout without
 // holding positions out of the strip: beside the runway, past the strip.
 func RescueStandby(l *airport.Layout, runwayEnd string, n int) []GroundPose {
+	return RescueStandbyClear(l, runwayEnd, n, nil, 0)
+}
+
+// RescueStandbyClear is RescueStandby keeping every point off the ways the
+// arrival may take off the runway (RescueVacateWays, #1632): more than its
+// half-span (0: DefaultHalfSpanMeters) and VehicleClearMeters from them.
+// Aircraft do not see the vehicles: an arrival vacating by the exit the
+// fire trucks waited on drove through both. A holding position on them is
+// left out (the others' are taken); a point beside the runway moves along
+// it until clear.
+func RescueStandbyClear(l *airport.Layout, runwayEnd string, n int, keepOff [][]airport.LatLon, half float64) []GroundPose {
 	rwy, end, ok := l.RunwayEnd(runwayEnd)
 	if !ok || n <= 0 {
 		return nil
+	}
+	if half <= 0 {
+		half = DefaultHalfSpanMeters
+	}
+	clearM := half + VehicleClearMeters + vehicleHalfMeters
+	off := func(p airport.LatLon) bool {
+		for _, w := range keepOff {
+			if len(w) == 1 && localDist(p, w[0]) <= clearM {
+				return false
+			}
+			for i := 1; i < len(w); i++ {
+				if pointSegDist(p, w[i-1], w[i]) <= clearM {
+					return false
+				}
+			}
+		}
+		return true
 	}
 	shares := []float64{1.0 / 3, 0.5, 2.0 / 3}[:min(n, 3)]
 	if n > 3 {
@@ -79,12 +107,19 @@ func RescueStandby(l *airport.Layout, runwayEnd string, n int) []GroundPose {
 	}
 	var given []rescueSpot
 	for _, p := range l.RescueStandbyFor(runwayEnd) {
+		if !off(p.Position) {
+			continue
+		}
 		along, _ := rescueAxis(end, p.Position)
 		given = append(given, rescueSpot{p.Position, along, p.Heading})
 	}
 	var derived []rescueSpot
 	if len(given) < n {
-		derived = rescueHolds(l, rwy, end, given)
+		for _, s := range rescueHolds(l, rwy, end, given) {
+			if off(s.at) {
+				derived = append(derived, s)
+			}
+		}
 	}
 	used := make([]bool, len(given)+len(derived))
 	pool := append(append([]rescueSpot(nil), given...), derived...)
@@ -115,9 +150,31 @@ func RescueStandby(l *airport.Layout, runwayEnd string, n int) []GroundPose {
 	side := rescueExitSide(l, runwayEnd)
 	aside := math.Max(rwy.Width/2+RescueStandbyAsideMeters, RescueStripHalfMeters(rwy.Width)+RescueSpacingMeters)
 	for _, share := range left {
-		p := offsetHeading(end.Threshold, end.Heading, rwy.Length*share)
-		p = offsetHeading(p, end.Heading+side, aside)
-		chosen = append(chosen, rescueSpot{p, rwy.Length * share, math.Mod(end.Heading-side+360, 360)})
+		at := func(along float64) airport.LatLon {
+			return offsetHeading(offsetHeading(end.Threshold, end.Heading, along), end.Heading+side, aside)
+		}
+		along := rwy.Length * share
+		// Off the arrival's ways and the others: along the runway, nearest
+		// first, a vehicle's spacing at a time.
+		free := func(a float64) bool {
+			if a < 0 || a > rwy.Length || !off(at(a)) {
+				return false
+			}
+			for _, c := range chosen {
+				if localDist(c.at, at(a)) < RescueSpacingMeters {
+					return false
+				}
+			}
+			return true
+		}
+		for k := 1; !free(along) && k*int(RescueSpacingMeters) <= int(rwy.Length); k++ {
+			if a := rwy.Length*share + float64(k)*RescueSpacingMeters; free(a) {
+				along = a
+			} else if a := rwy.Length*share - float64(k)*RescueSpacingMeters; free(a) {
+				along = a
+			}
+		}
+		chosen = append(chosen, rescueSpot{at(along), along, math.Mod(end.Heading-side+360, 360)})
 	}
 	stop := rwy.Length * RescueExpectedStopShare
 	sort.SliceStable(chosen, func(i, j int) bool {
@@ -129,6 +186,51 @@ func RescueStandby(l *airport.Layout, runwayEnd string, n int) []GroundPose {
 	}
 	return out
 }
+
+// RescueVacateWays are the ways an arrival on plan may take off the
+// runway (#1632): its planned exit and every later one it could roll on to
+// (exitInReach), each from the runway centreline out along its taxiway
+// past its holding positions, and its taxi route on from the exit for
+// rescueVacateLookMeters. nil without a plan.
+func RescueVacateWays(g *airport.Graph, plan *ArrivalPlan) [][]airport.LatLon {
+	if g == nil || plan == nil {
+		return nil
+	}
+	var out [][]airport.LatLon
+	if exits, err := g.RunwayExits(plan.End.Name); err == nil {
+		for _, x := range exits {
+			if x.Along < plan.Exit.Along-1 {
+				continue
+			}
+			var line []airport.LatLon
+			for _, n := range x.Path {
+				line = append(line, g.Nodes[n].Position)
+			}
+			out = append(out, append(line, rescueWalkOut(g, plan.End, x.Node, 0)...))
+			hold := x.HoldShort
+			if hold < 0 {
+				hold = x.ILSHoldShort
+			}
+			if hold >= 0 {
+				out = append(out, rescueWalkOut(g, plan.End, hold, 0))
+			}
+		}
+	}
+	if plan.Route != nil && len(plan.Route.Points) > 0 {
+		pts := plan.Route.Points
+		line, run := []airport.LatLon{pts[0]}, 0.0
+		for i := 1; i < len(pts) && run <= rescueVacateLookMeters; i++ {
+			run += localDist(pts[i-1], pts[i])
+			line = append(line, pts[i])
+		}
+		out = append(out, line)
+	}
+	return out
+}
+
+// rescueVacateLookMeters: standby keeps off this much of an arrival's taxi
+// route on from its exit.
+const rescueVacateLookMeters = 500.0
 
 // RescueStandbyWay is the way a rescue vehicle drives from depot to its
 // standby point at, by the roads and taxiways: ending at the point where

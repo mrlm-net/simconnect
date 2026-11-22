@@ -7,6 +7,12 @@ This project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 ---
 
+## [0.188.11] - 2026-11-22
+
+### Fixed
+
+- Rescue standby keeps off the arrival's way off the runway (#1632): `traffic.RescueStandbyClear` leaves out standby points (the layout's own and the holding positions) within the arrival's half-span and `VehicleClearMeters` of the ways `traffic.RescueVacateWays` gives for its plan: its planned exit and every later one it could roll on to, out along each taxiway past its holding positions, and its taxi route on for 500 m. Points beside the runway move along it until clear. The crew is sent with the plan of the arrival (`RescueStandby` is unchanged without one): on a runway with one exit the fire trucks no longer wait on the exit's centreline, where the arrival drove through both (#1632)
+
 ## [0.188.10] - 2026-11-22
 
 ### Fixed
