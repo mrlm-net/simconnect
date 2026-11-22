@@ -226,6 +226,11 @@ type GroundMover struct {
 	refSpeed   float64 // the reference point's speed over the nose gear's (place)
 	pose       GroundPose
 
+	// runOnTo: how far along the path it may run on braking for a traffic
+	// stop too near to brake onto at trafficStopDecel (the body ahead, as
+	// groundDrive found it); 0 none, it stops on the point.
+	runOnTo float64
+
 	placed   bool
 	placedAt float64 // nose distance of the current pose
 }
@@ -294,6 +299,7 @@ func (m *GroundMover) HoldAt(d float64) { m.hold = math.Max(m.s, math.Min(d, m.p
 // moves on. ClearTrafficStop lifts it.
 func (m *GroundMover) SetTrafficStop(d float64) {
 	m.trafficAt, m.hasTraffic, m.giveWay = d, true, false
+	m.runOnTo = 0
 }
 
 // SetGiveWayStop is SetTrafficStop short of a crossing or merging route
@@ -303,6 +309,7 @@ func (m *GroundMover) SetTrafficStop(d float64) {
 // (live, DLH1233 behind CSA999 at LKPR looked at the edge).
 func (m *GroundMover) SetGiveWayStop(d float64) {
 	m.trafficAt, m.hasTraffic, m.giveWay = d, true, true
+	m.runOnTo = 0
 }
 
 // ClearTrafficStop lifts the traffic stop.
@@ -356,6 +363,18 @@ func (m *GroundMover) step(dt float64) {
 		// push it gave way to; CSA1682 94° and 23 m).
 		limit = math.Max(m.s, math.Min(m.hold, m.trafficAt+TrafficOverrunMeters))
 	}
+	// Found too near to stop by there: it brakes as hard as a taxiing crew
+	// would and rolls on as far as that takes, short of the body ahead,
+	// rather than stand from 10 kt in one frame (#1640, TFFJ's backtrack).
+	if traffic && m.runOnTo > 0 {
+		limit = math.Max(m.s, math.Min(limit, m.runOnTo))
+	}
+	short := false
+	if traffic && m.runOnTo > 0 && m.v > 0 {
+		if to := math.Min(math.Min(m.hold, m.runOnTo), m.s+m.v*m.v/(2*trafficStopDecel)); to > limit {
+			limit, short = to, true
+		}
+	}
 	// Look ahead by what the response lag covers (at least
 	// TurnLookaheadMeters): chasing the plan at the aircraft's own position
 	// runs about SpeedResponseSeconds late on every slow-down.
@@ -407,12 +426,18 @@ func (m *GroundMover) step(dt float64) {
 	firm, jerk := 1.5*p.Decel, p.Jerk
 	if traffic && m.v*m.v > 2*p.Decel*math.Max(rem, 0.01) {
 		firm, jerk = TrafficBrakeFactor*p.Decel, TrafficJerkFactor*p.Jerk // closer than a normal stop
+		if m.runOnTo > 0 {
+			firm = math.Min(firm, trafficStopDecel) // more only as needed, below
+		}
 		// Last resort: brake exactly onto the end of the gap, hard but
 		// smoothly, rather than meet it at speed.
 		if r := limit - m.s; r > 0.05 {
 			need := m.v * m.v / (2 * r)
 			want = math.Min(want, -need)
 			firm = math.Max(firm, need)
+		}
+		if short {
+			jerk = math.Max(jerk, trafficStopJerk)
 		}
 	}
 	want = math.Max(-firm, math.Min(p.Accel, want))
@@ -518,6 +543,10 @@ const (
 	finalCreep = 0.05
 	// minRollMS (m/s): slower than this, braking onto its stop, it stands.
 	minRollMS = 0.003
+	// trafficStopDecel, trafficStopJerk (m/s², m/s³): the brakes for traffic
+	// found too near to stop short of (GroundMover.runOnTo).
+	trafficStopDecel = 1.5
+	trafficStopJerk  = 6.0
 )
 
 // localDist is the flat-earth distance in metres; exact enough on an airport.

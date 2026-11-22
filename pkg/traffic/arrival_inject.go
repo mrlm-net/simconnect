@@ -234,6 +234,12 @@ func (c *ArrivalController) takeover(m arrivalMonitor, pos airport.LatLon, onRun
 		path.LimitRange(fast, path.Length(), prof.CruiseKts, ro.BrakeDecel)
 		moverProf.Decel, moverProf.Jerk = ro.BrakeDecel, RolloutJerk
 		c.clearDist, c.exitFastTo = clear, fast
+		c.backtracking, c.backFrom = false, exitAt
+		if len(turn) > 0 {
+			c.backtracking, c.backFrom = true, turnTo
+		} else if c.plan.Backtrack && clear > exitAt {
+			c.backtracking = true
+		}
 	} else {
 		path.LimitRange(0, path.Length(), prof.CruiseKts, prof.Decel)
 	}
@@ -340,6 +346,18 @@ func (c *ArrivalController) frameDetail(pose GroundPose) {
 func (c *ArrivalController) onInjectedFrame() {
 	// Off the runway the arrival follows the traffic ahead (#334).
 	c.followTraffic = c.state == ArrivalVacating || c.state == ArrivalTaxiing || c.state == ArrivalParking
+	c.stopFloor = 0
+	if c.backtracking && c.mover.Pose().Distance >= c.backFrom && (c.state == ArrivalRollout || c.state == ArrivalVacating) {
+		// Backtracking at taxi speed: brakes as a taxiing crew does, and
+		// sees what is ahead off the runway before it is off it, rather
+		// than at that frame (#1640: 10 kt to 0 in one write).
+		p := c.moverProfile()
+		p.Decel, p.Jerk = backtrackDecel, RolloutJerk
+		c.mover.SetProfile(p)
+		if c.state == ArrivalRollout {
+			c.followTraffic, c.stopFloor = true, c.clearDist+backtrackClearM
+		}
+	}
 	pose := c.step()
 	c.updateFollowMe(pose)
 	c.frameDetail(pose)
@@ -372,7 +390,7 @@ func (c *ArrivalController) onInjectedFrame() {
 	case ArrivalRollout:
 		// Clear of the runway: taxi behaviour, landing lights and strobes off.
 		if pose.Distance >= c.clearDist {
-			if c.exitFastTo <= c.clearDist {
+			if c.exitFastTo <= c.clearDist && !c.backtracking {
 				c.mover.SetProfile(c.moverProfile())
 			}
 			// Clear of the runway: strobes and landing lights off, flaps and
@@ -404,6 +422,13 @@ func (c *ArrivalController) onInjectedFrame() {
 			}
 			c.clearAt = c.now().Add(c.dwell())
 			c.ignoreRunway = -1 // clear of the landing runway now
+			c.backtracking = false
+			c.mover.SetProfile(c.moverProfile())
+			if !c.rollThrough {
+				// Waiting, it stands where it stopped: short of the vacate
+				// stop for traffic, it crept on to it (#1640).
+				c.mover.HoldAt(pose.Distance)
+			}
 			c.setState(ArrivalAwaitingTaxi, nil)
 			if c.rollThrough {
 				c.startTaxi()
@@ -811,6 +836,13 @@ func (c *ArrivalController) ClearUpTo(node airport.NodeID) error {
 	}
 	return nil
 }
+
+// A backtrack's brakes (m/s²), and how far past the runway's edge traffic
+// ahead may stop it at the nearest (#1640).
+const (
+	backtrackDecel  = 1.0
+	backtrackClearM = 1.0
+)
 
 // reverseIdle takes the reverse thrust back to idle below ReverseIdleKts.
 func (c *ArrivalController) reverseIdle(kts float64) {

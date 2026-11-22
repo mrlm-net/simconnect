@@ -58,6 +58,21 @@ func NewGroundPicture() *GroundPicture {
 	return &GroundPicture{aircraft: map[uint32]groundEntry{}}
 }
 
+// axisPoints is how many points sample the body along its axis (axisAt):
+// every trafficBodyStep from the tail and always, last, the nose tip
+// (#1640: stepped from the tail alone up to 5 m of nose were not seen).
+func (e groundEntry) axisPoints() int {
+	return max(0, int(math.Ceil((e.nose+e.tail)/trafficBodyStep-0.001))) + 1
+}
+
+// axisAt is sample k along the axis, metres ahead of the reference point.
+func (e groundEntry) axisAt(k int) float64 {
+	if k == e.axisPoints()-1 {
+		return e.nose
+	}
+	return -e.tail + float64(k)*trafficBodyStep
+}
+
 // Report records aircraft id at its reference point pos, heading hdg (true
 // degrees), with the airframe of prof.
 func (p *GroundPicture) Report(id uint32, pos airport.LatLon, hdg float64, prof MotionProfile, now time.Time) {
@@ -214,7 +229,8 @@ func (p *GroundPicture) giveWayTo(id uint32, path *GroundPath, from, look, half 
 		if oh <= 0 {
 			oh = DefaultHalfSpanMeters
 		}
-		for d := -me.tail; d <= me.nose+0.01; d += trafficBodyStep {
+		for k := range me.axisPoints() {
+			d := me.axisAt(k)
 			q := offsetHeading(me.pos, me.hdg, d)
 			for _, c := range o.ahead {
 				if localDist(q, c) <= oh+PushClearMarginMeters {
@@ -276,7 +292,8 @@ func (p *GroundPicture) giveWayTo(id uint32, path *GroundPath, from, look, half 
 		// meet, the path rules below decide.
 		if first(o.e.ahead, mine, reach) < 0 && !(o.e.pushing && bodyInPush(o.e)) {
 			var body []airport.LatLon
-			for d := -o.e.tail; d <= o.e.nose+0.01; d += trafficBodyStep {
+			for k := range o.e.axisPoints() {
+				d := o.e.axisAt(k)
 				body = append(body, offsetHeading(o.e.pos, o.e.hdg, d))
 			}
 			if bodyTo := first(mine, body, half+GiveWayMarginMeters+TailplaneShare*o.e.half); bodyTo >= 0 {
@@ -409,7 +426,8 @@ func (p *GroundPicture) corridorBlocked(id uint32, corridor []airport.LatLon, ha
 		if o.e.parked && len(o.e.ahead) == 0 && !o.e.pushing {
 			reach = half
 		}
-		for d := -o.e.tail; d <= o.e.nose+0.01; d += trafficBodyStep {
+		for k := range o.e.axisPoints() {
+			d := o.e.axisAt(k)
 			if near(offsetHeading(o.e.pos, o.e.hdg, d), reach) {
 				return o.id, true
 			}
@@ -608,12 +626,12 @@ func (p *GroundPicture) blocking(id uint32, path *GroundPath, from, look, half f
 		}
 		// Points along the other aircraft's axis, nose to tail, then along
 		// its wings, root to tip and swept back (wingSweep).
-		axis := int(math.Floor((o.nose+o.tail)/trafficBodyStep+0.01)) + 1
+		axis := o.axisPoints()
 		steps := int(math.Ceil(wing / trafficBodyStep))
 		for k := 0; k < axis+2*steps+2; k++ {
 			var qx, qy float64
 			if k < axis {
-				d := -o.tail + float64(k)*trafficBodyStep
+				d := o.axisAt(k)
 				qx, qy = ox+hs*d, oy+hc*d
 			} else if k >= axis+2*steps { // the tailplane tips
 				w := tailplaneFactor * wing

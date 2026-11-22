@@ -50,6 +50,7 @@ func (cc *controlCenter) keepClear() {
 		}
 	}
 	cc.keepClearOfOncoming(items)
+	cc.keepWayOffClear(items)
 	if key.String() == cc.keepClearKey {
 		return
 	}

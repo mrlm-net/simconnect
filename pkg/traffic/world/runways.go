@@ -287,6 +287,9 @@ func (t *towers) tick(now time.Time) {
 			if p := it.arr.Plan(); p != nil && p.Backtrack {
 				u.Backtracks = true // back along the runway to its way off (#1563)
 			}
+			// No way off clear of departures (wayoff.go): the departure goes
+			// first (#1640). Never a player's arrival (#1096).
+			u.WayOffBlocked = u.Phase == traffic.RunwayFinal && !it.gates.Load() && it.wayOffBlocked.Load()
 		}
 		if c, ok := crossUseOf(it.ICAO, u, v.Position, it.dep != nil, t.givenTakeoff(v.Tail)); ok {
 			cross = append(cross, c)
