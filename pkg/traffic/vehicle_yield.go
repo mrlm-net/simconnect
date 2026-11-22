@@ -128,19 +128,16 @@ func (p *GroundPicture) VehicleConflict(own, self uint32, ahead []airport.LatLon
 		if oh <= 0 {
 			oh = DefaultHalfSpanMeters
 		}
-		best := math.Inf(1)
-		for b := -e.tail; b <= e.nose+0.01; b += vehicleBodyStep {
-			best = math.Min(best, localDist(q, offsetHeading(e.pos, e.hdg, b))-vehicleFuselageHalfMeters)
-		}
+		var best float64
+		// From the tail to the true nose, each out to its true tip:
+		// stepped, up to a step of each was not there (#1630).
+		tail, nose := offsetHeading(e.pos, e.hdg, -e.tail), offsetHeading(e.pos, e.hdg, e.nose)
+		best = pointSegDist(q, tail, nose) - vehicleFuselageHalfMeters
+		back := offsetHeading(e.pos, e.hdg, -e.tail+tailplaneInMeters)
 		for _, side := range []float64{-1, 1} {
-			for w := vehicleBodyStep; w <= oh+0.01; w += vehicleBodyStep {
-				root := offsetHeading(e.pos, e.hdg, -wingSweep*w)
-				best = math.Min(best, localDist(q, offsetHeading(root, e.hdg+90*side, w)))
-			}
-			back := offsetHeading(e.pos, e.hdg, -e.tail+tailplaneInMeters)
-			for w := vehicleBodyStep; w <= tailplaneFactor*oh+0.01; w += vehicleBodyStep {
-				best = math.Min(best, localDist(q, offsetHeading(back, e.hdg+90*side, w)))
-			}
+			wingTip := offsetHeading(offsetHeading(e.pos, e.hdg, -wingSweep*oh), e.hdg+90*side, oh)
+			best = math.Min(best, pointSegDist(q, e.pos, wingTip))
+			best = math.Min(best, pointSegDist(q, back, offsetHeading(back, e.hdg+90*side, tailplaneFactor*oh)))
 		}
 		return math.Max(0, best)
 	}
@@ -252,11 +249,10 @@ func (p *GroundPicture) VehicleConflict(own, self uint32, ahead []airport.LatLon
 // vehicleClosingMeters nearer than it is (a quarter of the way to the
 // point, nearer than that: under a swept wing it closes slowly) (#1629). The aircraft's footprint
 // is its fuselage (vehicleFuselageHalfMeters each side of its axis), wing
-// and tailplane, sampled every vehicleBodyStep metres.
+// and tailplane, each a line to its true end.
 const (
 	vehicleClosingMeters      = 1.0
 	vehicleFuselageHalfMeters = 2.0
-	vehicleBodyStep           = 2.0
 )
 
 // vehicleYield holds a vehicle's mover short of the first conflict ahead

@@ -191,7 +191,7 @@ func (b *SimObjectBus) inbound(spot GroundPose) (*GroundPath, airport.LatLon, bo
 	if !ok {
 		return nil, airport.LatLon{}, false
 	}
-	r, err := b.Layout.VehicleRoute(d, before)
+	r, err := arriveWay(b.Layout, d, before, spot.Heading, b.aircraft, b.prof)
 	if err != nil || len(r) < 2 {
 		return nil, airport.LatLon{}, false
 	}
@@ -201,7 +201,10 @@ func (b *SimObjectBus) inbound(spot GroundPose) (*GroundPath, airport.LatLon, bo
 	// Straight in over the last BusApproachMeters: through a point halfway,
 	// so the turn onto it stays before it.
 	half := offsetHeading(spot.Position, spot.Heading+180, BusApproachMeters/2)
-	pts := aroundAircraft(append(r, half, front), b.aircraft, b.prof)
+	// Round the aircraft up to the straight in, not on it (#1630: the
+	// straight in crossed the wing's line at the main gear, and went round
+	// the nose and back to the spot in an S).
+	pts := append(serviceWay(b.Layout, append(r, half), b.aircraft, b.prof), front)
 	path, err := NewArcPath(pts, busProfile(), 10)
 	if err != nil {
 		return nil, airport.LatLon{}, false
@@ -223,15 +226,37 @@ func (b *SimObjectBus) outbound() (*GroundPath, error) {
 	p1 := offsetHeading(nose, out, BusTurnMeters/2)
 	p2 := offsetHeading(p, out, BusTurnMeters)
 	p3 := offsetHeading(p2, h+180, BusApproachMeters)
-	pts := []airport.LatLon{nose, p1, p2, p3}
+	pts := []airport.LatLon{p3}
 	if b.hasDepot {
-		if route, err := b.Layout.VehicleRoute(p3, b.depot); err == nil {
-			pts = append(pts, route[1:]...)
+		if route, err := homeWay(b.Layout, p3, h+180, b.depot, b.aircraft, b.prof); err == nil {
+			pts = route
 		}
 	} else {
 		pts = append(pts, offsetHeading(p3, h+180, FuelDriveOffMeters))
 	}
-	return NewArcPath(aroundAircraft(pts, b.aircraft, b.prof), busProfile(), BusTurnMeters/2)
+	// Round the aircraft from p3 on: the turn out before it is the way
+	// clear of the wing (#1630).
+	way := append([]airport.LatLon{nose, p1, p2}, serviceWay(b.Layout, pts, b.aircraft, b.prof)...)
+	// Where forward to p3 it turns back (LROP 119K: the road behind, the
+	// stand ahead facing it leaving no room to loop), on from p1 or p2 the
+	// way it heads out instead: the cheapest that does not turn back.
+	if b.hasDepot && wayTurnsBack(way) {
+		best := math.Inf(1)
+		for _, from := range []airport.LatLon{p1, p2} {
+			route, err := homeWay(b.Layout, from, localBearing(nose, from), b.depot, b.aircraft, b.prof)
+			if err != nil {
+				continue
+			}
+			w := append([]airport.LatLon{nose}, serviceWay(b.Layout, route, b.aircraft, b.prof)...)
+			if from == p2 {
+				w = append([]airport.LatLon{nose, p1}, w[1:]...)
+			}
+			if c := wayCost(w, noHeading); !wayTurnsBack(w) && c < best {
+				way, best = w, c
+			}
+		}
+	}
+	return NewArcPath(way, busProfile(), BusTurnMeters/2)
 }
 
 func (b *SimObjectBus) Handle(msg engine.Message) bool {

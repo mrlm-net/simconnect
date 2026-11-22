@@ -1,6 +1,7 @@
 package traffic
 
 import (
+	"fmt"
 	"testing"
 	"time"
 
@@ -69,5 +70,46 @@ func TestVehicleConflictClosing(t *testing.T) {
 				t.Errorf("conflict at %.0f m, want at %.0f m or more", d, c.wantMin)
 			}
 		})
+	}
+}
+
+// TestVehicleConflictSeesTheTips (#1630): a vehicle's reach is measured
+// from an aircraft's true nose and wing tip, whatever its length and span.
+// Before, both were sampled every 2 m from the tail and the root, and up
+// to 2 m of each were not there: the vehicle saw it a look later.
+func TestVehicleConflictSeesTheTips(t *testing.T) {
+	at := airport.LatLon{Lat: 50.1, Lon: 14.26}
+	const sees = 10.0
+	// check drives at the point tip along out and back, so that sees metres
+	// on it is just inside reach of it.
+	check := func(what string, prof MotionProfile, tip airport.LatLon, out, reach float64) {
+		t.Helper()
+		pic := NewGroundPicture()
+		now := time.Now()
+		pic.Report(1, at, 0, prof, now)
+		// Waiting to taxi: its body counts, not a way ahead.
+		pic.ReportPlanned(1, []airport.LatLon{at}, prof.SpanMeters/2)
+		from := offsetHeading(tip, out, reach-0.05+sees)
+		var mine []airport.LatLon
+		for d := 0.0; d <= VehicleLookMeters; d += vehicleLookStep {
+			mine = append(mine, offsetHeading(from, out+180, d))
+		}
+		if d, _, ok := pic.VehicleConflict(0, 9001, mine, vehicleHalfMeters, false, now); !ok || d != sees {
+			t.Errorf("%s: conflict %v at %.0f m, want at %.0f m", what, ok, d, sees)
+		}
+	}
+	reach := vehicleHalfMeters + VehicleClearMeters
+	for tail := 4.0; tail <= 40; tail += 0.7 {
+		prof := DefaultMotionProfile()
+		prof.TailMeters = tail
+		nose := offsetHeading(at, 0, prof.WheelbaseMeters*pushNoseFactor-prof.RefAheadMeters)
+		check(fmt.Sprintf("the nose, tail %.1f m", tail), prof, nose, 0, reach+vehicleFuselageHalfMeters)
+	}
+	for span := 20.0; span <= 64; span += 1.3 {
+		prof := DefaultMotionProfile()
+		prof.SpanMeters = span
+		oh := span / 2
+		tip := offsetHeading(offsetHeading(at, 0, -wingSweep*oh), 90, oh)
+		check(fmt.Sprintf("the wing tip, span %.1f m", span), prof, tip, localBearing(at, tip), reach)
 	}
 }

@@ -95,7 +95,7 @@ func (s *SimObjectStairs) Attach(pose GroundPose) error {
 		spot = StairsSpotAt(pose, s.DoorAheadMeters, s.SideMeters)
 	}
 	s.pose, s.spot = spot, spot
-	if path, depot, ok := s.inbound(spot); ok {
+	if path, depot, ok := s.inbound(pose, spot); ok {
 		s.arrive, s.depot, s.hasDepot = NewGroundMoverFrom(path, stairsProfile(), localBearing(path.PointAt(0), path.PointAt(math.Min(5, path.Length()))), 0), depot, true
 		s.pose = s.arrive.Pose()
 	}
@@ -120,9 +120,10 @@ func outPoint(spot GroundPose) airport.LatLon {
 	return offsetHeading(spot.Position, spot.Heading+180, StairsApproachMeters)
 }
 
-// inbound is the way in: from the nearest depot along the vehicle roads to
-// the point out from the door, then square in to it.
-func (s *SimObjectStairs) inbound(spot GroundPose) (*GroundPath, airport.LatLon, bool) {
+// inbound is the way in for the aircraft at pose: from the nearest depot
+// along the vehicle roads to the point out from the door, arriving facing
+// the door and round the aircraft (#1630), then square in to it.
+func (s *SimObjectStairs) inbound(pose, spot GroundPose) (*GroundPath, airport.LatLon, bool) {
 	if s.Layout == nil {
 		return nil, airport.LatLon{}, false
 	}
@@ -131,10 +132,11 @@ func (s *SimObjectStairs) inbound(spot GroundPose) (*GroundPath, airport.LatLon,
 	if !ok {
 		return nil, airport.LatLon{}, false
 	}
-	r, err := s.Layout.VehicleRoute(d, out)
+	r, err := arriveWay(s.Layout, d, out, spot.Heading, pose, s.prof)
 	if err != nil || len(r) < 2 {
 		return nil, airport.LatLon{}, false
 	}
+	r = serviceWay(s.Layout, r, pose, s.prof)
 	// The mover drives the front axle: it ends a wheelbase ahead, the
 	// stairs' reference point on the spot.
 	front := offsetHeading(spot.Position, spot.Heading, stairsProfile().WheelbaseMeters)
@@ -196,11 +198,30 @@ func (s *SimObjectStairs) Update(pose GroundPose, leave bool, dt float64) error 
 		// on back round a quarter turn, to leave forward along the fuselage
 		// (turned about on the spot, it swung 180° in a frame).
 		out, back := outPoint(s.pose), normDeg(s.pose.Heading+180)
-		side := 1.0 // to the side its depot lies, else right
+		// Backing round to the side whose way home, forward from there, is
+		// shorter, turns included (#1630: backed round to the depot's
+		// side, it drove off the other way and doubled back to a road
+		// behind it); without a depot, to the depot's side as before.
+		corner := offsetHeading(out, back, stairsTurnMeters)
+		side, best := 1.0, math.Inf(1)
 		if s.hasDepot && math.Sin((localBearing(s.pose.Position, s.depot)-s.pose.Heading)*math.Pi/180) < 0 {
 			side = -1
 		}
-		corner := offsetHeading(out, back, stairsTurnMeters)
+		for _, sd := range []float64{1, -1} {
+			if !s.hasDepot {
+				break
+			}
+			end := offsetHeading(corner, back+sd*90, stairsTurnMeters)
+			h := normDeg(back + sd*90 + 180)
+			p := offsetHeading(end, h, stairsProfile().WheelbaseMeters)
+			if w, err := homeWay(s.Layout, p, h, s.depot, pose, s.prof); err == nil {
+				// From where it ends backing (its heading in): a way that
+				// turns back from there priced so (LROP 202R).
+				if c := wayCost(append([]airport.LatLon{end}, w...), noHeading); c < best {
+					side, best = sd, c
+				}
+			}
+		}
 		path, err := NewArcPath([]airport.LatLon{s.pose.Position, out, corner, offsetHeading(corner, back+side*90, stairsTurnMeters)}, stairsProfile(), stairsTurnMeters)
 		if err != nil {
 			return s.finish()
@@ -219,8 +240,10 @@ func (s *SimObjectStairs) Update(pose GroundPose, leave bool, dt float64) error 
 		p := offsetHeading(s.pose.Position, h, stairsProfile().WheelbaseMeters)
 		pts := []airport.LatLon{p, offsetHeading(p, h, 5)}
 		if s.hasDepot {
-			if route, err := s.Layout.VehicleRoute(pts[1], s.depot); err == nil {
-				pts = append(pts, route...)
+			// Joining the roads the way it faces, round its aircraft
+			// (#1630).
+			if route, err := homeWay(s.Layout, pts[1], h, s.depot, pose, s.prof); err == nil {
+				pts = append(pts[:1], route...)
 			}
 		} else {
 			pts = append(pts, offsetHeading(pts[1], h, FuelDriveOffMeters))
