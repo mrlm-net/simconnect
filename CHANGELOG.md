@@ -7,6 +7,12 @@ This project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 ---
 
+## [0.188.7] - 2026-11-22
+
+### Fixed
+
+- A departure no longer backs onto its runway to line up. The World's overflow queue sends departures to the first of a runway's end entrances. That could route a departure across its own departure runway to a holding point on the far side, and the line-up then backed onto the runway from there (EGLL 27L: from the south over the runway via S1 to N1B, about 94 m backwards). Route planning (`RouteToRunway`, `RouteToRunwayEntry`, `RouteToRunwayFrom`) now picks a holding point reached without crossing the departure runway whenever there is one: the cheapest of those within the full-length window, or one of the same name for a named entry. A taxiing aircraft's `GroundSpeedKts` is now the speed its reference point moves at, not its nose gear's, so `gs` matches the distance moved in turns (it gave 5 kt while moving 0.8 m/s in a tight line-up turn). The main gear still tracks its heading through every turn; the reference point ahead of it swings out in tight turns, as on the real aircraft (#1627, #1628).
+
 ## [0.188.6] - 2026-11-21
 
 ### Fixed

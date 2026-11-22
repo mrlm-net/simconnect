@@ -223,6 +223,7 @@ type GroundMover struct {
 	giveWay    bool    // the traffic stop gives way at a crossing: slow down early (SetGiveWayStop)
 	slowAt     float64 // SlowAt point and speed; slowKts 0 when none
 	slowKts    float64
+	refSpeed   float64 // the reference point's speed over the nose gear's (place)
 	pose       GroundPose
 
 	placed   bool
@@ -453,12 +454,13 @@ func (m *GroundMover) step(dt float64) {
 // sideways every frame (seen live as sliding).
 func (m *GroundMover) place() {
 	if m.placed && m.s == m.placedAt {
-		m.pose.GroundSpeedKts, m.pose.Stopped = m.v/ktsToMS, m.v == 0
+		m.pose.GroundSpeedKts, m.pose.Stopped = m.v*m.refSpeed/ktsToMS, m.v == 0
 		m.pose.Arrived = m.v == 0 && m.s >= m.path.Length()-0.05
 		return // not moved: recomputing would only add rounding noise
 	}
 	m.placed, m.placedAt = true, m.s
 	if m.reverse {
+		m.refSpeed = 1
 		m.placeReverse()
 		return
 	}
@@ -489,10 +491,20 @@ func (m *GroundMover) place() {
 			hdg = math.Mod(math.Atan2(-dx, -dy)*180/math.Pi+360, 360)
 		}
 	}
+	// The speed given is the reference point's, not the nose gear's: with
+	// the nose gear steered a, the main gear rolls at cos a of its speed
+	// and the reference point, RefAheadMeters ahead of it, swings sideways
+	// at sin a of it times RefAheadMeters over the wheelbase (#1628: 5 kt
+	// given, 0.8 m/s moved in a tight line-up turn).
+	m.refSpeed = 1
+	if a, b := m.path.PointAt(math.Max(0, m.s-0.5)), m.path.PointAt(math.Min(m.path.Length(), m.s+0.5)); localDist(a, b) > 1e-6 && wb > 0 {
+		steer := headingDiff(hdg, localBearing(a, b)) * math.Pi / 180
+		m.refSpeed = math.Hypot(math.Max(0, math.Cos(steer)), math.Sin(steer)*m.p.RefAheadMeters/wb)
+	}
 	m.pose = GroundPose{
 		Position:       airport.LatLon{Lat: nose.Lat + dy*f/metersPerDegree, Lon: nose.Lon + dx*f/kx},
 		Heading:        hdg,
-		GroundSpeedKts: m.v / ktsToMS,
+		GroundSpeedKts: m.v * m.refSpeed / ktsToMS,
 		Distance:       m.s,
 		Stopped:        m.v == 0,
 		Arrived:        m.v == 0 && m.s >= m.path.Length()-0.05,
