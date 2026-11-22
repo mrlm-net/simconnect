@@ -57,12 +57,19 @@ type simlessObject struct {
 	altFt float64
 	hdg   float64
 	kts   float64
-	bank  float64
+	bank  float64 // right wing down
+	pitch float64 // nose up
 	vs    float64 // ft/min
 }
 
 // Simless flying tunables.
 const (
+	// simlessRollDegPerSec, simlessPitchDegPerSec: the attitude is taken up
+	// from the one it has at these rates, into and out of a turn (#1636:
+	// 0 to 25° of bank and 9 to 4° of pitch in one write after a VFR
+	// departure's hand-over).
+	simlessRollDegPerSec  = 8.0
+	simlessPitchDegPerSec = 2.0
 	// simlessTurnDegPerSec: a standard rate turn.
 	simlessTurnDegPerSec = 3.0
 	// simlessAccelKts: speed changes at this many knots a second.
@@ -134,6 +141,7 @@ func (s *SimlessAI) Handle(msg engine.Message) {
 		return
 	}
 	o.posed, o.pos, o.altFt, o.hdg = true, airport.LatLon{Lat: p.Latitude, Lon: p.Longitude}, p.Altitude, p.Heading
+	o.pitch, o.bank = -p.Pitch, -p.Bank
 	if o.kts = float64(p.Airspeed); o.kts <= 0 {
 		o.kts = simlessStartKts
 	}
@@ -172,6 +180,7 @@ func (s *SimlessAI) SetDataOnSimObject(definitionID uint32, objectID uint32, fla
 		o.released = false // placed by its controller: not ours to fly
 		o.posed, o.pos, o.altFt, o.hdg = true, airport.LatLon{Lat: p.Latitude, Lon: p.Longitude}, p.Altitude, p.Heading
 		o.kts = float64(p.Airspeed)
+		o.pitch, o.bank = -p.Pitch, -p.Bank
 	}
 	s.mu.Unlock()
 	return s.Client.SetDataOnSimObject(definitionID, objectID, flags, arrayCount, cbUnitSize, data)
@@ -310,7 +319,7 @@ func (s *SimlessAI) Step(now time.Time) {
 		o.fly(dt)
 		out = append(out, write{id, types.SIMCONNECT_DATA_INITPOSITION{
 			Latitude: o.pos.Lat, Longitude: o.pos.Lon, Altitude: o.altFt,
-			Pitch:    -math.Max(-10, math.Min(15, o.vs/1000*2.5)), // nose up climbing (SimConnect: negative up)
+			Pitch:    -o.pitch, // nose up climbing (SimConnect: negative up)
 			Bank:     -o.bank,
 			Heading:  o.hdg,
 			Airspeed: types.SIMCONNECT_DATA_INITPOSITION_AIRSPEED(math.Round(o.kts)),
@@ -335,6 +344,7 @@ func (s *SimlessAI) Step(now time.Time) {
 
 // fly moves o dt seconds along its waypoints.
 func (o *simlessObject) fly(dt float64) {
+	first := !o.posed
 	if !o.posed { // released with no pose known: at its first point, facing the next
 		w := o.wps[0]
 		o.pos, o.altFt, o.kts, o.posed = airport.LatLon{Lat: w.Latitude, Lon: w.Longitude}, w.Altitude, w.KtsSpeed, true
@@ -382,14 +392,22 @@ func (o *simlessObject) fly(dt float64) {
 	turn := headingDiff(o.hdg, target)
 	step := math.Max(-simlessTurnDegPerSec*dt, math.Min(simlessTurnDegPerSec*dt, turn))
 	o.hdg = math.Mod(o.hdg+step+360, 360)
-	o.bank = 0
+	bank, pitch := 0.0, simlessPitch(o.vs)
 	if math.Abs(turn) > 1 {
-		o.bank = math.Copysign(math.Min(25, math.Abs(turn)*2), turn)
+		bank = math.Copysign(math.Min(25, math.Abs(turn)*2), turn)
 	}
+	if first {
+		o.pitch = pitch
+	}
+	o.bank += math.Max(-simlessRollDegPerSec*dt, math.Min(simlessRollDegPerSec*dt, bank-o.bank))
+	o.pitch += math.Max(-simlessPitchDegPerSec*dt, math.Min(simlessPitchDegPerSec*dt, pitch-o.pitch))
 	o.altFt += o.vs / 60 * dt
 	lat, lon := calc.DisplaceByHeading(o.pos.Lat, o.pos.Lon, o.hdg, o.kts*1852/3600*dt)
 	o.pos = airport.LatLon{Lat: lat, Lon: lon}
 }
+
+// simlessPitch is the pitch (nose up) of a climb or descent at vs ft/min.
+func simlessPitch(vs float64) float64 { return math.Max(-10, math.Min(15, vs/1000*2.5)) }
 
 // turnRadiusM is the radius of a standard rate turn at kts.
 func turnRadiusM(kts float64) float64 {
