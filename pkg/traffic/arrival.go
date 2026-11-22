@@ -393,6 +393,10 @@ type ArrivalController struct {
 	hasPendingLimit   bool
 	takeoverTried     bool
 	emittedAt         time.Time
+
+	// attitude: as read last nearing the hand-over (arrival_attitude.go).
+	attitude    arrivalAttitude
+	hasAttitude bool
 }
 
 const (
@@ -532,7 +536,7 @@ func (c *ArrivalController) Start(req ArrivalRequest) error {
 	if client == nil {
 		return ErrNotConnected
 	}
-	c.fleet.redefine(client, c.defBase+arrDefWaypoints, c.defBase+arrDefMonitor, c.defBase+arrDefGear, c.defBase+arrDefLights, c.defBase+arrDefTick)
+	c.fleet.redefine(client, c.defBase+arrDefWaypoints, c.defBase+arrDefMonitor, c.defBase+arrDefGear, c.defBase+arrDefLights, c.defBase+arrDefTick, c.defBase+arrDefAttitude)
 	if err := client.AddToDataDefinition(c.defBase+arrDefWaypoints, "AI Waypoint List", "number", types.SIMCONNECT_DATATYPE_WAYPOINT, 0, 0); err != nil {
 		return err
 	}
@@ -549,6 +553,9 @@ func (c *ArrivalController) Start(req ArrivalRequest) error {
 		if err := client.AddToDataDefinition(c.defBase+arrDefMonitor, v.name, v.unit, types.SIMCONNECT_DATATYPE_FLOAT64, 0, uint32(i)); err != nil {
 			return err
 		}
+	}
+	if err := defineAttitude(client, c.defBase+arrDefAttitude); err != nil {
+		return err
 	}
 	if err := client.AddToDataDefinition(c.defBase+arrDefGear, "GEAR HANDLE POSITION", "bool", types.SIMCONNECT_DATATYPE_FLOAT64, 0, 0); err != nil {
 		return err
@@ -634,6 +641,10 @@ func (c *ArrivalController) Handle(msg engine.Message) bool {
 		return true
 	case types.SIMCONNECT_RECV_ID_SIMOBJECT_DATA:
 		m := msg.AsSimObjectData()
+		if uint32(m.DwRequestID) == c.reqBase+arrReqAttitude && uint32(m.DwObjectID) == c.objectID {
+			c.handleAttitude(m)
+			return true
+		}
 		if uint32(m.DwRequestID) != c.reqBase+arrReqMonitor || uint32(m.DwObjectID) != c.objectID {
 			return false
 		}

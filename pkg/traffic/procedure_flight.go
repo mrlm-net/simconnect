@@ -243,9 +243,25 @@ func PlanArrivalProcedure(route []airport.NavPoint, end airport.RunwayEnd, joinM
 type joinBlend struct {
 	dLat, dLon, dFt, dHdg float64
 	left                  float64 // seconds
+	// dPitch, dBank: the attitude it had, faded out over attitudeLeft
+	// seconds (#1636: rolled level from its base turn in one write).
+	dPitch, dBank, attitudeLeft float64
+	// attitudeFresh: not applied yet, so a newer answer may still replace it.
+	attitudeFresh bool
 }
 
+// attitudeBlendSeconds: out of a 25° banked turn at 7.5°/s at most.
+const attitudeBlendSeconds = 5.0
+
 func (b *joinBlend) apply(p ApproachPose, dt float64) ApproachPose {
+	b.attitudeFresh = false
+	if b.attitudeLeft > 0 {
+		b.attitudeLeft = math.Max(0, b.attitudeLeft-dt)
+		k := b.attitudeLeft / attitudeBlendSeconds
+		k = k * k * (3 - 2*k)
+		p.PitchDeg += b.dPitch * k
+		p.BankDeg += b.dBank * k
+	}
 	if b.left <= 0 {
 		return p
 	}
@@ -343,6 +359,9 @@ func (c *ArrivalController) onProcedureFrame(m arrivalMonitor) {
 	if c.circuit && c.procWaypoint(c.proc.Waypoints) < len(c.proc.Waypoints)-2 {
 		near, established = false, false // still going around
 	}
+	if near || established || c.nearHandOver(pos, t) {
+		c.askAttitude()
+	}
 	if !near && !established {
 		c.watchJoin(pos, m)
 		c.emit(nil, c.last.MissedJoin != "" && c.joinMinM < 0)
@@ -368,7 +387,9 @@ func (c *ArrivalController) onProcedureFrame(m arrivalMonitor) {
 		above = g + m.AGL - c.plan.Runway.Altitude/0.3048
 	}
 	c.blend = joinBlend{dLat: pos.Lat - p.Position.Lat, dLon: pos.Lon - p.Position.Lon, dFt: above - p.HeightFt,
-		dHdg: headingDiff(p.Heading, m.Heading), left: JoinBlendSeconds}
+		dHdg: headingDiff(p.Heading, m.Heading), left: JoinBlendSeconds,
+		attitudeFresh: true}
+	c.blendAttitude()
 	c.note("joined the final: injected approach", nil)
 }
 

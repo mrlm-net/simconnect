@@ -7,6 +7,13 @@ This project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 ---
 
+## [0.188.10] - 2026-11-22
+
+### Fixed
+
+- Traffic: with no simulator (SimlessAI) aircraft roll into and out of turns at 8°/s and change pitch at 2°/s from the attitude they were handed over in. Before, a VFR departure went from wings level to 25° of bank and from 9° to 4° of pitch in one write (#1636)
+- Traffic: where the injected approach takes an arrival over (a circuit's base turn), its bank and pitch fade out over 5 s instead of going level in one write. The attitude is read once as needed, not with the per-frame monitor (#1636)
+
 ## [0.188.9] - 2026-11-22
 
 ### Fixed

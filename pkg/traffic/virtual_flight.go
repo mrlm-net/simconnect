@@ -38,7 +38,7 @@ type VirtualPose struct {
 func (p VirtualPose) InitPosition() types.SIMCONNECT_DATA_INITPOSITION {
 	return types.SIMCONNECT_DATA_INITPOSITION{
 		Latitude: p.Position.Lat, Longitude: p.Position.Lon, Altitude: p.AltFt,
-		Pitch:    -math.Max(-10, math.Min(15, p.VSFpm/1000*2.5)),
+		Pitch:    -simlessPitch(p.VSFpm),
 		Bank:     -p.Bank,
 		Heading:  p.Heading,
 		Airspeed: types.SIMCONNECT_DATA_INITPOSITION_AIRSPEED(math.Round(p.Kts)),
@@ -55,7 +55,7 @@ const virtualMaxStep = 1.0
 // change afterwards.
 func NewVirtualFlight(at types.SIMCONNECT_DATA_INITPOSITION, wps []types.SIMCONNECT_DATA_WAYPOINT) *VirtualFlight {
 	v := &VirtualFlight{o: simlessObject{wps: wps, released: true, ai: true, posed: true,
-		pos: airport.LatLon{Lat: at.Latitude, Lon: at.Longitude}, altFt: at.Altitude, hdg: at.Heading, kts: float64(at.Airspeed)}}
+		pos: airport.LatLon{Lat: at.Latitude, Lon: at.Longitude}, altFt: at.Altitude, hdg: at.Heading, kts: float64(at.Airspeed), bank: -at.Bank}}
 	if v.o.kts <= 0 {
 		v.o.kts = simlessStartKts
 	}
