@@ -230,6 +230,13 @@ func (q *sequences) enrouteAction(icao, callsign, action string, kts, ft float64
 	}
 	s.mu.Lock()
 	e.route, e.told, e.pacedKts = next, &told, 0
+	e.playerAt = q.cc.clock.Now()
+	switch action {
+	case "descend":
+		e.clearedFt = ft
+	case "speed":
+		e.speedCleared = true
+	}
 	s.mu.Unlock()
 	_, said.Frequency = q.cc.stationOf(icao, traffic.PosApproach)
 	q.cc.radio.Transmit(icao, said)

@@ -54,6 +54,8 @@ type conflictWatch struct {
 	// stopped: ours told to stop a climb or descent for traffic, cleared
 	// on once clear of it.
 	stopped map[string]stoppedLevel
+	// netHolds: the safety net's changes held on for the player (net_hold.go).
+	netHolds map[string]netHold
 	// lastSaid: by callsign, the last instruction the watch said to it.
 	lastSaid map[string]string
 	now      []traffic.Conflict
@@ -79,6 +81,10 @@ type stoppedLevel struct {
 	// planned: the route before the change, flown again when the stop ends
 	// before the change does (the change holds the level LookAhead long).
 	planned []traffic.RoutePoint
+	// since: when it was stopped; net: by the safety net, the player too
+	// late (stopIsPlayers).
+	since time.Time
+	net   bool
 }
 
 // routeClimbs reports whether planned's next altitude off altFt (by more
@@ -157,15 +163,21 @@ func (w *conflictWatch) tick(now time.Time, aircraft []traffic.TrackedAircraft) 
 			return false
 		}
 		// The player's (manual, or on a staffed station: #1096): not steered
-		// by the AI, unless the safety net's due.
-		if it := w.s.cc.byTail(a.Tail); it != nil && !w.mayAct(it) {
+		// by the AI, unless the safety net's due. Those en route have no
+		// item: by their flight (#1662).
+		e := enroute(a)
+		if e != nil {
+			if !w.maySteerEnroute(e, a.Position) {
+				return false
+			}
+		} else if it := w.s.cc.byTail(a.Tail); it != nil && !w.mayAct(it) {
 			return false
 		}
 		// Flying a TCAS RA: nothing contrary to it (FAA JO 7110.65 2-1-28).
 		if it := w.s.cc.byTail(a.Tail); it != nil && it.tcasRA.Load() {
 			return false
 		}
-		if enroute(a) != nil {
+		if e != nil {
 			return true
 		}
 		return departed(a) != nil && kind != traffic.ResolveSpeed
@@ -247,9 +259,18 @@ func (w *conflictWatch) tick(now time.Time, aircraft []traffic.TrackedAircraft) 
 	// suggest is what the AI would say to cs, one of the player's, for the
 	// conflict c (assist, #1096): its change as for one of its own.
 	var c traffic.Conflict
+	// who is whose call sign cs is: by the aircraft it is in the picture.
+	who := func(cs string) (enrouteStaff, bool) {
+		for _, a := range aircraft {
+			if a.Tail == cs && a.Ours {
+				return w.staffing(a, enroute(a))
+			}
+		}
+		return w.staffing(traffic.TrackedAircraft{Observation: traffic.Observation{Tail: cs}}, nil)
+	}
 	suggest := func(cs string) string {
-		it := w.s.cc.byTail(cs)
-		if it == nil {
+		st, ours := who(cs)
+		if !ours {
 			return ""
 		}
 		only := func(a traffic.TrackedAircraft, kind traffic.ResolutionKind) bool {
@@ -261,10 +282,7 @@ func (w *conflictWatch) tick(now time.Time, aircraft []traffic.TrackedAircraft) 
 		}
 		for _, a := range aircraft {
 			if a.ObjectID == r.ObjectID {
-				it.mu.Lock()
-				pos := it.atc
-				it.mu.Unlock()
-				return w.worded(it.ICAO, traffic.Resolved(pos, r, a.AltFt, a.Heading, a.GroundKts, traffic.SaidWhere{TAFt: w.s.cc.taOf(it.ICAO), MagVar: w.s.cc.magVar(it.ICAO)}))
+				return w.worded(st.icao, traffic.Resolved(st.pos, r, a.AltFt, a.Heading, a.GroundKts, traffic.SaidWhere{TAFt: w.s.cc.taOf(st.icao), MagVar: w.s.cc.magVar(st.icao)}))
 			}
 		}
 		return ""
@@ -297,7 +315,7 @@ func (w *conflictWatch) tick(now time.Time, aircraft []traffic.TrackedAircraft) 
 		}
 		// One of the player's in it (a staffed station, #1096): an alert;
 		// the AI goes on only for its own in it, or as the safety net.
-		if !w.staffedConflict(now, c, suggest) {
+		if !w.staffedConflict(now, c, who, suggest) {
 			continue
 		}
 		if busy {
@@ -344,9 +362,17 @@ func (w *conflictWatch) tick(now time.Time, aircraft []traffic.TrackedAircraft) 
 		radarFt := departureClimbFt        // a departure: the level departure cleared it to
 		var planned []traffic.RoutePoint   // the route before the change
 		pos, icao := traffic.PosCenter, "" // our en route aircraft: the centre (#415)
+		var hold *netHold                  // the safety net's, held for the player
+		playerFt := 0.0                    // the level the player cleared it to
 		if e := enroute(a); e != nil {
 			icao, planned = e.f.Airport, e.route
 			resolved := traffic.ResolvedRoute(e.route, a, r, conflictLookAhead)
+			if route, h := w.netChange(e, a, r); h != nil {
+				resolved, hold = route, h
+			}
+			w.s.mu.Lock()
+			playerFt = e.clearedFt
+			w.s.mu.Unlock()
 			var wps []types.SIMCONNECT_DATA_WAYPOINT
 			_, wps, err = traffic.EnrouteStart(resolved)
 			if err == nil {
@@ -374,6 +400,9 @@ func (w *conflictWatch) tick(now time.Time, aircraft []traffic.TrackedAircraft) 
 		if err != nil {
 			w.s.cc.log.printf("%-6s conflict: %s refused: %v", r.Callsign, r.Kind, err)
 			continue
+		}
+		if hold != nil {
+			w.keepNetHold(r.Callsign, *hold)
 		}
 		tx := w.marked(r.Callsign, traffic.Resolved(pos, r, a.AltFt, a.Heading, a.GroundKts, traffic.SaidWhere{TAFt: w.s.cc.taOf(icao), MagVar: w.s.cc.magVar(icao)}))
 		net := tx.Params["by"] == ModeSafetyNet
@@ -414,8 +443,11 @@ func (w *conflictWatch) tick(now time.Time, aircraft []traffic.TrackedAircraft) 
 				// 192" after "climb to flight level 240").
 				on, ok = radarFt, true
 			}
-			if ok {
-				w.stopped[r.Callsign] = stoppedLevel{icao: icao, pos: pos, altFt: on, climb: up, other: otherOf(c, r.Callsign), planned: planned}
+			if ok && pos == traffic.PosCenter && playerFt > 0 {
+				on = playerFt // said as cleared, not to the thousand
+			}
+			if ok && hold == nil {
+				w.stopped[r.Callsign] = stoppedLevel{icao: icao, pos: pos, altFt: on, climb: up, other: otherOf(c, r.Callsign), planned: planned, since: w.s.cc.clock.Now(), net: net}
 			}
 		}
 		w.done = append(w.done, resolutionView{At: now, Resolution: r, Said: said, SafetyNet: net})
@@ -522,6 +554,21 @@ func (w *conflictWatch) tick(now time.Time, aircraft []traffic.TrackedAircraft) 
 				continue
 			}
 		}
+		// En route and the player's, or told by them since: not cleared on
+		// over their clearance, nor its old route flown again (#1662).
+		players := false
+		for _, a := range aircraft {
+			if a.Tail != cs {
+				continue
+			}
+			if e := enroute(a); e != nil && w.stopIsPlayers(e, a.Position, st) {
+				players = true
+			}
+		}
+		if players {
+			w.s.cc.log.printf("%-6s conflict over: the player's, not cleared on", cs)
+			continue
+		}
 		w.s.cc.log.printf("%-6s conflict over: %s to %.0f ft", cs, map[bool]string{true: "climb", false: "descend"}[st.climb], st.altFt)
 		// A departure not identified yet (still with the tower, or its
 		// check-in not answered): its identification clears the climb, the
@@ -553,6 +600,12 @@ func (w *conflictWatch) tick(now time.Time, aircraft []traffic.TrackedAircraft) 
 			it.climbOn() // its route on to the cleared level, past its SID
 		}
 	}
+	w.tendNetHolds(now, aircraft, involved, func(a traffic.TrackedAircraft) (heldFlight, bool) {
+		if e := enroute(a); e != nil {
+			return w.heldEnroute(e, a), true
+		}
+		return heldFlight{}, false
+	})
 	w.crewRequests(now, aircraft, opts) // after the look: a crew in a conflict is told "unable"
 }
 
@@ -871,6 +924,7 @@ func (w *conflictWatch) forget(tail string) {
 		}
 	}
 	delete(w.stopped, tail)
+	delete(w.netHolds, tail)
 	for k := range w.informed {
 		if strings.Contains(k, tail) {
 			delete(w.informed, k) // by pair

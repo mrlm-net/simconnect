@@ -62,6 +62,8 @@ The player gives clearances through the same calls as any host: `World.Clear(id,
 - `silent`: no alert, nothing from the AI.
 - `safetynet` (`safety-net` too): an alert with a `Deadline`, at least 30 s after the alert, 1 minute after the player's last instruction to either aircraft, and 2 minutes before the earliest loss predicted. Is the conflict still predicted then, the AI resolves it as for its own aircraft: a level, a crossing restriction, a speed, a vector. The alert shows `SafetyNet`, the log says so, the resolution in `GET /api/separation` is marked `safetyNet`, and the safety net's calls carry `Params["by"] = "safetynet"` so a game can show who said them.
 
+What follows the safety net's change is the player's again (#1662). To an aircraft en route, a level or speed change ends back on the level or speed the player cleared; with none cleared, and for a heading, the change is held until the player instructs it, or until its station is no longer staffed and the AI gives it its route again.
+
 An aircraft taken over by hand (its manual toggle, or a clearance from the user off the staffed stations) has no station mode: silent.
 
 **Network play.** Each player staffs their own stations. `PUT /api/stations/staffed?as=tower` (or the `X-ATC-Position` header), or `World.SetStaffedBy("tower", list)` in Go, sets the stations of the player playing as `tower` and leaves the other players' as they are; an empty list gives that player's stations back to the AI. Each entry is kept with `By`, the player. Without `as` (the host), the list replaces everything, as before.

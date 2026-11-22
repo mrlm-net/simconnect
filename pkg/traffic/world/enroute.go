@@ -81,6 +81,13 @@ type enrouteAC struct {
 	// standWait: its handover waits for a stand, said once (handovers).
 	standWait bool
 	told      *enrouteTold // what the player told it (#1419, enroute_told.go); nil nothing
+	// playerAt: when the player last instructed it (the safety net's
+	// deadline; a stop of the watch's before it is over, #1662).
+	playerAt time.Time
+	// clearedFt: the level the player cleared it to, 0 none; speedCleared:
+	// they gave it a speed (the safety net's change ends on those: #1662).
+	clearedFt    float64
+	speedCleared bool
 	// corridor: one of the traffic along the user's route (#740), not the
 	// schedule's.
 	corridor   traffic.CorridorKind

@@ -5,6 +5,7 @@ import (
 	"math"
 	"strings"
 
+	"github.com/mrlm-net/simconnect/internal/missed"
 	"github.com/mrlm-net/simconnect/pkg/calc"
 	"github.com/mrlm-net/simconnect/pkg/types"
 )
@@ -647,7 +648,8 @@ func (p Procedures) FitSTAR(filed, runway, entryFix string) (Procedure, string, 
 
 // Missed is an approach's published missed approach (#756): its points
 // from the missed approach point, the first charted fix and the altitude
-// it climbs to (feet; 0 unknown).
+// it climbs to (feet; 0 unknown): its highest minimum, or a ceiling where
+// that is the climb level (#1659).
 type Missed struct {
 	Points     []NavPoint `json:"points"`
 	Fix        string     `json:"fix,omitempty"`
@@ -662,11 +664,29 @@ func (p Procedures) MissedOf(name string) (Missed, error) {
 		return Missed{}, err
 	}
 	m := Missed{Points: pts}
+	limits := make([]missed.Limit, 0, len(pts))
 	for _, n := range pts {
 		if m.Fix == "" && !n.Computed() {
 			m.Fix = n.Ident
 		}
-		m.AltitudeFt = math.Max(m.AltitudeFt, math.Round(math.Max(n.AltMin, n.AltMax)/0.3048))
+		limits = append(limits, missed.Limit{MinFt: n.AltMin / 0.3048, MaxFt: n.AltMax / 0.3048})
 	}
+	m.AltitudeFt = math.Round(missed.ClimbFt(limits, p.lowestFinalEndFt()+missed.CircuitHeightFt))
 	return m, nil
+}
+
+// lowestFinalEndFt stands in for the field's elevation, which procedures
+// don't carry: the lowest altitude a final ends at, at a threshold where
+// any approach goes down to one. 0 when none has an altitude.
+func (p Procedures) lowestFinalEndFt() float64 {
+	low := 0.0
+	for _, a := range p.Approaches {
+		for i := len(a.Final) - 1; i >= 0; i-- {
+			if a.Final[i].HasFix() {
+				low = minSet(low, a.Final[i].Alt1)
+				break
+			}
+		}
+	}
+	return low / 0.3048
 }

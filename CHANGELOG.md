@@ -12,6 +12,10 @@ This project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 ### Fixed
 
 - On a manual clock the time stands still until the World has done a tick's work, not only taken the tick: a test stepping it no longer moves the clock on between an overflight's pose and its creation (BAW1760 created 50.3 m, one frame at 490 kt, off its track). A ticker opts in with the new `traffic.Ticker.Track`, and a test waits for the work on the new `ManualClock.WorkDone`; `TicksWaiting` is unchanged, and so is the wall clock (#1645).
+- A player's clearance to an en-route aircraft on a staffed centre stands: the conflict watch leaves overflights and transits to the player by the station's mode, as it does arrivals and departures, and no longer clears them on or gives them an old route over the player's level, speed or heading (#1662).
+- What follows the safety net's change to a player's en-route aircraft is the player's again: a level or speed change ends back on the level or speed the player cleared; with none cleared, and for a heading, the change is held until the player instructs it, or until the station is no longer staffed and the AI gives it its route again (#1662).
+- A centre frequency with room for a hand-off and its readback only gets them answered at once and right (`ParamNoSlip`), not over its cap of calls a minute with a "say again" or a corrected readback (#1662).
+- A go-around climbs to the missed approach's highest minimum, not to an "at or below" ceiling above it (TNCM RNAV 10: FL140 for 4000 ft): `MissedOf` and the traffic's missed approach share one rule, and a ceiling counts only where no minimum reaches circuit height and it is no window's top (#1659).
 
 ## [0.188.14] - 2026-11-22
 
