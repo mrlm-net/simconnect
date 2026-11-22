@@ -7,6 +7,12 @@ This project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 ---
 
+## [0.188.12] - 2026-11-22
+
+### Fixed
+
+- Arrivals: the exit is planned for the type's own touchdown speed and braking, and never one it makes only too fast. When no exit ahead is in reach (the builder sample: C, a right angle at mid-length, the only exit for 27), the plan is the roll to the end, the turn round and the backtrack to the exit from the start (`ArrivalPlan.EndTurn`), and the runway time the tower counts on includes it (`BacktrackMeters`, `EndTurnMeters`). Before, C was planned as a plain exit and taken at 83–112 kt, a MAYDAY included, the heading written round at up to 156°/s. The firm exit (no later exit reaches the stand) is now chosen from the type's own touchdown speed and its own braking, not an airliner's 125 kt. New tests `TestEndTurnPlannedUpFront`, `TestFirmExitOwnTouchdown` and `TestExitMidLength` (normal and MAYDAY, A321 and A20N) (#1631)
+
 ## [0.188.11] - 2026-11-22
 
 ### Fixed
