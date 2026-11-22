@@ -120,14 +120,31 @@ func (p *GroundPicture) VehicleConflict(own, self uint32, ahead []airport.LatLon
 	if len(ahead) > 1 {
 		mine = localBearing(ahead[0], ahead[1])
 	}
-	// bodyDist is how near q is to e's body.
+	// bodyDist is how near q is to e's footprint (#1629): its fuselage,
+	// its wing at the wing station (swept back), its tailplane at the
+	// tail; not the half-span along the whole fuselage.
 	bodyDist := func(q airport.LatLon, e groundEntry) float64 {
-		best := math.Inf(1)
-		for b := -e.tail; b <= e.nose+0.01; b += trafficBodyStep {
-			best = math.Min(best, localDist(q, offsetHeading(e.pos, e.hdg, b)))
+		oh := e.half
+		if oh <= 0 {
+			oh = DefaultHalfSpanMeters
 		}
-		return best
+		best := math.Inf(1)
+		for b := -e.tail; b <= e.nose+0.01; b += vehicleBodyStep {
+			best = math.Min(best, localDist(q, offsetHeading(e.pos, e.hdg, b))-vehicleFuselageHalfMeters)
+		}
+		for _, side := range []float64{-1, 1} {
+			for w := vehicleBodyStep; w <= oh+0.01; w += vehicleBodyStep {
+				root := offsetHeading(e.pos, e.hdg, -wingSweep*w)
+				best = math.Min(best, localDist(q, offsetHeading(root, e.hdg+90*side, w)))
+			}
+			back := offsetHeading(e.pos, e.hdg, -e.tail+tailplaneInMeters)
+			for w := vehicleBodyStep; w <= tailplaneFactor*oh+0.01; w += vehicleBodyStep {
+				best = math.Min(best, localDist(q, offsetHeading(back, e.hdg+90*side, w)))
+			}
+		}
+		return math.Max(0, best)
 	}
+	bodyReach := half + VehicleClearMeters
 	reachOf := func(e groundEntry) float64 {
 		oh := e.half
 		if oh <= 0 {
@@ -159,6 +176,15 @@ func (p *GroundPicture) VehicleConflict(own, self uint32, ahead []airport.LatLon
 					break
 				}
 			}
+		}
+	}
+	// Where the vehicle is now, from each aircraft's footprint: it stops
+	// only for a point it closes on (#1629: one driving away from a tail
+	// stood until the aircraft was 27 m away).
+	from := make([]float64, len(others))
+	if len(ahead) > 0 {
+		for k, e := range others {
+			from[k] = bodyDist(ahead[0], e)
 		}
 	}
 	for i, q := range ahead {
@@ -194,7 +220,7 @@ func (p *GroundPicture) VehicleConflict(own, self uint32, ahead []airport.LatLon
 		}
 		for k, e := range others {
 			reach := reachOf(e)
-			if bd := bodyDist(q, e); bd <= reach && (!inWay[k] || bd < bodyDist(ahead[0], e)-1) {
+			if bd := bodyDist(q, e); bd <= bodyReach && bd < from[k]-math.Min(vehicleClosingMeters, d/4) {
 				return d, false, true
 			}
 			// Not the points just ahead of it as such (VehicleCommitMeters): a
@@ -210,7 +236,10 @@ func (p *GroundPicture) VehicleConflict(own, self uint32, ahead []airport.LatLon
 				if run > VehicleAircraftLookMeters {
 					break
 				}
-				if localDist(q, r) <= reach {
+				// Only a way it closes on, ahead of it: never one behind it
+				// (relative bearing above 90°) it drives away from (#1629).
+				if dq := localDist(q, r); dq <= reach && dq < localDist(ahead[0], r)-vehicleClosingMeters &&
+					math.Abs(headingDiff(localBearing(ahead[0], r), mine)) <= 90 {
 					return d, false, true
 				}
 			}
@@ -218,6 +247,17 @@ func (p *GroundPicture) VehicleConflict(own, self uint32, ahead []airport.LatLon
 	}
 	return 0, false, false
 }
+
+// A vehicle closes on an aircraft at a point of its way where it comes
+// vehicleClosingMeters nearer than it is (a quarter of the way to the
+// point, nearer than that: under a swept wing it closes slowly) (#1629). The aircraft's footprint
+// is its fuselage (vehicleFuselageHalfMeters each side of its axis), wing
+// and tailplane, sampled every vehicleBodyStep metres.
+const (
+	vehicleClosingMeters      = 1.0
+	vehicleFuselageHalfMeters = 2.0
+	vehicleBodyStep           = 2.0
+)
 
 // vehicleYield holds a vehicle's mover short of the first conflict ahead
 // on its way, or lets it go on.

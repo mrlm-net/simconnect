@@ -7,6 +7,13 @@ This project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 ---
 
+## [0.188.8] - 2026-11-22
+
+### Fixed
+
+- Service vehicles stop for a moving aircraft only where their way closes on it (`GroundPicture.VehicleConflict`): a point of the way ahead counts when the vehicle comes nearer the aircraft's footprint there than it is now (its fuselage, its wing at the wing station, its tailplane; no longer the half-span along the whole fuselage), or when the aircraft's way ahead lies in front of the vehicle and the vehicle closes on it. A vehicle driving away from a tail, abeam a tail, or beyond the nose of an aircraft pushing away no longer stands until the aircraft is 27 m off; one crossing in front of a taxiing aircraft still stops short of its way (#1629)
+- The fuel truck's way home from the wing: it drives on along the fuselage (not along its own heading, which ran under the tail of one parked a few degrees in), and where its way home runs back past the aircraft it turns round in a loop on its own side, away from the aircraft, then keeps round the aircraft (`roundRoute`, as the tug's way home): no turn back on the spot, no drive back under the fuselage to a road behind the tails. Offline LKPR: 3 stands drove under the fuselage and 9 turned back on the spot before, none now (#1629, #1630)
+
 ## [0.188.7] - 2026-11-22
 
 ### Fixed
