@@ -545,6 +545,8 @@ func (st *state) startWorld(cc *controlCenter) (stopWorld func()) {
 	go func() {
 		t := traffic.NewTicker(time.Second)
 		defer t.Stop()
+		// The time stands still through its work on a manual clock (#1645).
+		worked := t.Track()
 		var atisAt time.Time // the last ATIS refresh (#418)
 		for {
 			select {
@@ -582,6 +584,7 @@ func (st *state) startWorld(cc *controlCenter) (stopWorld func()) {
 				safe("conflicts", func() { cw.tick(now, air) })
 				safe("tcas", func() { tcw.tick(now, air) })
 				safe("towers", func() { tw.tick(now) })
+				worked()
 			}
 		}
 	}()
@@ -863,7 +866,16 @@ func runOn(ctx context.Context, st *state, client engine.Client, stream <-chan e
 	// frames queue, then it jumps): each step over slowStep is logged.
 	var slowAt time.Time
 	slowWhat := ""
+	// The tickers' work is over when the loop comes round (a case may
+	// continue): till then a manual clock stands still (#1645: moved on
+	// between an overflight's pose and its creation, 50 m at 490 kt).
+	camWorked, tickWorked := camTick.Track(), tick.Track()
+	var worked func()
 	for {
+		if worked != nil {
+			worked()
+			worked = nil
+		}
 		if slowWhat != "" {
 			if d := traffic.Since(slowAt); d > slowStep {
 				tlog.printf("slow: %s took %s (traffic frames held back)", slowWhat, d.Round(time.Millisecond))
@@ -887,6 +899,7 @@ func runOn(ctx context.Context, st *state, client engine.Client, stream <-chan e
 			cmd()
 
 		case now := <-camTick.C:
+			worked = camWorked
 			slowAt, slowWhat = traffic.Now(), "camera tick"
 			// Only when the simulator sends no frames (its menu): on frames
 			// the camera moves with the picture, no double or missed steps.
@@ -937,6 +950,7 @@ func runOn(ctx context.Context, st *state, client engine.Client, stream <-chan e
 			}
 
 		case now := <-tick.C:
+			worked = tickWorked
 			slowAt, slowWhat = traffic.Now(), "second tick"
 			cc.timed("control", cc.tick)
 			// The airports around, looked at once a minute (#70: ticks never
