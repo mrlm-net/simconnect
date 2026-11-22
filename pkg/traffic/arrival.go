@@ -394,6 +394,11 @@ type ArrivalController struct {
 	takeoverTried     bool
 	emittedAt         time.Time
 
+	// backtracking, backFrom: it vacates by a backtrack, which begins at
+	// backFrom along the injected path (round and heading back, #1640).
+	backtracking bool
+	backFrom     float64
+
 	// attitude: as read last nearing the hand-over (arrival_attitude.go).
 	attitude    arrivalAttitude
 	hasAttitude bool

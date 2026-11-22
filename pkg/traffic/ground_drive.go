@@ -51,6 +51,10 @@ type groundDrive struct {
 	// and whether this one follows the traffic ahead (while taxiing).
 	picture       *GroundPicture
 	followTraffic bool
+	// stopFloor: traffic stops it no nearer than this along its path: still
+	// on the runway it backtracks, it brakes for what is ahead but never
+	// stands on the runway for it (#1640). 0 none.
+	stopFloor float64
 	// planned is the way it will taxi, reported while it waits for its taxi
 	// clearance (#452).
 	planned []airport.LatLon
@@ -527,15 +531,28 @@ func (d *groundDrive) followAhead(now time.Time) {
 	}
 	d.picture.ReportBehind(d.object, behind)
 	d.hasGiveWayAt = false
+	clearTo := runOnLimit(noseTip, body, gw, d.onNear, d.onHold)
+	if d.stopFloor > 0 {
+		// Still on the runway only a body ahead stops it there: it has
+		// priority over the ways that cross its way off.
+		clearTo = runOnLimit(noseTip, body, math.Inf(1), 0, false)
+	}
+	floor := math.Inf(-1)
+	if d.stopFloor > 0 {
+		floor = math.Min(d.stopFloor, clearTo)
+	}
 	switch {
 	case math.IsInf(stop, 1):
 		d.mover.ClearTrafficStop()
 	case giving:
-		d.mover.SetGiveWayStop(stop)
+		d.mover.SetGiveWayStop(math.Max(stop, floor))
 		d.giveWayAt, d.hasGiveWayAt = path.PointAt(stop), true
 	default:
-		d.mover.SetTrafficStop(stop)
+		d.mover.SetTrafficStop(math.Max(stop, floor))
 	}
+	// Too near to brake onto at a rate, it may run on, never nearer to
+	// what it stops for than its clearance (runOnLimit).
+	d.mover.runOnTo = math.Max(s0, math.Min(path.Length(), clearTo))
 	// Where this aircraft will drive next, for the others to give way: the
 	// points ahead of it, none when it is not going anywhere (holding at a
 	// limit or a hold-short takes no priority over moving traffic).
@@ -555,6 +572,19 @@ func (d *groundDrive) followAhead(now time.Time) {
 		d.way = append(d.way, path.PointAt(path.Length()))
 	}
 	d.picture.ReportIntent(d.object, d.way[min(int(s0/oncomingStep), len(d.way)-1):])
+}
+
+// runOnLimit is how far along its path an aircraft with its nose tip
+// noseTip ahead may run on braking at a rate (GroundMover.runOnTo): its
+// nose stays the clearance of the latest stop for traffic (the gap less
+// TrafficOverrunMeters) from the body ahead, from the point it gives way
+// at and from an oncoming one's way.
+func runOnLimit(noseTip, body, giveWay, oncoming float64, holds bool) float64 {
+	at := math.Min(body, giveWay)
+	if holds {
+		at = math.Min(at, oncoming)
+	}
+	return at - noseTip - (TrafficGapMeters - TrafficOverrunMeters)
 }
 
 // oncomingDeg is how far from the path's heading an aircraft ahead faces to

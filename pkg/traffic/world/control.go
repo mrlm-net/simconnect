@@ -52,6 +52,12 @@ const (
 )
 
 type controlled struct {
+	// wayOffBlocked: no way off clear of departures, logged (wayoff.go);
+	// wayOffPlanning: one is being looked for; wayOffRetryAt: after none
+	// was found, not again before this (clock, Unix ns).
+	wayOffBlocked, wayOffPlanning atomic.Bool
+	wayOffRetryAt                 atomic.Int64
+
 	// askedAt: when it was spawned; holdIDs: removed before the simulator
 	// answered, so its IDs wait for a late answer (spawnstuck.go).
 	askedAt time.Time
@@ -516,6 +522,10 @@ type controlCenter struct {
 	remoteVehicles func(target string) []VehicleView
 	inj            *traffic.Injector
 	cmds           chan func()
+
+	// wayOffSearching: a way off is being searched for, one at a time
+	// (wayoff.go).
+	wayOffSearching atomic.Bool
 
 	mu    sync.Mutex
 	next  int

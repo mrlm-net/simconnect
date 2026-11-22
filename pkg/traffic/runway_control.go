@@ -61,6 +61,11 @@ type RunwayUser struct {
 	// taxis back along the runway to leave it (#1563): no departure lines up
 	// behind it, and the runway is its until it is off.
 	Backtracks bool
+	// WayOffBlocked: an arrival on final whose every way off the runway
+	// passes where a departure holds or will hold short (#1640). The
+	// departure goes first: the arrival is not cleared to land, and goes
+	// around if that departure has not gone by then.
+	WayOffBlocked bool
 	// GoingAround: an arrival climbing out ahead of the runway after its
 	// go-around (RunwayAirborne): no take-off below it (live, TVS648
 	// released behind EZY1672 going around on 06, 4.1 NM and 996 ft).
@@ -513,6 +518,9 @@ func (r *RunwayController) Decide(now time.Time, users []RunwayUser) RunwayClear
 		return ""
 	}
 	landingBlocked := func(u RunwayUser) bool {
+		if u.WayOffBlocked {
+			return true
+		}
 		for _, v := range users {
 			if !otherEnd(u, v) {
 				continue
@@ -596,6 +604,11 @@ func (r *RunwayController) Decide(now time.Time, users []RunwayUser) RunwayClear
 	if blocker != "" && nextArrName != "" && nextArrName != blocker && nextArrUser.Established && nextArr*float64(time.Second) <= float64(r.opts.GoAroundAt) {
 		out.GoAround = append(out.GoAround, nextArrName)
 		out.Waiting[nextArrName] = blocker + " on the runway"
+	} else if nextArrName != "" && nextArrUser.WayOffBlocked && !nextArrUser.Other && nextArrUser.Established && nextArr*float64(time.Second) <= float64(r.opts.GoAroundAt) {
+		// Landed, it would stand nose to nose with the departure on its only
+		// way off (#1640): around while it still can.
+		out.GoAround = append(out.GoAround, nextArrName)
+		out.Waiting[nextArrName] = "departing traffic"
 	}
 	// The next arrival, near enough, with the runway free: cleared to land.
 	// Free means nobody on it, a departure on its roll included (no

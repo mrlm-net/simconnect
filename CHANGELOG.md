@@ -7,6 +7,18 @@ This project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 ---
 
+## [0.188.14] - 2026-11-22
+
+### Fixed
+
+- Traffic: an arrival backtracking off a short field (TFFJ) sees what is ahead on its way off before it is off the runway and brakes for it as a taxiing crew does, never nearer than its clearance. Before, it saw it only at the edge, stood from 10 kt in one write and went on into the gap (#1640)
+- Traffic: an arrival stands where it stopped while awaiting taxi, and starts its taxi at a rate. Before, stopped short of its vacate point for traffic, it crept on towards it and stood again in one write as it taxied (#1640)
+- Traffic: a taxiing aircraft that finds traffic inside its stopping distance brakes at a rate into the gap kept behind it, short of the clearance, instead of standing in one frame (#1640)
+- Traffic: an aircraft's body is seen up to its nose tip by those that stop, give way or push for it. Before, up to 5 m of the nose went unseen and the clearance was that much less (#1640)
+- Traffic: an arrival rolling to the end plans its way back off the runway clear of a departure holding or about to hold short, by another exit or another stand until touchdown; with neither, the departure goes first. A player's arrival is left to the player. Before, at TFFJ it could meet that departure nose to nose on its exit (#1640)
+- Known limit: with a split director the planning of the way off does not apply yet; the braking, the hold while awaiting taxi and the nose do (#1655, #1640)
+- Known limit: head-ons, stalls and passes closer than a span on the apron, with a departure pushing back or waiting to taxi, are not fixed by this (#1641, #1640)
+
 ## [0.188.13] - 2026-11-22
 
 ### Added
