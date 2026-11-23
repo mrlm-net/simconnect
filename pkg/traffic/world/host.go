@@ -480,6 +480,22 @@ type ScheduleSettings struct {
 	// The overflight and transit traffic (#1483–#1487): each off when not
 	// given.
 	OverflightTraffic
+	// StartStands: the departures put on their stands per airport when
+	// its traffic begins, NightStops those parked there through the night
+	// (#1677), for this session: 0 (absent) keeps what is set (default
+	// half the aircraft limit, NightStops the schedule tuning's), negative
+	// none. Sent as 0 in a raw POST /api/schedule, the default again.
+	StartStands int `json:"startStands,omitempty"`
+	NightStops  int `json:"nightStops,omitempty"`
+
+	// Ties tie scheduled airports whose codes say nothing of where they
+	// are (an airport the player built) to the timetable, by code
+	// (#1678): Region, the ICAO region its airlines serve it by; Like, a
+	// real airport at the same place whose bases, region and stands'
+	// airlines it takes (traffic.AirportTie). nil (absent) keeps what is
+	// set; each airport not named is served by its code, as before. A raw
+	// POST /api/schedule with "ties": {} clears them.
+	Ties map[string]traffic.AirportTie `json:"ties,omitempty"`
 }
 
 // SetSchedule starts or stops the scheduled traffic.

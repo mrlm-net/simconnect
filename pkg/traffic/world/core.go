@@ -12,6 +12,46 @@ import (
 	"github.com/mrlm-net/simconnect/pkg/traffic"
 )
 
+// airportTies are the focus airports' ties set (ScheduleSettings.Ties,
+// #1678); nil none.
+func (c *core) airportTies() map[string]traffic.AirportTie {
+	if c == nil {
+		return nil
+	}
+	if p := c.ties.Load(); p != nil {
+		return *p
+	}
+	return nil
+}
+
+// setAirportTies replaces the ties, by upper-case code; empty clears them.
+func (c *core) setAirportTies(ties map[string]traffic.AirportTie) {
+	if len(ties) == 0 {
+		c.ties.Store(nil)
+		return
+	}
+	m := make(map[string]traffic.AirportTie, len(ties))
+	for icao, t := range ties {
+		t.Region = strings.ToUpper(strings.TrimSpace(t.Region))
+		t.Like = strings.ToUpper(strings.TrimSpace(t.Like))
+		m[strings.ToUpper(strings.TrimSpace(icao))] = t
+	}
+	c.ties.Store(&m)
+}
+
+// tieRegion is the region an airport's airlines serve it by, as the
+// timetable takes it: its tie's Region, its Like's prefix, else its code's
+// (#1678).
+func tieRegion(icao string, t traffic.AirportTie) string {
+	switch {
+	case t.Region != "":
+		return t.Region
+	case t.Like != "":
+		return t.Like[:min(2, len(t.Like))]
+	}
+	return icao[:min(2, len(icao))]
+}
+
 // core is the traffic engine's state that outlives a connection: what the
 // library's World will hold (#710). One per process today; the control
 // center of each connection reaches it as cc.core.
@@ -28,6 +68,9 @@ type core struct {
 
 	// cityOf: an airport's city, set by the host (SetAirportCity).
 	cityOf atomic.Pointer[func(icao string) string]
+	// ties: the focus airports' region and like-airport apart from their
+	// codes (ScheduleSettings.Ties, #1678); nil none.
+	ties atomic.Pointer[map[string]traffic.AirportTie]
 
 	// runwaysClosed: runways closed by the host (closures.go), made once.
 	runwaysClosed *closures

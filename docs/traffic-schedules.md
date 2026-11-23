@@ -38,6 +38,8 @@ Each `Flight` either departs from a focus airport or arrives at one between `fro
 
 A focus airport that is missing from the config still gets traffic when its layout is passed (as a regional airport). The runway lengths then come from the layout.
 
+An airport whose code says nothing of where it is (one the player built, `XNCM` at St Maarten) is tied to the timetable with `ScheduleOptions.Ties` (`traffic.AirportTie`, by code, #1678): `Region` is the ICAO region its airlines serve it by and its clock's; `Like` is a real airport of the config at the same place, whose bases count as bases there, whose region and clock are taken when `Region` is empty, whose stands' airlines are taken when its own stands name none (its layout in `Layouts`), and between which and it no flight goes. With `Like: "TNCM"`, `XNCM` is served as TNCM is. An airport without a tie is served by its code, as before. In the World, `POST /api/schedule` takes `"ties": {"XNCM": {"like": "TNCM"}}` (`ScheduleSettings.Ties`; absent keeps what is set, `{}` clears them), which the game mode uses too.
+
 ## Business and light aircraft
 
 Two more generators add general aviation:

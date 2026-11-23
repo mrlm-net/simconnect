@@ -7,6 +7,18 @@ This project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 ---
 
+## [0.189.0] - 2026-11-23
+
+### Added
+
+- `POST /api/schedule` (`world.ScheduleSettings`) takes `startStands` and `nightStops`: for this session, the departures put on their stands per airport when its traffic begins and those parked there through the night, so a host can size them for its stands. Absent keeps what is set, 0 the default again, negative none; a session's `nightStops` wins over the schedule tuning's. `TrafficManager.SetStartStands`, `SetNightStops` and `StandLimits` do the same in the library (#1677).
+- A scheduled airport whose code says nothing of where it is (one the player built) can be tied to the timetable: `traffic.AirportTie` in `ScheduleOptions.Ties`, and `"ties"` in `POST /api/schedule` (`world.ScheduleSettings.Ties`). `Region` is the ICAO region its airlines serve it by; `Like` is a real airport at the same place whose bases, region, clock and stands' airlines it takes, with no flights between the two. `XNCM` tied like `TNCM` schedules TNCM's airlines; the game mode uses the ties too. An airport without a tie is served by its code, as before (#1678).
+
+### Fixed
+
+- Traffic starting in the day no longer fills the stands with departures due hours later: start stands become night stops only for departures due from the morning after the airport's next night, and a start stand or night stop is placed only where the departures due within `DepartureLead` plus `DepartureLate` still find a stand each (#1677).
+- A departure held by the aircraft or object limit past its spawn time no longer pushes back at once: it is estimated `DepartureLead` after its spawn (Note "late: " and the limit) and pushes back no earlier, instead of shortening its time on the stand (#1679).
+
 ## [0.188.17] - 2026-11-23
 
 ### Fixed

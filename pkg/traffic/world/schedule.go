@@ -233,13 +233,22 @@ func (s *scheduler) source(from, to time.Time, focus []string) []traffic.Flight 
 	if noGen {
 		return nil
 	}
-	opts := traffic.ScheduleOptions{Focus: focus, Density: density, Seed: seed ^ uint64(from.Unix()/3600)}
+	opts := traffic.ScheduleOptions{Focus: focus, Density: density, Seed: seed ^ uint64(from.Unix()/3600), Ties: s.st.core.airportTies()}
 	for _, icao := range focus {
 		if l, ok := s.st.cache.Layout(icao); ok {
 			if opts.Layouts == nil {
 				opts.Layouts = map[string]*airport.Layout{}
 			}
 			opts.Layouts[icao] = l
+		}
+		// The stands of the airport it is like, when loaded (#1678).
+		if like := opts.Ties[icao].Like; like != "" {
+			if l, ok := s.st.cache.Layout(like); ok {
+				if opts.Layouts == nil {
+					opts.Layouts = map[string]*airport.Layout{}
+				}
+				opts.Layouts[like] = l
+			}
 		}
 	}
 	var flights []traffic.Flight
@@ -472,6 +481,17 @@ func (s *scheduler) runSpawn(f traffic.ManagedFlight, spawn func() error) {
 // spawnWith spawns f on its stand or at its STAR entry; pre is the
 // arrival's route already planned (a handover from en route) and model its
 // model, "" to choose.
+// departurePushAt is when a scheduled departure pushes back: its STD, or
+// its estimate when the manager retimed it, spawned late by a limit
+// (#1679). A turnaround, a night stop, a start stand and a real aircraft
+// keep their STD.
+func departurePushAt(f traffic.ManagedFlight) time.Time {
+	if f.TurnFrom == "" && !f.NightStop && !f.StartStand && f.Observed == nil && f.Estimated.After(f.STD) {
+		return f.Estimated
+	}
+	return f.STD
+}
+
 func (s *scheduler) spawnWith(f traffic.ManagedFlight, pre *planned, model string) error {
 	cc, st := s.cc, s.st
 	g, err := st.cache.Graph(f.Airport)
@@ -507,7 +527,7 @@ func (s *scheduler) spawnWith(f traffic.ManagedFlight, pre *planned, model strin
 		req.adopt = pre.adopt // the en route aircraft flies on (#643)
 	}
 	if f.Departure() {
-		req.pushAt = f.STD
+		req.pushAt = departurePushAt(f)
 		// A real aircraft parked with no departure seen (#841).
 		req.parked = f.Observed != nil && !f.Observed.Seeded && f.STD.Sub(s.cc.clock.Now()) > s.mgr.Options().DepartureLead
 		if f.NightStop {
@@ -608,6 +628,14 @@ func (s *scheduler) spawnWith(f traffic.ManagedFlight, pre *planned, model strin
 			cc.allocator(g).ReleaseOwner(f.Callsign)
 		}
 	}()
+	// On its stand hours ahead: not on one a departure due now needs
+	// (#1677). Tried again, as any blocked spawn.
+	if assigned && (f.StartStand || f.NightStop) {
+		needs := dueStandNeeds(s.mgr.Flights(), f.Airport, f.Callsign, s.cc.clock.Now(), s.mgr.Options())
+		if !keepsStandsFor(cc.allocator(g), g.Layout, needs) {
+			return fmt.Errorf("%w: stands kept for %d departures due", traffic.ErrSpawnBlocked, len(needs))
+		}
+	}
 	if req.Runway == "active" {
 		// One its aircraft can use and its stand reaches (#1561).
 		m, _, _ := strings.Cut(req.Model, liverySep)
@@ -924,6 +952,11 @@ type scheduleView struct {
 	// Now is the traffic time the flights' times are in (#413).
 	Now time.Time `json:"now"`
 	OverflightTraffic
+	// StartStands, NightStops: the session's (#1677); 0 the defaults.
+	StartStands int `json:"startStands,omitempty"`
+	NightStops  int `json:"nightStops,omitempty"`
+	// Ties: the airports' ties set (#1678).
+	Ties map[string]traffic.AirportTie `json:"ties,omitempty"`
 }
 
 func registerSchedule(mux *http.ServeMux, st *state) {
@@ -958,6 +991,8 @@ func registerSchedule(mux *http.ServeMux, st *state) {
 		s.mu.Unlock()
 		v.VirtualOverflights = s.virtualCount()
 		v.OverflightTraffic = s.overflightTrafficView()
+		v.StartStands, v.NightStops = s.mgr.StandLimits()
+		v.Ties = s.st.core.airportTies()
 		writeJSON(w, v)
 	})
 	postSchedule := func(w http.ResponseWriter, r *http.Request) {
@@ -990,6 +1025,13 @@ func registerSchedule(mux *http.ServeMux, st *state) {
 			Generator                 *bool    `json:"generator"` // false: only flights added (POST /api/flights, #738)
 			OffsetMin                 *float64 `json:"offsetMin"` // the airline timetable this many minutes later flown now (#738)
 			OverflightTraffic                  // overflights and transits (#1483–#1487)
+			// StartStands, NightStops per airport for this session (#1677):
+			// absent kept, 0 the default again, negative none.
+			StartStands *int `json:"startStands"`
+			NightStops  *int `json:"nightStops"`
+			// Ties: airports' region and like-airport (#1678); absent kept,
+			// {} cleared.
+			Ties map[string]traffic.AirportTie `json:"ties"`
 		}
 		if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
 			http.Error(w, err.Error(), http.StatusBadRequest)
@@ -1035,6 +1077,16 @@ func registerSchedule(mux *http.ServeMux, st *state) {
 		}
 		if req.MaxObjects != nil {
 			s.mgr.SetMaxObjects(*req.MaxObjects)
+		}
+		if req.StartStands != nil {
+			s.mgr.SetStartStands(*req.StartStands)
+		}
+		if req.NightStops != nil {
+			s.mgr.SetNightStops(*req.NightStops)
+		}
+		retie := req.Ties != nil
+		if retie {
+			s.st.core.setAirportTies(req.Ties)
 		}
 		s.mu.Lock()
 		if req.MaxOverflights > 0 {
@@ -1087,6 +1139,9 @@ func registerSchedule(mux *http.ServeMux, st *state) {
 		}
 		if req.Enabled != nil {
 			s.enable(*req.Enabled)
+		}
+		if retie {
+			s.mgr.Replan() // the hours ahead drawn again with the ties
 		}
 		o := s.mgr.Options()
 		s.mu.Lock()
