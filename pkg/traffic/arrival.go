@@ -1313,9 +1313,10 @@ func (c *ArrivalController) planExit(x airport.RunwayExit, ai, endTurn bool) err
 
 // exitTurnReach is how fast (m/s) an aircraft whose nose gear is at nose
 // may be to leave by the planned exit (#1586): braking at the rollout's
-// BrakeDecel it slows to the exit speed at the exit and, through the exit's
+// BrakeDecel it slows to the exit speed rolloutExitLeadM before the exit
+// and holds it to the exit and, through the exit's
 // turn, to the turn speed its radius allows at ExitLateralAccel (v²/r,
-// about 0.15 g), as the injected rollout is planned.
+// about 0.11 g) and the turn-rate cap, as the injected rollout is planned.
 func (c *ArrivalController) exitTurnReach(nose airport.LatLon) float64 {
 	ro := c.rolloutProfile()
 	route := c.plan.Route.Points
@@ -1331,10 +1332,15 @@ func (c *ArrivalController) exitTurnReach(nose airport.LatLon) float64 {
 	if c.plan.Exit.HighSpeed {
 		exitKts = ro.HighSpeedExitKts
 	}
+	// The exit speed from rolloutExitLeadM before the exit on, as the
+	// rollout plans it (#1671): judged more leniently, an exit counted in
+	// reach is missed by the plan and switched late.
 	at := localDist(nose, route[0])
-	path.LimitRange(at, at, exitKts, ro.BrakeDecel)
+	lead := math.Max(at-rolloutExitLeadM, 0)
+	path.limitPoint(lead, exitKts, ro.BrakeDecel)
+	path.LimitRange(lead, at, exitKts, ro.BrakeDecel)
 	path.limitTurnOff(c.plan.End.Heading, 0, path.Length(), ro.ExitKts)
-	return path.limit[0]
+	return path.limitAt(0)
 }
 
 // exitInReach (#1586): taken over on the runway, the aircraft must slow to

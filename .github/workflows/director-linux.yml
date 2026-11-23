@@ -80,6 +80,9 @@ jobs:
           # never green, and nothing a re-run could excuse.
           if grep -aqE '^(panic:|fatal error:)' full.txt; then
             grep -aE -A25 '^(panic:|fatal error:)' full.txt | head -60
+            echo "::group::all goroutines (a hung World's, or the crash's own)"
+            sed -nE '/^(worldtest: hung: |panic:|fatal error:)/,$p' full.txt | head -n 6000 || true
+            echo "::endgroup::"
             echo "::error::the run crashed or timed out"
             exit 1
           fi

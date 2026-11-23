@@ -8,6 +8,7 @@ import (
 	"math/rand/v2"
 	"os"
 	"path/filepath"
+	"runtime"
 	"strconv"
 	"strings"
 	"sync"
@@ -73,6 +74,11 @@ type Harness struct {
 	done   chan struct{}
 	mu     sync.Mutex
 	heard  []traffic.Transmission
+
+	// stallAfter (stepTimeout) and stacksTo (stderr): a frame not taken
+	// within stallAfter is a hung World, whose stacks go to stacksTo (hung).
+	stallAfter time.Duration
+	stacksTo   io.Writer
 }
 
 // Start runs a World on a new Loopback at o.ICAO and waits until its
@@ -84,7 +90,7 @@ func Start(o Options) (*Harness, error) {
 	if o.FrameRate <= 0 {
 		o.FrameRate = 30
 	}
-	h := &Harness{done: make(chan struct{}), frame: time.Second / time.Duration(o.FrameRate)}
+	h := &Harness{done: make(chan struct{}), frame: time.Second / time.Duration(o.FrameRate), stallAfter: stepTimeout, stacksTo: os.Stderr}
 	cache := airport.NewCache()
 	wo := o.World
 	wo.SimlessAI, wo.Cache = true, cache
@@ -215,6 +221,29 @@ func Start(o Options) (*Harness, error) {
 // stepTimeout: a frame not taken in this long is a hung World, not a slow one.
 const stepTimeout = 30 * time.Second
 
+// stacksHead and stacksTail mark a hung World's stacks in a test's output.
+const (
+	stacksHead = "worldtest: hung: "
+	stacksTail = "worldtest: end of the hung World's stacks"
+)
+
+// hung writes every goroutine's stack to w, then panics with msg: the
+// panic itself names only the test's goroutine, not the one that holds
+// the lock (#1652: TestWeatherAskedAfterCheckInAnswer on Linux took no
+// frame, and the log showed nothing of the World).
+func hung(w io.Writer, msg string) {
+	buf := make([]byte, 1<<20)
+	for {
+		if n := runtime.Stack(buf, true); n < len(buf) {
+			buf = buf[:n]
+			break
+		}
+		buf = make([]byte, 2*len(buf))
+	}
+	fmt.Fprintf(w, "%s%s\n%s\n%s\n", stacksHead, msg, buf, stacksTail)
+	panic(msg)
+}
+
 // Close stops the World and the loopback, and puts the wall clock back.
 func (h *Harness) Close() {
 	h.cancel()
@@ -236,7 +265,7 @@ func (h *Harness) Close() {
 	case <-h.done:
 	case <-time.After(30 * time.Second):
 		// Running on, it would disturb every later test.
-		panic("worldtest: the World did not stop within 30 s of Close")
+		hung(h.stacksTo, "worldtest: the World did not stop within 30 s of Close")
 	}
 	h.closeOnce.Do(func() {
 		if h.ownData != "" {
@@ -291,10 +320,10 @@ func (h *Harness) Until(max time.Duration, cond func() bool) bool {
 func (h *Harness) step(d time.Duration) {
 	h.Clock.Advance(d)
 	h.Sim.Step()
-	deadline := time.Now().Add(stepTimeout)
+	deadline := time.Now().Add(h.stallAfter)
 	for len(h.Sim.out) != 0 || h.World.Queued() != 0 || h.Clock.TicksWaiting() != 0 {
 		if time.Now().After(deadline) {
-			panic("worldtest: the World did not take a frame within " + stepTimeout.String())
+			hung(h.stacksTo, "worldtest: the World did not take a frame within "+h.stallAfter.String())
 		}
 		time.Sleep(50 * time.Microsecond)
 	}
@@ -314,7 +343,7 @@ func (h *Harness) step(d time.Duration) {
 	select {
 	case <-done:
 	case <-late.C:
-		panic("worldtest: the World did not finish a tick's work within " + stepTimeout.String())
+		hung(h.stacksTo, "worldtest: the World did not finish a tick's work within "+h.stallAfter.String())
 	}
 }
 

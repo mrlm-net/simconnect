@@ -7,6 +7,17 @@ This project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 ---
 
+## [0.189.2] - 2026-11-23
+
+### Fixed
+
+- An arrival at its minimum speed that is asked to lose under a minute more now loses it. Its downwind is extended by the shortest vector, `MinDownwindVector`, instead of the time being left to a hold that never came (#1691).
+- Whether an arrival taken over on the runway can still make its planned exit is judged with the exit speed held at the exit's point; the cap was put on a range of no length and capped nothing, so a gentle exit counted as in reach at speeds braking could not bring down to the exit speed there (#1671)
+
+### Changed
+
+- A hung World in the offline tests writes every goroutine's stack before it panics (no frame, or no tick's work done, within 30 s; or no stop within 30 s of Close), and the Linux director run shows them, so the goroutine holding the lock is named. The hang itself is not fixed (refs #1652)
+
 ## [0.189.1] - 2026-11-23
 
 ### Fixed

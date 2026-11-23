@@ -6,6 +6,7 @@ import (
 	"time"
 
 	"github.com/mrlm-net/simconnect/pkg/airport"
+	"github.com/mrlm-net/simconnect/pkg/calc"
 )
 
 // TestVectorsInterceptLeg: vectored onto LKPR 24 from VLM's extended
@@ -71,10 +72,11 @@ func TestVectorsInterceptLeg(t *testing.T) {
 	}
 }
 
-// TestShortDownwindIsSpeed: a downwind extended by less than
-// MinDownwindVector of flight is not extended: no "fly heading, for
-// spacing" with the base turn seconds after it (live, WZZ1042: 060, then
-// 330 for base 17 s later); speed takes the time.
+// TestShortDownwindIsSpeed: a downwind is never extended by less than
+// MinDownwindVector of flight: no "fly heading, for spacing" with the base
+// turn seconds after it (live, WZZ1042: 060, then 330 for base 17 s later).
+// At the minimum speed a short delay extends it by that much at least
+// (#1691): speed has nothing left to take.
 func TestShortDownwindIsSpeed(t *testing.T) {
 	g := lkprGraph(t)
 	route, err := lkprProcedures(t).Arrival("24", "VLM")
@@ -99,8 +101,18 @@ func TestShortDownwindIsSpeed(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if a.Downwind || len(ctl.vectors) > 0 {
-		t.Errorf("20 s more: %+v, vectors %+v; want speed, no downwind extended", a, ctl.vectors)
+	kts := MinProcedureSpeedKts
+	if a.Downwind && ctl.tromboneNM < 0.99*kts*MinDownwindVector.Hours() {
+		t.Errorf("20 s more: %+v; the downwind extended by %.2f NM, under MinDownwindVector", a, ctl.tromboneNM)
+	}
+	for i := 0; i+1 < len(ctl.vectors); i++ {
+		v, w := ctl.vectors[i], ctl.vectors[i+1]
+		if v.For != "spacing" || w.For != "base" || v.At == (airport.LatLon{}) || w.At == (airport.LatLon{}) {
+			continue
+		}
+		if nm := calc.HaversineNM(v.At.Lat, v.At.Lon, w.At.Lat, w.At.Lon); nm < 0.9*kts*MinDownwindVector.Hours() {
+			t.Errorf("20 s more: heading for spacing, then the base turn %.2f NM on: under MinDownwindVector", nm)
+		}
 	}
 }
 
