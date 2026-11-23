@@ -266,8 +266,20 @@ func (c *ArrivalController) absorb(delay time.Duration, withinNM float64) (Absor
 				ok = false
 			}
 			if ok && short {
-				a.Left += time.Duration(a.ExtraNM / math.Max(a.SpeedKts, speed) * float64(time.Hour))
-				a.ExtraNM, ok = 0, false
+				// Speed is at its minimum already (a stretch is planned only
+				// then) and takes none of it: the time is lost all the same,
+				// by the shortest extension that is a vector, MinDownwindVector
+				// flown before the turn for base, a little more than asked
+				// (#1691: 10-45 s left to a hold that never came).
+				x = math.Min(math.Max(a.SpeedKts, speed)*MinDownwindVector.Hours(), MaxStretchNM/2-c.tromboneNM)
+				ext, k, f, ok = extendDownwindAt(pos, out, wps[final], wps[final+1], x)
+				if ok && withinNM > 0 && !circuitBack && cum[min(f+1, len(cum)-1)] > withinNM+downwindMeetSlackNM {
+					ok = false
+				}
+				if !ok {
+					a.Left += time.Duration(a.ExtraNM / math.Max(a.SpeedKts, speed) * float64(time.Hour))
+					a.ExtraNM = 0
+				}
 			}
 			if ok && circuitBack {
 				widenGoAroundDownwind(ext, k+1, wps[final], wps[final+1])
