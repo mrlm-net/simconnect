@@ -57,6 +57,13 @@ type controlled struct {
 	// was found, not again before this (clock, Unix ns).
 	wayOffBlocked, wayOffPlanning atomic.Bool
 	wayOffRetryAt                 atomic.Int64
+	// wayOffLooking: its way off is being asked of the actuator (#1655).
+	wayOffLooking atomic.Bool
+	// apronBlocked: none clear of who stands on the apron, logged (#1641).
+	apronBlocked atomic.Bool
+	// pairHeldFrom: since when it waits for a backtracking arrival still on
+	// approach (pairedArrival). it.mu.
+	pairHeldFrom time.Time
 
 	// askedAt: when it was spawned; holdIDs: removed before the simulator
 	// answered, so its IDs wait for a late answer (spawnstuck.go).
@@ -1605,6 +1612,12 @@ func (it *controlled) setRoute() {
 	} else if p := it.arr.Plan(); p != nil {
 		r = p.Route
 	}
+	it.setRouteTo(r)
+}
+
+// setRouteTo is setRoute with route r read already (nil: kept as it is).
+// it.mu is held.
+func (it *controlled) setRouteTo(r *airport.Route) {
 	if r != nil {
 		it.view.Route, it.view.Nodes = r.Points, r.Nodes
 		if it.dep != nil {
@@ -2687,8 +2700,20 @@ func registerControl(mux *http.ServeMux, st *state) {
 			}
 			req.planned = p
 		}
+		// Out of a backtracking arrival's way in (#1641): searched here,
+		// not on the connection's goroutine.
+		chosen := false
+		if s := cc.standForDeparture(g, req); s >= 0 {
+			req.Stand, chosen = s, true
+		}
 		var it *controlled
-		if err := cc.do(func() (e error) { it, e = cc.spawn(g, req); return e }); err != nil {
+		if err := cc.do(func() (e error) {
+			if it, e = cc.spawn(g, req); chosen && errors.Is(e, traffic.ErrStandTaken) {
+				req.Stand = -1 // taken since it was looked up: assigned as ever
+				it, e = cc.spawn(g, req)
+			}
+			return e
+		}); err != nil {
 			tlog.printf("%s spawn at stand %d, runway %s failed: %v", req.Kind, req.Stand, req.Runway, err)
 			http.Error(w, err.Error(), http.StatusUnprocessableEntity)
 			return

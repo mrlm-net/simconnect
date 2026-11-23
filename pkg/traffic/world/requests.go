@@ -300,6 +300,17 @@ func (it *controlled) answer(req string) {
 				return nil
 			})
 		}
+		// The way out as it will be cleared, another runway, entry or route
+		// than it asked with: paired again (#1641).
+		if it.holdForBacktrack(req) {
+			it.mu.Lock()
+			delete(it.spoken, req) // not said after all
+			for _, k := range impliedBy(req) {
+				delete(it.spoken, k)
+			}
+			it.mu.Unlock()
+			return
+		}
 	}
 	tx := it.phrase(req, -1) // takes it.mu itself
 	if req == "taxi" {

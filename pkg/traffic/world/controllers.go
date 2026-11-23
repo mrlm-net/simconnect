@@ -113,6 +113,16 @@ type arrivalCtl interface {
 	VectorDue() (traffic.Vector, bool)
 }
 
+// wayOffCalls is an actuator arrival's way-off planning as a director calls
+// it (#1655, remote_wayoff.go): a step put in place can't cross the wire,
+// so the director numbers it and names what it was searched with. An error
+// is a call lost, never "none clear".
+type wayOffCalls interface {
+	CheckWayOff(occ []airport.Occupied) (bool, error)
+	SearchWayOff(step uint64, parking int, occ []airport.Occupied) (bool, error)
+	TakeWayOff(step uint64, parking int, occ []airport.Occupied) (bool, error)
+}
+
 var (
 	_ departureCtl = (*traffic.TaxiController)(nil)
 	_ arrivalCtl   = (*traffic.ArrivalController)(nil)

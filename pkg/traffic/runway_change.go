@@ -281,7 +281,7 @@ func (c *ArrivalController) ChangeRunway(runway string, procedure, missed []airp
 	}
 	g, req := c.req.Graph, c.req
 	plan, err := PlanArrival(g, runway, req.Parking, ArrivalOptions{
-		SpawnNm: req.SpawnNm, Route: req.Options, GroundAGL: req.GroundAGL, NoseOffset: req.NoseOffset,
+		SpawnNm: req.SpawnNm, Route: req.Options, GroundAGL: req.GroundAGL, NoseOffset: req.NoseOffset, StandSide: req.StandSide,
 		TouchdownKts: approachProfileOf(req).TouchdownKts, BrakeDecel: req.Rollout.BrakeDecel,
 	})
 	if err != nil {

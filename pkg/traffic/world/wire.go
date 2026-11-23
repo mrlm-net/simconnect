@@ -101,6 +101,10 @@ type wireClient struct {
 	onError  func(error)   // a call's error with nowhere to go
 	done     chan struct{} // closed once the link is gone
 	err      error         // the link's, once it broke
+
+	// stale: a controller's last snapshot, dropped from cache by a command
+	// on its way (lastRead, #1673).
+	stale map[string]map[string][]json.RawMessage
 }
 
 func newWireClient(l link, onFeed func(wireMsg)) *wireClient {
@@ -322,6 +326,9 @@ type (
 	remoteArr struct {
 		c *wireClient
 		t string
+		// plansWayOff: its actuator plans its way off (#1655); false from
+		// one before that.
+		plansWayOff bool
 	}
 	remoteSim struct {
 		c *wireClient

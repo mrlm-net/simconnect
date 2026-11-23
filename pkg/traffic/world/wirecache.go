@@ -14,9 +14,10 @@ import (
 // is ordered: the next one is from after it).
 
 // cachedReads are the reads answered from the snapshot. VectorDue is not
-// one: it hands the vector out.
+// one: it hands the vector out. Occupies is (#1673): keepClear reads it on
+// the director's loop each second (occupiedBy).
 var cachedReads = map[string]bool{
-	"State": true, "Route": true, "PushFacingSaid": true, "FacesOut": true,
+	"State": true, "Route": true, "PushFacingSaid": true, "FacesOut": true, "Occupies": true,
 	"Plan": true, "ProcedurePlan": true, "ProcedureRoute": true, "Holding": true,
 	"TouchAndGosLeft": true, "TurningFinal": true, "CircuitFixes": true, "InterceptHeading": true,
 }
@@ -46,6 +47,50 @@ func (c *wireClient) fromCache(target, method string, outs []any) bool {
 	return true
 }
 
+// lastRead answers target's method from its snapshot, never over the link
+// (#1673): from the last one when a command on its way dropped it (fresh
+// false); known false when there is none.
+func (c *wireClient) lastRead(target, method string, outs ...any) (known, fresh bool) {
+	if c.fromCache(target, method, outs) {
+		return true, true
+	}
+	if !cachedReads[method] {
+		return false, false
+	}
+	c.mu.Lock()
+	r, ok := c.stale[target][method]
+	c.mu.Unlock()
+	if !ok {
+		return false, false
+	}
+	for i, out := range outs {
+		if i < len(r) && out != nil {
+			if json.Unmarshal(r[i], out) != nil {
+				return false, false
+			}
+		}
+	}
+	return true, false
+}
+
+// readNow is ctl's read method, by ask in process; over a link on the
+// director's loop (onLoop) only from the snapshot (lastRead).
+func readNow[T any](onLoop bool, ctl any, method string, ask func() T) (v T, fresh, known bool) {
+	var c *wireClient
+	var t string
+	switch r := ctl.(type) {
+	case *remoteDep:
+		c, t = r.c, r.t
+	case *remoteArr:
+		c, t = r.c, r.t
+	}
+	if c == nil || !onLoop {
+		return ask(), true, true
+	}
+	known, fresh = c.lastRead(t, method, &v)
+	return v, fresh, known
+}
+
 // commanding marks a command to target on its way: its snapshot dropped
 // until the reply; done ends it.
 func (c *wireClient) commanding(target, method string) (done func()) {
@@ -53,6 +98,12 @@ func (c *wireClient) commanding(target, method string) (done func()) {
 		return func() {}
 	}
 	c.mu.Lock()
+	if r := c.cache[target]; r != nil {
+		if c.stale == nil {
+			c.stale = map[string]map[string][]json.RawMessage{}
+		}
+		c.stale[target] = r
+	}
 	delete(c.cache, target)
 	c.inflight[target]++
 	c.mu.Unlock()
@@ -91,6 +142,11 @@ func (c *wireClient) takeSnapshot(m wireMsg) {
 			delete(c.cache, t) // gone on the actuator
 		}
 	}
+	for t := range c.stale {
+		if _, ok := snap[t]; !ok {
+			delete(c.stale, t)
+		}
+	}
 }
 
 // snapshot is the actuator's controllers' cached reads now, by target.
@@ -98,7 +154,7 @@ func (s *wireServer) snapshot() map[string]map[string][]json.RawMessage {
 	s.mu.Lock()
 	targets := make(map[string]any, len(s.targets))
 	for t, o := range s.targets {
-		if t != "sim" {
+		if _, plans := o.(*actuatorWayOff); !plans && t != "sim" {
 			targets[t] = o
 		}
 	}
@@ -238,6 +294,7 @@ func (c *wireClient) takeDelta(raw json.RawMessage) {
 	}
 	for _, t := range d.Gone {
 		delete(c.cache, t)
+		delete(c.stale, t)
 	}
 }
 
