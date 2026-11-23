@@ -7,6 +7,14 @@ This project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 ---
 
+## [0.188.17] - 2026-11-23
+
+### Fixed
+
+- DME arc (AF) legs are drawn and flown as arcs about their navaid at their radius, in the leg's turn direction, and an intercept leg before one runs to the arc. An arc stays straight, its intercept as before, where its data is inconsistent or it would make the route cross itself, loop, reverse or climb. `airport.NavPoint` and `nav.Waypoint` mark such points with the opt-in fields `DMEArc` and `Straight` (#1646).
+- A stand drawn twice nose to tail (a medium and a heavy gate on one centre line, as at TNCM A1–A4) is no longer held twice: an aircraft on one blocks the other whatever the spans, so the front one is never stuck behind the other with its pushback held (#1676).
+- The game score no longer counts a departure boarding on its stand as waiting for ATC: it waits from its crew's call, or from its STD if that is later (#1675).
+
 ## [0.188.16] - 2026-11-23
 
 ### Fixed

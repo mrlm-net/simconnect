@@ -149,6 +149,9 @@ type controlled struct {
 	// (#1294).
 	deliver   func()
 	deliverAt time.Time
+	// pushAt: a departure's time to push (its STD, SpawnRequest.pushAt);
+	// zero none. The game counts no wait for ATC before it (#1675).
+	pushAt time.Time
 	// clearanceDue: its departure clearance, asked for on a staffed
 	// delivery and not given yet (action "clearance"; given by the World
 	// once delivery is no longer staffed; amended by the player first,
@@ -1324,6 +1327,9 @@ func (cc *controlCenter) spawn(g *airport.Graph, r SpawnRequest) (*controlled, e
 		}
 	}
 	it := &controlled{askedAt: spawnAt, approach: approach, fixes: fixes, defBase: defBase, ID: n, Kind: r.Kind, Tail: r.Tail, ICAO: g.Layout.ICAO, graph: g, stands: alloc, stand: r.Stand, other: r.Other, overnight: r.overnight, spoken: map[string]bool{}, removed: make(chan struct{}), cc: cc}
+	if r.Kind == "departure" {
+		it.pushAt = r.pushAt
+	}
 	it.tugAfter.Store(traffic.RandomFloat64() < TugAfterJetwayShare)
 	it.tugStand.Store(int32(r.Stand))
 	it.gates.Store(r.Gates)

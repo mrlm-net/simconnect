@@ -524,7 +524,9 @@ func (c *ArrivalController) Start(req ArrivalRequest) error {
 		} else if len(req.Procedure) > 0 {
 			join := math.Max(plan.SpawnNm, ProcedureJoinNm) * 1852
 			jp := NewApproachMover(plan.End.LandingThreshold(), plan.End.Heading, join, approachProfileOf(req)).Pose()
-			proc, err := PlanArrivalProcedure(req.Procedure, plan.End, join, convert.MetersToFeet(req.Graph.Layout.Altitude)+jp.HeightFt)
+			joinFt := convert.MetersToFeet(req.Graph.Layout.Altitude) + jp.HeightFt
+			req.Procedure = soundArcRoute(req.Procedure, plan.End, join, joinFt)
+			proc, err := PlanArrivalProcedure(req.Procedure, plan.End, join, joinFt)
 			if err != nil {
 				return err
 			}

@@ -262,7 +262,7 @@ func plannedFrom(fp *nav.FlightPlan, kind string) (*planned, error) {
 			continue
 		}
 		n := airport.NavPoint{Ident: w.Ident, Kind: w.Kind, Position: w.Position, IAF: w.IAF, FAF: w.FAF, MAP: w.MAP,
-			Vectors: w.Vectors, FlyOver: w.FlyOver, SpeedMax: w.SpeedMaxKts}
+			Vectors: w.Vectors, FlyOver: w.FlyOver, SpeedMax: w.SpeedMaxKts, DMEArc: w.DMEArc, Straight: w.Straight}
 		if kind == "departure" {
 			// The whole flight: planned levels, held exactly.
 			n.AltMin, n.AltMax = w.AltFt*0.3048, w.AltFt*0.3048

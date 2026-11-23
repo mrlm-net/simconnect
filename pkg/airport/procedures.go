@@ -90,7 +90,7 @@ type Leg struct {
 	Alt2    float64                                       `json:"alt2,omitempty"`
 	// Speed is the speed limit; 0 when none.
 	Speed     float64 `json:"speed,omitempty"`
-	ArcCenter LatLon  `json:"arcCenter"` // RF and AF legs
+	ArcCenter LatLon  `json:"arcCenter"` // RF legs; zero on AF legs: their arc is about Origin at Rho
 	Rho       float64 `json:"rho,omitempty"`
 	IAF       bool    `json:"iaf,omitempty"`
 	FAF       bool    `json:"faf,omitempty"`
@@ -233,10 +233,18 @@ const (
 // (a course reversal) is joined by a turn of turnRadius meters (Dubins, in
 // the charted direction); legs from a fix (FA, FC, FD, FM) continue along
 // their course after it; legs without a fix (to an altitude, a radial, a
-// DME distance, a manual termination) extend from the previous point; RF
-// and DME arcs are sampled. Courses are magnetic, turned true with magVar
-// (the facility's MAGVAR). An approximation for display, not guidance.
+// DME distance, a manual termination) extend from the previous point, an
+// intercept before a DME arc as far as the arc; RF and DME arcs are
+// sampled, a DME arc only where that makes the path no worse than the
+// straight leg (soundArcs). Courses are magnetic, turned true with magVar (the facility's
+// MAGVAR). An approximation for display, not guidance.
 func ProcedurePath(legs []Leg, start LatLon, startAlt, magVar, turnRadius float64) []LatLon {
+	return procedurePath(soundArcs(legs, start, startAlt, magVar), start, startAlt, magVar, turnRadius)
+}
+
+// procedurePath is ProcedurePath of legs whose DME arcs are judged already
+// (soundArcs).
+func procedurePath(legs []Leg, start LatLon, startAlt, magVar, turnRadius float64) []LatLon {
 	if magVar > 180 {
 		magVar -= 360
 	}
@@ -250,8 +258,12 @@ func ProcedurePath(legs []Leg, start LatLon, startAlt, magVar, turnRadius float6
 	if have {
 		pts = append(pts, cur)
 	}
+	var next *Leg
 	open := func(l Leg, c float64) float64 {
 		if d, ok := dmeEndMeters(l, cur, c); ok {
+			return d
+		}
+		if d, ok := arcInterceptMeters(l, next, cur, c); ok {
 			return d
 		}
 		switch l.Type {
@@ -335,11 +347,15 @@ func ProcedurePath(legs []Leg, start LatLon, startAlt, magVar, turnRadius float6
 		hdg, haveHdg = c, true
 	}
 	fixed := false // the previous leg ended at a fix
-	for _, l := range legs {
+	for i, l := range legs {
+		next = nil
+		if i+1 < len(legs) {
+			next = &legs[i+1]
+		}
 		switch l.Type {
 		case types.SIMCONNECT_FACILITY_LEG_TYPE_RF, types.SIMCONNECT_FACILITY_LEG_TYPE_AF:
-			if have && l.HasFix() && (l.ArcCenter.Lat != 0 || l.ArcCenter.Lon != 0) {
-				pts = append(pts, arcPoints(l.ArcCenter, cur, l.Position, l.TurnRight)...)
+			if center, ok := l.arcCentre(cur); have && ok {
+				pts = append(pts, l.arcTo(center, cur)...)
 				if n := len(pts); n >= 2 {
 					hdg, haveHdg = calc.BearingDegrees(pts[n-2].Lat, pts[n-2].Lon, pts[n-1].Lat, pts[n-1].Lon), true
 				}
@@ -517,6 +533,12 @@ func displace(p LatLon, bearing, d float64) LatLon {
 // arcPoints samples the arc around center from a to b (clockwise when
 // right), every 5°.
 func arcPoints(center, a, b LatLon, right bool) []LatLon {
+	return arcPointsBy(center, a, b, right, displace)
+}
+
+// arcPointsBy is arcPoints, each point put at its bearing and radius from
+// center by at.
+func arcPointsBy(center, a, b LatLon, right bool, at func(p LatLon, bearing, d float64) LatLon) []LatLon {
 	// The radius goes over from a's to b's along the arc, which ends on b
 	// itself: the charted fixes are a little off one radius, and a sample
 	// at a's radius then b made a short radial jog that the smoothing
@@ -533,7 +555,7 @@ func arcPoints(center, a, b LatLon, right bool) []LatLon {
 	n := int(math.Abs(sweep)/5) + 1
 	for i := 1; i < n; i++ {
 		k := float64(i) / float64(n)
-		out = append(out, displace(center, from+sweep*k, ra+(rb-ra)*k))
+		out = append(out, at(center, from+sweep*k, ra+(rb-ra)*k))
 	}
 	return append(out, b)
 }

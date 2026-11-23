@@ -231,8 +231,10 @@ func (a *StandAllocator) Free(stand int, halfSpan float64) bool {
 }
 
 // blockedBy names what keeps an aircraft of halfSpan off the stand ("" if
-// nothing): its occupant, or an aircraft on an overlapping stand. A
-// reservation by owner itself does not block.
+// nothing): its occupant, or an aircraft on an overlapping stand, whose
+// wings come too near or which stands in one of the two aircraft's pushback
+// way (one stand drawn twice, nose to tail, #1676). A reservation by owner
+// itself does not block.
 func (a *StandAllocator) blockedBy(stand int, halfSpan float64, owner string) string {
 	if halfSpan <= 0 {
 		halfSpan = DefaultHalfSpanMeters
@@ -246,11 +248,24 @@ func (a *StandAllocator) blockedBy(stand int, halfSpan float64, owner string) st
 		if !ok || (owner != "" && o.Owner == owner) {
 			continue
 		}
-		if halfSpan+o.HalfSpan+StandWingtipClearanceMeters > localDist(l.Parking[stand].Position, l.Parking[c].Position) {
+		other := o.HalfSpan
+		if other <= 0 {
+			other = DefaultHalfSpanMeters
+		}
+		if halfSpan+o.HalfSpan+StandWingtipClearanceMeters > localDist(l.Parking[stand].Position, l.Parking[c].Position) ||
+			onPushWay(l.Parking[stand], l.Parking[c], halfSpan) || onPushWay(l.Parking[c], l.Parking[stand], other) {
 			return fmt.Sprintf("%s on %s is in the way", o.describe(), l.Parking[c].Label())
 		}
 	}
 	return ""
+}
+
+// onPushWay reports whether stand q lies behind stand p within half meters
+// of p's centre line: an aircraft of that half span on p pushes back over
+// q, so the two are never held at once whatever their spans (#1676).
+func onPushWay(p, q airport.Parking, half float64) bool {
+	return alongHeading(p.Position, p.Heading, q.Position) < 0 &&
+		math.Abs(alongHeading(p.Position, p.Heading+90, q.Position)) < half
 }
 
 func (o Occupant) describe() string {

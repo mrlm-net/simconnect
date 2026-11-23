@@ -164,6 +164,10 @@ type Waypoint struct {
 	FAF        bool    `json:"faf,omitempty"`
 	MAP        bool    `json:"map,omitempty"`
 	Vectors    bool    `json:"vectors,omitempty"` // expect radar vectors after
+	// DMEArc and Straight are airport.NavPoint's: a point there to fly a
+	// DME arc, and where it is with that leg kept straight.
+	DMEArc   bool           `json:"dmeArc,omitempty"`
+	Straight airport.LatLon `json:"straight,omitzero"`
 }
 
 // Computed reports whether the point is not a charted fix.
@@ -745,7 +749,7 @@ func navWaypoint(n airport.NavPoint, regions map[string]string, airway string, p
 	ft := func(m float64) float64 { return math.Round(m * feetPerMeter) }
 	return Waypoint{Ident: n.Ident, Region: regions[strings.ToUpper(n.Ident)], Kind: n.Kind, Position: n.Position,
 		Airway: airway, Phase: phase, AltMinFt: ft(n.AltMin), AltMaxFt: ft(n.AltMax), SpeedMaxKts: n.SpeedMax,
-		FlyOver: n.FlyOver, IAF: n.IAF, FAF: n.FAF, MAP: n.MAP, Vectors: n.Vectors}
+		FlyOver: n.FlyOver, IAF: n.IAF, FAF: n.FAF, MAP: n.MAP, Vectors: n.Vectors, DMEArc: n.DMEArc, Straight: n.Straight}
 }
 
 // fixWaypoint turns an airway graph fix into an enroute waypoint.
