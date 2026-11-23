@@ -7,6 +7,13 @@ This project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 ---
 
+## [0.189.4] - 2026-11-23
+
+### Fixed
+
+- Fixed: a go-around round its circuit far above its final came down onto it at the hand-over to the approach, 7,000 ft in about 30 s. The circuit now descends from abeam the threshold at the approach's 3° at most, its downwind and final extended where that needs more room, and the hand-over fades any height left over at 3,000 fpm at most with the approach's descent; arrivals near their path are unchanged (#1681).
+- Added: an arrival still more than 100 ft off its final at the stabilised-approach gate (1,000 ft, or 500 ft for a close-in join; a VFR circuit's final is not judged) goes around as its crew would, on a staffed station too; the third time to its alternate, and with none it lands from the next. The user's own with held gates is never sent round: it lands, the height faded down to 50 ft over its whole final at the approach's own rate rather than from the gate, never snapped onto the runway (#1681).
+
 ## [0.189.3] - 2026-11-23
 
 ### Fixed

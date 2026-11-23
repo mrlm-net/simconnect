@@ -211,7 +211,16 @@ type controlled struct {
 	heightFt  float64
 	// aglFt: an arrival's height above the ground; stepsRead how many steps of
 	// its sequence have been read for moments.
-	aglFt     float64
+	aglFt float64
+	// unstableSeen: its arrival not stable at the gate, acted on (#1681);
+	// unstableRounds: the go-arounds its crew made for it (crewUnstable);
+	// landsAnyway: past them with nowhere else to go, it lands from one;
+	// landsSet: what its arrival was told (SetLandsUnstable).
+	unstableSeen          bool
+	unstableRounds        int
+	landsAnyway, landsSet bool
+	// streamsAt: the others' streams given its arrival last (streamsAhead).
+	streamsAt time.Time
 	stepsRead int
 	// vacateSaid: set once, by whichever event comes first (live, OKECF
 	// and TVS122 told twice in the same millisecond).
@@ -618,6 +627,9 @@ type controlCenter struct {
 	// ("" none known); crewDiverting: on its way there (#1411).
 	crewDivert    func(icao, tail string) string
 	crewDiverting func(tail string) bool
+	// crewGoAround marks a crew's own go-around given at the tower, false
+	// when one was given already (#1681).
+	crewGoAround func(tail string) bool
 	// followed keeps tail landing after lead, as the tower told it
 	// ("number 2, follow …"; ApproachSequencer.Behind).
 	followed func(icao, tail, lead string)
@@ -1645,6 +1657,21 @@ func (it *controlled) update(ev TaxiOrArrival) {
 		it.stepMoments(ev.dep.Steps, it.dep.Sequence)
 	case ev.arr != nil && it.arr != nil:
 		it.aglFt = ev.arr.AGL
+		// Not stable at the gate (#1681): the crew's go-around, once.
+		if ev.arr.Unstable && !it.unstableSeen {
+			go it.cc.crewUnstable(it, ev.arr.CrewGoAround)
+		}
+		it.unstableSeen = ev.arr.Unstable
+		it.streamsAhead(ev.arr)
+		// The user's own with held gates is never sent round by its crew
+		// (#1096): it lands from an approach not stable, as one past
+		// crewUnstableLimit with nowhere else to go does.
+		if lands := it.gates.Load() && it.manualSet || it.landsAnyway; lands != it.landsSet {
+			it.landsSet = lands
+			if a, ok := it.arr.(interface{ SetLandsUnstable(bool) }); ok {
+				go a.SetLandsUnstable(lands)
+			}
+		}
 		it.stepMoments(ev.arr.Steps, it.arr.Sequence)
 	}
 	// On the stand: the route with its push, planned in the background

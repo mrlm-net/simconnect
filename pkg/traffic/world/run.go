@@ -521,6 +521,7 @@ func (st *state) startWorld(cc *controlCenter) (stopWorld func()) {
 	// A go-around is sequenced again (#394), and cleared to land again on
 	// its next approach (#486).
 	cc.crewDivert, cc.crewDiverting = seqs.crewDivert, seqs.crewDiverting
+	cc.crewGoAround = tw.crewGoAround
 	cc.rejoin = func(icao, tail string) {
 		seqs.rejoin(icao, tail)
 		tw.forgetLanding(tail)

@@ -178,7 +178,14 @@ type ArrivalEvent struct {
 	// MissedJoin: MSFS AI flew past the end of its procedure without
 	// joining the final (where, how): it needs a direct to the final.
 	MissedJoin string
-	Position   airport.LatLon
+	// Unstable: its approach not stable at the stabilised-approach gate
+	// (StabilisedGateFt), the hand-over's height still fading there
+	// (#1681); until it joins a final again. Its crew goes around unless
+	// the flight is a player's (the world decides). CrewGoAround: its crew
+	// went round already, the height left more than could fade before
+	// touchdown (not with SetLandsUnstable).
+	Unstable, CrewGoAround bool
+	Position               airport.LatLon
 	// Steps is how many steps Sequence has; a new one is told at once.
 	Steps       int
 	AGL         float64 // feet
@@ -311,6 +318,9 @@ type ArrivalController struct {
 	proc          *ArrivalProcedure // STAR and approach flown by MSFS AI (Procedure)
 	flyingProc    bool
 	goArounds     int // go-arounds flown (GoAround)
+	// landsUnstable: lands from an approach not stable at the gate
+	// (SetLandsUnstable).
+	landsUnstable bool
 	// goAroundFt: the level a go-around climbs to (MSL), until reached: a
 	// route re-planned on the way up keeps it (noClimb would hold it where
 	// it is; live, TVS354 levelled at 1400 ft at LKPR). 0 once reached.
