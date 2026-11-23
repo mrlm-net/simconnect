@@ -12,7 +12,6 @@ This project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 ### Fixed
 
 - An arrival at its minimum speed that is asked to lose under a minute more now loses it. Its downwind is extended by the shortest vector, `MinDownwindVector`, instead of the time being left to a hold that never came (#1691).
-- Whether an arrival taken over on the runway can still make its planned exit is judged with the exit speed held at the exit's point; the cap was put on a range of no length and capped nothing, so a gentle exit counted as in reach at speeds braking could not bring down to the exit speed there (#1671)
 
 ### Changed
 

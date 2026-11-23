@@ -2,7 +2,6 @@ package traffic
 
 import (
 	"math"
-	"slices"
 	"sort"
 
 	"github.com/mrlm-net/simconnect/pkg/airport"
@@ -42,7 +41,7 @@ func DefaultMotionProfile() MotionProfile {
 		RefAheadMeters:  1.0,
 		CruiseKts:       TaxiSpeedKts,
 		MinTurnKts:      3,
-		LateralAccel:    1.3,
+		LateralAccel:    0.6,
 		Accel:           0.45, // live: 0.35 pulled away a little slowly
 		Decel:           0.5,
 		Jerk:            0.2,
@@ -56,12 +55,9 @@ func DefaultMotionProfile() MotionProfile {
 type GroundPath struct {
 	pts     []airport.LatLon
 	cum     []float64             // metres from the start
-	plan    []speedKnot           // the speed along it: finer than pts (speedLimits)
+	limit   []float64             // m/s
 	decelAt func(float64) float64 // planned braking (m/s²) at a distance
 }
-
-// speedKnot is the planned speed v (m/s) at metres along a path.
-type speedKnot struct{ at, v float64 }
 
 // NewGroundPath rounds the corners of points (GroundPathSmoothingPasses
 // Chaikin passes) and plans the allowed speed along it for profile p: the
@@ -81,7 +77,7 @@ func newGroundPath(points []airport.LatLon, p MotionProfile, firm firmZone) (*Gr
 		if d < firm.meters {
 			return math.Max(firm.decel, p.Decel)
 		}
-		return plannedDecel(p)
+		return p.Decel
 	}
 	lateralAt := func(d float64) float64 {
 		if d < firm.meters {
@@ -107,9 +103,7 @@ func newGroundPath(points []airport.LatLon, p MotionProfile, firm firmZone) (*Gr
 		g.cum[i] = g.cum[i-1] + localDist(pts[i-1], pts[i])
 	}
 	g.decelAt = decelAt
-	g.plan = speedLimits(g.pts, g.cum, p, lateralAt)
-	g.capTurnRateAligned(p.WheelbaseMeters)
-	g.brakeAhead(decelAt)
+	g.limit = speedLimits(g.pts, g.cum, p, decelAt, lateralAt)
 	return g, nil
 }
 
@@ -127,26 +121,12 @@ func (g *GroundPath) LimitRange(from, to, kts, decel float64) {
 
 func (g *GroundPath) limitRange(from, to, kts float64, decelAt func(float64) float64) {
 	vmax := kts * ktsToMS
-	for i, k := range g.plan {
-		if k.at >= from && k.at <= to {
-			g.plan[i].v = math.Min(k.v, vmax)
+	for i, d := range g.cum {
+		if d >= from && d <= to {
+			g.limit[i] = math.Min(g.limit[i], vmax)
 		}
 	}
 	g.brakeAhead(decelAt)
-}
-
-// limitPoint caps the speed at distance s at kts, with braking at decel
-// (m/s²) planned before it: a knot of its own at s, so a single point is
-// capped though no knot of the plan lies on it (#1671: LimitRange(s, s)
-// almost never held one, and capped nothing).
-func (g *GroundPath) limitPoint(s, kts, decel float64) {
-	s = math.Max(0, math.Min(s, g.Length()))
-	i := g.knotFrom(s)
-	if i == len(g.plan) || g.plan[i].at != s {
-		g.plan = slices.Insert(g.plan, i, speedKnot{s, g.limitAt(s)})
-	}
-	g.plan[i].v = math.Min(g.plan[i].v, kts*ktsToMS)
-	g.brakeAhead(func(float64) float64 { return decel })
 }
 
 // limitTurnOff caps the speed at kts, with the path's own braking planned
@@ -163,9 +143,8 @@ func (g *GroundPath) limitTurnOff(heading, from, to, kts float64) {
 			continue
 		}
 		if math.Abs(headingDiff(heading, localBearing(g.pts[i-1], g.pts[i]))) >= SharpTurnAngleDeg {
-			for k := g.knotFrom(g.cum[i-1]); k < len(g.plan) && g.plan[k].at <= g.cum[i]; k++ {
-				g.plan[k].v = math.Min(g.plan[k].v, vmax)
-			}
+			g.limit[i-1] = math.Min(g.limit[i-1], vmax)
+			g.limit[i] = math.Min(g.limit[i], vmax)
 		}
 	}
 	g.brakeAhead(g.decelAt)
@@ -173,25 +152,9 @@ func (g *GroundPath) limitTurnOff(heading, from, to, kts float64) {
 
 // brakeAhead plans braking at decelAt before every lower limit.
 func (g *GroundPath) brakeAhead(decelAt func(float64) float64) {
-	for i := len(g.plan) - 2; i >= 0; i-- {
-		k, next := g.plan[i], g.plan[i+1]
-		g.plan[i].v = math.Min(k.v, math.Sqrt(next.v*next.v+2*decelAt(k.at)*(next.at-k.at)))
+	for i := len(g.limit) - 2; i >= 0; i-- {
+		g.limit[i] = math.Min(g.limit[i], math.Sqrt(g.limit[i+1]*g.limit[i+1]+2*decelAt(g.cum[i])*(g.cum[i+1]-g.cum[i])))
 	}
-}
-
-// knotFrom is the first knot of the plan at s metres or on.
-func (g *GroundPath) knotFrom(s float64) int {
-	return sort.Search(len(g.plan), func(i int) bool { return g.plan[i].at >= s })
-}
-
-// planSeconds is how long the path takes at its planned speeds.
-func (g *GroundPath) planSeconds() float64 {
-	t := 0.0
-	for i := 1; i < len(g.plan); i++ {
-		a, b := g.plan[i-1], g.plan[i]
-		t += (b.at - a.at) / math.Max((a.v+b.v)/2, finalCreep)
-	}
-	return t
 }
 
 // Length is the path length in metres.
@@ -224,15 +187,8 @@ func (g *GroundPath) PointAt(s float64) airport.LatLon {
 func (g *GroundPath) SpeedLimitKts(s float64) float64 { return g.limitAt(s) / ktsToMS }
 
 func (g *GroundPath) limitAt(s float64) float64 {
-	i := g.knotFrom(s)
-	switch {
-	case i == 0:
-		return g.plan[0].v
-	case i == len(g.plan):
-		return g.plan[i-1].v
-	}
-	a, b := g.plan[i-1], g.plan[i]
-	return a.v + (b.v-a.v)*(s-a.at)/math.Max(b.at-a.at, 1e-9)
+	i, f := g.segment(s)
+	return g.limit[i-1] + (g.limit[i]-g.limit[i-1])*f
 }
 
 // GroundPose is where a GroundMover puts the aircraft.
@@ -312,11 +268,6 @@ func NewGroundMoverFrom(path *GroundPath, p MotionProfile, heading, speedKts flo
 	m.gear = airport.LatLon{
 		Lat: nose.Lat - math.Cos(h)*p.WheelbaseMeters/metersPerDegree,
 		Lon: nose.Lon - math.Sin(h)*p.WheelbaseMeters/kx,
-	}
-	// The plan took it lined up with the path: set off across it (a tug
-	// turning away from the nose) it swings round first.
-	if path.capTurnRate(p.WheelbaseMeters, m.gear, swingWheelbases*p.WheelbaseMeters) {
-		path.brakeAhead(path.decelAt)
 	}
 	m.place()
 	return m
@@ -649,192 +600,37 @@ func chaikin(p []airport.LatLon, passes int) []airport.LatLon {
 	return p
 }
 
-const (
-	// speedKnotMeters: the speed plan has a knot at least this often, so a
-	// turn's speed stays in the turn however long the straights beside it.
-	speedKnotMeters = TurnWindowMeters / 2
-	// minBearingMeters: a shorter segment has no direction of its own (two
-	// arcs meeting leave a point twice).
-	minBearingMeters = 0.05
-	// straightRad: turning less over the window is a straight (a bend of a
-	// degree in a runway's centreline does not slow a rollout).
-	straightRad = 0.02
-	// plannedTurnDegPerSec: no turn is planned quicker, the MinTurnKts floor
-	// or not: the quickest of ICAO Doc 9157 Part 2's 180-degree turns (Table
-	// 1-6, code A: 14.0 km/h on an 11.5 m radius). The jump trace allows
-	// 45°/s: the rest is room for the speed control's overshoot and a vehicle
-	// easing into its lane.
-	plannedTurnDegPerSec = 19.4
-	// trailStepMeters: the trailing gear is followed along a path this often.
-	trailStepMeters = 0.5
-	// swingWheelbases: a vehicle set off across its path has lined up with
-	// it this many wheelbases on.
-	swingWheelbases = 8
-)
-
-// capTurnRateAligned is capTurnRate over the whole path, set off along it.
-func (g *GroundPath) capTurnRateAligned(wheelbase float64) {
-	p0 := g.pts[0]
-	along := localBearing(p0, g.PointAt(math.Min(trailStepMeters, g.Length())))
-	g.capTurnRate(wheelbase, offsetHeading(p0, along+180, wheelbase), g.Length())
-}
-
-// capTurnRate lowers the plan, as far as upTo metres, where the turn is too
-// tight for its speed (#1651): the body, its gear trailing the path from
-// gear as place moves it, turns no quicker than plannedTurnDegPerSec. That
-// is never less than one round the trailing gear (wheelbase), so it never
-// plans a standstill. It reports whether it lowered any.
-func (g *GroundPath) capTurnRate(wheelbase float64, gear airport.LatLon, upTo float64) bool {
-	if wheelbase <= 0 || len(g.pts) < 2 {
-		return false
-	}
-	most := plannedTurnDegPerSec * math.Pi / 180
-	o := g.pts[0]
-	kx := metersPerDegree * math.Cos(o.Lat*math.Pi/180)
-	xy := func(q airport.LatLon) (float64, float64) {
-		return (q.Lon - o.Lon) * kx, (q.Lat - o.Lat) * metersPerDegree
-	}
-	gx, gy := xy(gear)
-	d := math.Hypot(gx, gy)
-	if d < 1e-6 {
-		return false
-	}
-	ux, uy := gx/d, gy/d // nose to gear
-	lowered, lo := false, 0
-	for i := 1; i < len(g.pts) && g.cum[i-1] < upTo; i++ {
-		l := g.cum[i] - g.cum[i-1]
-		if l <= 0 {
-			continue
-		}
-		ax, ay := xy(g.pts[i-1])
-		bx, by := xy(g.pts[i])
-		n := math.Ceil(l / trailStepMeters)
-		for k := 1.0; k <= n; k++ {
-			x, y := ax+(bx-ax)*k/n, ay+(by-ay)*k/n
-			nx, ny := gx-x, gy-y
-			d := math.Hypot(nx, ny)
-			if d < 1e-6 {
-				continue
-			}
-			nx, ny = nx/d, ny/d
-			gx, gy = x+nx*wheelbase, y+ny*wheelbase
-			turn := math.Abs(math.Atan2(ux*ny-uy*nx, ux*nx+uy*ny))
-			ux, uy = nx, ny
-			perM := math.Min(turn/(l/n), 1/wheelbase)
-			if perM == 0 {
-				continue
-			}
-			// The knots either side, so the speed between them is under it too.
-			v, at := most/perM, g.cum[i-1]+l*k/n
-			for lo < len(g.plan) && g.plan[lo].at < at-speedKnotMeters {
-				lo++
-			}
-			for j := lo; j < len(g.plan) && g.plan[j].at <= at+speedKnotMeters; j++ {
-				if g.plan[j].v > v {
-					g.plan[j].v, lowered = v, true
-				}
-			}
-		}
-	}
-	return lowered
-}
-
-// plannedDecel is the braking to plan ahead of a turn: p's Decel, but no
-// more than its jerk builds up while the mover looks ahead and answers
-// (2·SpeedResponseSeconds). A follow-me car's 1.5 m/s² took 7.5 s to come
-// and it met its turn still fast.
-func plannedDecel(p MotionProfile) float64 {
-	if p.Jerk <= 0 {
-		return p.Decel
-	}
-	return math.Min(p.Decel, 2*SpeedResponseSeconds*p.Jerk)
-}
-
-// speedLimits plans the speed along the path before braking: cruise, and
-// in a turn what LateralAccel allows on the radius truly turned on (#1651).
-// Before, that was measured between chords to the path's own points: twice
-// the radius on an arc, and no turn at all where the next point was the far
-// end of a straight.
-func speedLimits(pts []airport.LatLon, cum []float64, p MotionProfile, lateralAt func(float64) float64) []speedKnot {
+// speedLimits plans the allowed speed (m/s) at each point: cruise, slower
+// where the path curves, with Decel braking planned ahead of each turn.
+func speedLimits(pts []airport.LatLon, cum []float64, p MotionProfile, decelAt, lateralAt func(float64) float64) []float64 {
+	n := len(pts)
 	cruise, minTurn := p.CruiseKts*ktsToMS, math.Min(p.MinTurnKts, p.CruiseKts)*ktsToMS
-	turns := turningAlong(pts, cum)
-	end := cum[len(cum)-1]
-	plan := make([]speedKnot, 0, len(cum)+int(end/speedKnotMeters))
-	knot := func(s float64) {
-		v := cruise
-		if r := turns.radius(s, end); !math.IsInf(r, 1) {
-			v = math.Min(v, math.Max(minTurn, math.Sqrt(lateralAt(s)*r)))
-		}
-		plan = append(plan, speedKnot{s, v})
+	v := make([]float64, n)
+	for i := range v {
+		v[i] = cruise
 	}
-	knot(0)
-	for i := 1; i < len(cum); i++ {
-		from, l := cum[i-1], cum[i]-cum[i-1]
-		n := math.Ceil(l / speedKnotMeters)
-		for k := 1.0; k < n; k++ {
-			knot(from + l*k/n)
+	// Turn radius from the heading change over ±TurnWindowMeters.
+	j0, j1 := 0, 0
+	for i := 0; i < n; i++ {
+		for j0 < i && cum[i]-cum[j0] > TurnWindowMeters {
+			j0++
 		}
-		knot(cum[i])
-	}
-	return plan
-}
-
-// pathTurning is how far a path has turned (radians, signed) by each
-// distance along it, linear between its knots.
-type pathTurning struct{ at, turned []float64 }
-
-// turningAlong spreads the turn at each point of the path over half the
-// shorter segment either side, speedKnotMeters at most: exact on a sampled
-// arc, and a corner between long straights stays at the corner.
-func turningAlong(pts []airport.LatLon, cum []float64) pathTurning {
-	t := pathTurning{at: make([]float64, 1, 2*len(pts)), turned: make([]float64, 1, 2*len(pts))}
-	total, heading, last := 0.0, 0.0, 0.0
-	for i := 1; i < len(pts); i++ {
-		l := cum[i] - cum[i-1]
-		if l < minBearingMeters {
+		for j1 < n-1 && cum[j1]-cum[i] < TurnWindowMeters {
+			j1++
+		}
+		if j0 == i || j1 == i {
 			continue
 		}
-		h := localBearing(pts[i-1], pts[i])
-		if last > 0 {
-			w := min(last/2, l/2, speedKnotMeters)
-			t.at = append(t.at, cum[i-1]-w, cum[i-1]+w)
-			t.turned = append(t.turned, total, total+headingDiff(heading, h)*math.Pi/180)
-			total = t.turned[len(t.turned)-1]
+		d := math.Abs(headingDiff(localBearing(pts[j0], pts[i]), localBearing(pts[i], pts[j1]))) * math.Pi / 180
+		if d > 0.01 {
+			r := (cum[j1] - cum[j0]) / d
+			v[i] = math.Min(v[i], math.Max(minTurn, math.Sqrt(lateralAt(cum[i])*r)))
 		}
-		heading, last = h, l
 	}
-	return t
-}
-
-// by is how far the path has turned by s.
-func (t pathTurning) by(s float64) float64 {
-	i := sort.SearchFloat64s(t.at, s)
-	switch {
-	case i == 0:
-		return t.turned[0]
-	case i == len(t.at):
-		return t.turned[i-1]
+	for i := n - 2; i >= 0; i-- {
+		v[i] = math.Min(v[i], math.Sqrt(v[i+1]*v[i+1]+2*decelAt(cum[i])*(cum[i+1]-cum[i])))
 	}
-	return t.turned[i-1] + (t.turned[i]-t.turned[i-1])*(s-t.at[i-1])/math.Max(t.at[i]-t.at[i-1], 1e-9)
-}
-
-// radius is the radius turned on at s of a path end metres long: over
-// ±TurnWindowMeters, and over half of that where the turn is tighter than
-// that window can show (an 8 m arc of 90° is shorter than it).
-func (t pathTurning) radius(s, end float64) float64 {
-	over := func(w float64) float64 {
-		from, to := math.Max(0, s-w), math.Min(end, s+w)
-		d := math.Abs(t.by(to) - t.by(from))
-		if d <= straightRad {
-			return math.Inf(1)
-		}
-		return (to - from) / d
-	}
-	r := over(TurnWindowMeters)
-	if tight := over(TurnWindowMeters / 2); tight < 2*TurnWindowMeters {
-		r = math.Min(r, tight)
-	}
-	return r
+	return v
 }
 
 func localBearing(a, b airport.LatLon) float64 {
@@ -943,11 +739,9 @@ func newPlainPath(pts []airport.LatLon, p MotionProfile) *GroundPath {
 	for i := 1; i < len(g.pts); i++ {
 		g.cum[i] = g.cum[i-1] + localDist(g.pts[i-1], g.pts[i])
 	}
-	decel := plannedDecel(p)
-	g.decelAt = func(float64) float64 { return decel }
-	g.plan = speedLimits(g.pts, g.cum, p, func(float64) float64 { return p.LateralAccel })
-	g.capTurnRateAligned(p.WheelbaseMeters)
-	g.brakeAhead(g.decelAt)
+	decelAt := func(float64) float64 { return p.Decel }
+	g.decelAt = decelAt
+	g.limit = speedLimits(g.pts, g.cum, p, decelAt, func(float64) float64 { return p.LateralAccel })
 	return g
 }
 
