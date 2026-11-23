@@ -119,10 +119,7 @@ func (s *scheduler) enrouteStaffed(e *enrouteAC, at airport.LatLon) enrouteStaff
 	if e.told != nil {
 		told = e.told.icao
 	}
-	focus := ""
-	if len(s.focus) > 0 {
-		focus = s.focus[0]
-	}
+	focus := slices.Clone(s.focus)
 	s.mu.Unlock()
 	if len(s.cc.core.staff.list()) == 0 {
 		return out
@@ -132,16 +129,29 @@ func (s *scheduler) enrouteStaffed(e *enrouteAC, at airport.LatLon) enrouteStaff
 		if st, ok := s.cc.approachStaffed(told); ok {
 			out.icao, out.pos, out.mode = told, traffic.PosApproach, stationMode(st.Mode)
 		}
-	case focus != "" && e.f.Overflight():
-		on, ok := traffic.PickStation(s.cc.stations(focus), traffic.PosCenter, traffic.Where{At: &at})
-		if !ok {
-			break
-		}
-		if st, ok := s.cc.core.staffedAt(focus, traffic.PosCenter, on.Name); ok {
-			out.icao, out.pos, out.mode = focus, traffic.PosCenter, stationMode(st.Mode)
+	case e.f.Overflight():
+		if icao, _, st, ok := s.centreStaffed(focus, at); ok {
+			out.icao, out.pos, out.mode = icao, traffic.PosCenter, stationMode(st.Mode)
 		}
 	}
 	return out
+}
+
+// centreStaffed is the staffed centre station working an en route
+// aircraft at at: each focus airport's centre station there in turn, the
+// first one a player staffs (#1684: the first focus airport's only, and a
+// player on another's centre was not seen).
+func (s *scheduler) centreStaffed(focus []string, at airport.LatLon) (string, traffic.Station, StaffedStation, bool) {
+	for _, icao := range focus {
+		on, ok := traffic.PickStation(s.cc.stations(icao), traffic.PosCenter, traffic.Where{At: &at})
+		if !ok {
+			continue
+		}
+		if st, ok := s.cc.core.staffedAt(icao, traffic.PosCenter, on.Name); ok {
+			return icao, on, st, true
+		}
+	}
+	return "", traffic.Station{}, StaffedStation{}, false
 }
 
 // staffing is whose a is: by its en route flight where it is one of those
@@ -186,6 +196,90 @@ func (w *conflictWatch) stopIsPlayers(e *enrouteAC, at airport.LatLon, st stoppe
 		return true // their clearance stands
 	}
 	return who.mode != "" && !st.net
+}
+
+// departurePlayers reports whether departure it's climb is the player's
+// (#1096): under their control, or with tower or departure while departure
+// is staffed, gates not set yet (checkStaffed).
+func (it *controlled) departurePlayers() bool {
+	if it.gates.Load() {
+		return true
+	}
+	it.mu.Lock()
+	pos := it.atc
+	it.mu.Unlock()
+	return (pos == traffic.PosTower || pos == traffic.PosDeparture) && it.staffedNow(traffic.PosDeparture)
+}
+
+// holdStops leaves the departures the watch stopped to the player while
+// they are the player's (#1665): the stop stays, its level held on in the
+// route (the change's end climbed on by itself), and theirs names them, not
+// to be cleared on. Off the staffed station the AI clears them on as
+// before; a climb from the player since ends the stop. The safety net's
+// own stop too: the net resolves, the climb after it is the player's.
+func (w *conflictWatch) holdStops(aircraft []traffic.TrackedAircraft) (theirs map[string]bool) {
+	w.mu.Lock()
+	stops := maps.Clone(w.stopped)
+	w.mu.Unlock()
+	theirs = map[string]bool{}
+	for _, a := range aircraft {
+		st, ok := stops[a.Tail]
+		if !ok || !a.Ours || a.OnGround || st.pos != traffic.PosDeparture {
+			continue
+		}
+		it := w.s.cc.byTail(a.Tail)
+		if it == nil || it.dep == nil || it.object() != a.ObjectID {
+			continue
+		}
+		it.mu.Lock()
+		climbed := it.climbClearedAt
+		it.mu.Unlock()
+		if !climbed.IsZero() && !climbed.Before(st.since) {
+			w.mu.Lock()
+			delete(w.stopped, a.Tail)
+			w.mu.Unlock()
+			w.s.cc.log.printf("%-6s conflict stop: over, the player cleared its climb", a.Tail)
+			continue
+		}
+		if !it.departurePlayers() {
+			continue
+		}
+		theirs[a.Tail] = true
+		if st.held || st.atFt <= 0 {
+			continue
+		}
+		route := stopHeld(a, st, it.dep.ClimbPlan(a.Position))
+		if err := w.s.cc.do(func() error { return it.dep.Reroute(route) }); err != nil {
+			w.s.cc.log.printf("%-6s conflict stop: not held for the player: %v", a.Tail, err)
+			continue
+		}
+		it.mu.Lock()
+		it.clearedFt, it.higherAt, it.levelSet = st.atFt, time.Time{}, true
+		it.mu.Unlock()
+		w.mu.Lock()
+		if cur, ok := w.stopped[a.Tail]; ok && cur.since.Equal(st.since) {
+			cur.held = true
+			w.stopped[a.Tail] = cur
+		}
+		w.mu.Unlock()
+		w.s.cc.log.printf("%-6s conflict stop: the player's, held at %.0f ft", a.Tail, st.atFt)
+	}
+	return theirs
+}
+
+// stopHeld is a's route ahead with the level of its stop st to the end.
+func stopHeld(a traffic.TrackedAircraft, st stoppedLevel, plan []traffic.RoutePoint) []traffic.RoutePoint {
+	out := []traffic.RoutePoint{{Position: a.Position, AltFt: a.AltFt, Kts: a.GroundKts}}
+	if len(plan) == 0 {
+		return out
+	}
+	for _, p := range traffic.ProfileAhead(a.Position, plan) {
+		if p.AltFt == 0 || st.climb && p.AltFt > st.atFt || !st.climb && p.AltFt < st.atFt {
+			p.AltFt = st.atFt
+		}
+		out = append(out, p)
+	}
+	return out
 }
 
 // staffedConflict looks at conflict c for aircraft on staffed stations: an

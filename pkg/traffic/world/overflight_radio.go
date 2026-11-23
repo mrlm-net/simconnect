@@ -62,6 +62,8 @@ const (
 // centreContact is the centre station a crossing flight talks to.
 type centreContact struct {
 	station traffic.Station
+	// icao: the focus airport whose station it is.
+	icao string
 	// handed: told to contact the next unit (gone from ours).
 	handed bool
 }
@@ -131,10 +133,20 @@ func (s *scheduler) radioTick(now time.Time) {
 	if !ok {
 		return
 	}
-	icao := focus[0]
-	stations := s.cc.stations(icao)
+	// Each with the centre a player staffs there, at any focus airport,
+	// the one centreStaffed picks; else the first focus airport's (#1684:
+	// the first one's always, and a player on another's centre heard none
+	// of their traffic).
+	stations := map[string][]traffic.Station{}
 	for _, p := range list {
-		s.radioLook(now, icao, stations, c, p)
+		icao := focus[0]
+		if at, _, _, ok := s.centreStaffed(focus, p.a.Position); ok {
+			icao = at
+		}
+		if _, ok := stations[icao]; !ok {
+			stations[icao] = s.cc.stations(icao)
+		}
+		s.radioLook(now, icao, stations[icao], c, p)
 	}
 }
 
@@ -153,12 +165,17 @@ func (s *scheduler) radioLook(now time.Time, icao string, stations []traffic.Sta
 		t := traffic.CheckIn(traffic.PosCenter, st.Name, p.cs, s.levelReport(icao, p), "")
 		if s.centreSay(now, icao, st, t, 1) {
 			s.mu.Lock()
-			s.over.cr.on[p.cs] = &centreContact{station: st}
+			s.over.cr.on[p.cs] = &centreContact{station: st, icao: icao}
 			s.mu.Unlock()
 		}
 	case on != nil && !on.handed && (!in || !ok || st.Name != on.station.Name || st.Freq != on.station.Freq):
-		// Out of its sector or the area: handed on.
-		if staffed, ok := s.cc.core.staffedAt(icao, traffic.PosCenter, on.station.Name); ok && !staffed.AutoHandoff {
+		// Out of its sector or the area: handed on, by the station it is on
+		// (its airport's: #1684).
+		from := icao
+		if on.icao != "" {
+			from = on.icao
+		}
+		if staffed, ok := s.cc.core.staffedAt(from, traffic.PosCenter, on.station.Name); ok && !staffed.AutoHandoff {
 			return // the player's to hand off
 		}
 		next := traffic.Station{Position: traffic.PosCenter}
@@ -169,7 +186,7 @@ func (s *scheduler) radioLook(now time.Time, icao string, stations []traffic.Sta
 			return // its check-in there over the cap: the hand-off waits
 		}
 		t := traffic.Handoff(p.cs, traffic.PosCenter, traffic.PosCenter, next.Name, next.Freq)
-		if !s.centreSay(now, icao, on.station, t, 2) {
+		if !s.centreSay(now, from, on.station, t, 2) {
 			return
 		}
 		s.mu.Lock()
@@ -180,7 +197,7 @@ func (s *scheduler) radioLook(now time.Time, icao string, stations []traffic.Sta
 			t := traffic.CheckIn(traffic.PosCenter, next.Name, p.cs, s.levelReport(icao, p), "")
 			s.centreSay(now, icao, next, t, 1)
 			s.mu.Lock()
-			s.over.cr.on[p.cs] = &centreContact{station: next}
+			s.over.cr.on[p.cs] = &centreContact{station: next, icao: icao}
 			s.mu.Unlock()
 		}
 	}
@@ -376,13 +393,7 @@ func (s *scheduler) instruct(in EnrouteInstruction) (traffic.Transmission, error
 			return traffic.Transmission{}, ErrNotEnroute
 		}
 	}
-	icao := focus[0]
-	pos := a.Position
-	st, ok := traffic.PickStation(s.cc.stations(icao), traffic.PosCenter, traffic.Where{At: &pos})
-	if !ok {
-		return traffic.Transmission{}, ErrNotStaffed
-	}
-	staffed, ok := s.cc.core.staffedAt(icao, traffic.PosCenter, st.Name)
+	icao, st, staffed, ok := s.centreStaffed(focus, a.Position) // any focus airport's centre (#1684)
 	if by := strings.ToLower(strings.TrimSpace(in.By)); !ok || by != "" && staffed.By != by {
 		return traffic.Transmission{}, ErrNotStaffed
 	}

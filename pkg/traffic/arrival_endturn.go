@@ -76,11 +76,16 @@ func endTurnPlan(g *airport.Graph, runwayEnd string, parking int, o ArrivalOptio
 		if err != nil || g.TurnsBack(route) {
 			continue
 		}
-		// On the runway past the exit: to the turn, round it and back.
-		past := math.Max(0, x.Along-(a0+2*r))
-		return x, route, 2*past + (math.Pi+0.5)*r, true
+		return x, route, endTurnMeters(rwy, x.Along), true
 	}
 	return airport.RunwayExit{}, nil, 0, false
+}
+
+// endTurnMeters is the way on runway rwy past an exit back, fromFar before
+// the far threshold: to the turn, round it and back.
+func endTurnMeters(rwy airport.Runway, fromFar float64) float64 {
+	r, a0 := endTurnRadius(rwy)
+	return 2*math.Max(0, fromFar-(a0+2*r)) + (math.Pi+0.5)*r
 }
 
 // endTurn replans the arrival, its nose gear at nose rolling at kts, to

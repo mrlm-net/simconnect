@@ -490,6 +490,9 @@ type ArrivalOptions struct {
 	// it can make and what its runway time costs (bestExit); 0: an
 	// airliner's (TouchdownSpeedKts, RolloutDecel).
 	TouchdownKts, BrakeDecel float64
+	// endTurn: Exit is the exit back of a roll to the end planned already
+	// (ArrivalPlan.EndTurn, #1658), planned so again.
+	endTurn bool
 }
 
 // ArrivalPlan is a complete arrival for one aircraft.
@@ -602,6 +605,17 @@ func PlanArrival(g *airport.Graph, runwayEnd string, parking int, o ArrivalOptio
 		x = *exit
 		if route, err = g.RouteFromRunway(x, parking, opts); err != nil {
 			return nil, err
+		}
+		// Planned again (#1658): still to the end and back, by another exit
+		// back where this one's way to the new stand turns back.
+		if o.endTurn {
+			turnM = endTurnMeters(rwy, rwy.Length-x.Along)
+			if g.TurnsBack(route) {
+				if tx, tr, m, ok := endTurnPlan(g, runwayEnd, parking, o, exitReach{o.TouchdownKts, o.BrakeDecel}); ok {
+					x, route, turnM = tx, tr, m
+					x.Along = rwy.Length - tx.Along
+				}
+			}
 		}
 	} else {
 		// Never an exit the type only makes too fast (#1631: the last one

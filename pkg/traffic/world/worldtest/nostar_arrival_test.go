@@ -77,7 +77,26 @@ func TestGameArrivalWithoutSTAR(t *testing.T) {
 	v, _ := h.Aircraft(tail)
 	t.Logf("%s inbound on %q", tail, v.Procedure)
 	cleared, flew := map[string]bool{}, false
+	// The game's other arrivals are the player's too: worked as this one,
+	// not left to go around into it (#1648: JBU1547, never cleared to land,
+	// round and back 0.9 NM behind JBU1536).
+	others := map[string]map[string]bool{}
 	if !h.Until(40*time.Minute, func() bool {
+		for _, o := range h.World.Snapshot().Aircraft {
+			if o.Kind != "arrival" || !o.Manual || o.Tail == tail {
+				continue
+			}
+			done := others[o.Tail]
+			if done == nil {
+				done = map[string]bool{}
+				others[o.Tail] = done
+			}
+			for _, act := range []string{"clearance", "approach", "handoff", "land"} {
+				if !done[act] && slices.Contains(o.Actions, act) && h.World.Clear(o.ID, act) == nil {
+					done[act] = true
+				}
+			}
+		}
 		v, ok := h.Aircraft(tail)
 		if !ok {
 			return false

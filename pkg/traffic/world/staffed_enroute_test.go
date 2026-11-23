@@ -117,6 +117,39 @@ func (b *meetingBed) staff(st ...StaffedStation) {
 	b.w.SetStaffed(st)
 }
 
+// A centre staffed at a second focus airport is the player's too: the
+// first one's alone was looked at (#1684).
+func TestEnrouteStaffedSecondAirport(t *testing.T) {
+	b := newMeetingBed(t)
+	b.s.focus = []string{"LKPR", "LKKV"}
+	lkpr := b.s.cc.localStations
+	b.s.cc.localStations = func(icao string) []traffic.Station {
+		if icao == "LKKV" {
+			return []traffic.Station{{Position: traffic.PosCenter, Name: "Test Centre Karlovy", Freq: "129.000"}}
+		}
+		return lkpr(icao)
+	}
+	b.w.SetStaffed([]StaffedStation{{ICAO: "LKKV", Position: "center", Mode: ModeSilent}})
+	b.look(0)
+	if got := b.sim.routes(); len(got) != 0 {
+		t.Fatalf("staffed at LKKV: routes set %v, want none", got)
+	}
+	if _, err := b.s.instruct(EnrouteInstruction{Callsign: "KLM221", AltFt: 36000}); err != nil {
+		t.Fatalf("the player's instruction: %v", err)
+	}
+	// And the player hears it: its check-in on the Karlovy centre.
+	b.s.over.radio = true
+	b.s.over.crossing = map[string][2]string{"KLM221": {}}
+	b.s.radioTick(b.now.Add(radioEvery))
+	heard := false
+	for _, x := range b.s.cc.radio.Recent("LKKV", 0) {
+		heard = heard || x.Callsign == "KLM221" && x.Frequency == "129.000"
+	}
+	if !heard {
+		t.Errorf("no check-in from KLM221 on the staffed Karlovy centre (LKPR's: %d transmissions)", len(b.s.cc.radio.Recent("LKPR", 0)))
+	}
+}
+
 // The AI resolves its own two overflights' conflict: the bed has one.
 func TestEnrouteConflictUnstaffed(t *testing.T) {
 	b := newMeetingBed(t)

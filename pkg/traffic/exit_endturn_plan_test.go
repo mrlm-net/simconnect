@@ -10,7 +10,7 @@ import (
 // midExitGraph is the builder sample's field (#1631): runway 09/27 of
 // 2500 m, a right-angle exit C at mid-length, B and D at the ends leaving
 // back by back metres over their 75 m (10: about 98°, no exit for an
-// aircraft landing towards them), a parallel taxiway A, one stand.
+// aircraft landing towards them), a parallel taxiway A, two stands.
 func midExitGraph(t *testing.T, back float32) *airport.Graph {
 	t.Helper()
 	var pts []airport.RawTaxiPoint
@@ -50,9 +50,15 @@ func midExitGraph(t *testing.T, back float32) *airport.Graph {
 	lead := pt(300, 260, 1)
 	link(apron, lead, 1, 5, 20, 0)
 	link(lead, 0, 3, 0, 20, 0)
+	lead2 := pt(380, 260, 1)
+	link(apron, lead2, 1, 5, 20, 0)
+	link(lead2, 1, 3, 0, 20, 0)
 	raw := airport.RawAirport{ICAO: "XMID", Name: "Mid exit", Latitude: 50.1214, Longitude: 13.8124, Altitude: 300,
-		Runways:    []airport.RawRunway{{Latitude: 50.1214, Longitude: 13.8124, Altitude: 300, Heading: 90, Length: 2500, Width: 45, PrimaryNumber: 9, SecondaryNumber: 27}},
-		Parking:    []airport.RawParking{{Name: 14, Number: 1, Type: 9, Heading: 0, Radius: 24, BiasX: 300, BiasZ: 310}},
+		Runways: []airport.RawRunway{{Latitude: 50.1214, Longitude: 13.8124, Altitude: 300, Heading: 90, Length: 2500, Width: 45, PrimaryNumber: 9, SecondaryNumber: 27}},
+		Parking: []airport.RawParking{
+			{Name: 14, Number: 1, Type: 9, Heading: 0, Radius: 24, BiasX: 300, BiasZ: 310},
+			{Name: 14, Number: 2, Type: 9, Heading: 0, Radius: 24, BiasX: 380, BiasZ: 310},
+		},
 		TaxiPoints: pts, TaxiPaths: paths, TaxiNames: []string{"", "A", "B", "C", "D", "S"}}
 	layout, err := airport.BuildLayout(raw)
 	if err != nil {

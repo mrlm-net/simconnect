@@ -24,8 +24,13 @@ const (
 	// (rapid) exit, in degrees.
 	HighSpeedExitAngle = 45.0
 	// MaxExitAngle is the largest turn-off angle a landing aircraft can take;
-	// larger angles point back along the runway and are skipped.
+	// larger angles point back along the runway and are skipped, but for
+	// ExitAngleTolerance.
 	MaxExitAngle = 90.0
+	// ExitAngleTolerance is mapping noise on a right-angle stub (#1686): one
+	// drawn at 88° from one runway end is 92° from the other, and is an exit
+	// both ways, and taken as the 90° exit it is.
+	ExitAngleTolerance = 5.0
 	// MaxEntryAngle is the largest turn onto the runway a departure takes at
 	// taxi speed: sharper than any exit — threshold entries are often at 90°
 	// or more (LKPR 12 at L, 120°) — but not a U-turn.
@@ -83,9 +88,9 @@ type RunwayExit struct {
 
 // RunwayExits returns the exits usable by aircraft landing on runwayEnd,
 // sorted by distance from the threshold (Along). Exits turning back towards
-// the threshold (Angle > MaxExitAngle) are left out.
+// the threshold (Angle > MaxExitAngle + ExitAngleTolerance) are left out.
 func (g *Graph) RunwayExits(runwayEnd string) ([]RunwayExit, error) {
-	return g.turnoffs(runwayEnd, MaxExitAngle)
+	return g.turnoffs(runwayEnd, MaxExitAngle+ExitAngleTolerance)
 }
 
 // turnoffs are the ways off the runway for aircraft rolling along
@@ -230,8 +235,8 @@ func (g *Graph) RouteFromRunway(exit RunwayExit, parking int, opts RouteOptions)
 
 // ExitTight says why an aircraft cannot vacate by exit x: "" it can. Its wings
 // do not fit the exit (opts.HalfSpan, as for a route), or the exit bends back
-// sharper than MaxExitAngle (Angle is measured to its far end, which hides a
-// hook on the way there).
+// sharper than MaxExitAngle and its ExitAngleTolerance (Angle is measured to
+// its far end, which hides a hook on the way there).
 func (g *Graph) ExitTight(x RunwayExit, runwayHeading float64, opts RouteOptions) string {
 	if opts.TaxiwayMaxSpan == nil {
 		opts.TaxiwayMaxSpan = KnownTaxiwayMaxSpan[g.Layout.ICAO]
@@ -250,7 +255,7 @@ func (g *Graph) ExitTight(x RunwayExit, runwayHeading float64, opts RouteOptions
 			continue
 		}
 		brg := math.Atan2(bx-ax, bz-az) * 180 / math.Pi
-		if turn := math.Abs(math.Mod(brg-hdg+540, 360) - 180); turn > MaxExitAngle {
+		if turn := math.Abs(math.Mod(brg-hdg+540, 360) - 180); turn > MaxExitAngle+ExitAngleTolerance {
 			return "the turn is too sharp"
 		}
 		hdg = brg

@@ -178,6 +178,9 @@ type controlled struct {
 	clearedFt, cruiseFt float64
 	climbCapped         bool
 	levelSet            bool // held at clearedFt once handed over (crewAsksHigher)
+	// climbClearedAt: when the player last cleared its climb on (#1665: a
+	// stop for traffic before it is over). it.mu.
+	climbClearedAt time.Time
 	// approachCleared: the player cleared its approach on a staffed
 	// approach; limitHeld: it holds at its clearance limit, the end of its
 	// STAR, for want of one (crewAtLimit, #1096).
@@ -5184,6 +5187,9 @@ func (it *controlled) handoff(ev TaxiOrArrival) {
 		// Departure identifies it and clears the climb on (#462).
 		p := it.cc.pending
 		it.callAfter(pos, prioApproach, it.clearAt(pos), func() {
+			if it.departurePlayers() {
+				return // the player's since its check-in: theirs to clear on (#1665)
+			}
 			// Stopped for traffic since the check-in: identified only, the
 			// climb is cleared on once clear of it (live, TVS524 "stop climb
 			// at 4000 feet" then "identified, climb to flight level 240").
@@ -5316,9 +5322,11 @@ func (it *controlled) checkInReport(pos traffic.Position) string {
 		}
 		return s
 	case it.arr != nil && pos == traffic.PosApproach:
-		// Back from a go-around: climbing to the circuit's altitude.
+		// Back from a go-around: climbing to the circuit's altitude, passing
+		// its height above the ground (heightFt is a departure's: "passing 0
+		// feet", #1648).
 		if fx := it.arr.CircuitFixes(); len(fx) > 0 {
-			passing := math.Round((it.heightFt+it.graph.Layout.Altitude*3.28084)/100) * 100
+			passing := math.Round((it.aglFt+it.graph.Layout.Altitude*3.28084)/100) * 100
 			return fmt.Sprintf("going around, passing %.0f feet climbing %s", passing, it.goAroundLevel())
 		}
 	case it.arr != nil && pos == traffic.PosTower:

@@ -63,11 +63,7 @@ func (f localFeed) Airways(icao string, g *nav.AirwayGraph) {
 func (f localFeed) Procedures(p airport.Procedures) {
 	fmt.Fprintf(stdout, "🧭 %s procedures: %d SIDs, %d STARs, %d approaches\n", p.ICAO, len(p.Departures), len(p.Arrivals), len(p.Approaches))
 	f.st.mu.Lock()
-	if f.st.procedures == nil {
-		f.st.procedures = map[string]airport.Procedures{}
-	}
-	f.st.procedures[p.ICAO] = p
-	if placed, moved := f.st.placeRunwayFixesLocked(p.ICAO); moved {
+	if placed, moved := f.st.storeProceduresLocked(p); moved {
 		p = placed
 	}
 	f.st.mu.Unlock()

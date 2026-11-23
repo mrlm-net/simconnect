@@ -7,6 +7,18 @@ This project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 ---
 
+## [0.189.1] - 2026-11-23
+
+### Fixed
+
+- A right-angle runway exit drawn a few degrees past 90° from one runway end (up to `airport.ExitAngleTolerance`, 5°) is an exit from that end too, taken exactly as a 90° exit: a taxiway mapped at 89° from one end is 91° from the other, and was left out in that landing direction, so arrivals rolled to the far end (#1686).
+- An overflight on a centre staffed at a second focus airport was still the AI's: the player could not instruct it and heard none of its calls. The en route staffing check, InstructEnroute and the centre radio's check-ins and hand-offs now use the staffed centre at any focus airport (#1684).
+- A player's go-around (game mode, gates) was told by the AI to lose time on its way back; it is the player's to space, and the AI no longer stops a player's arrival's descent for another's go-around (#1648, #1096).
+- A go-around checked in with approach "passing 0 feet"; it now says its height (#1648).
+- A climb the conflict watch stopped stays the player's while departure is staffed, in every mode (#1096): the AI no longer clears it on, the crew's request doesn't climb it over the stop, and its route holds the level past the change's end. That counts for a stop from before departure was staffed and for the safety net's own stop alike; the player's climb ends it, and off the staffed station the AI clears it on as before (#1665).
+- A stand change keeps an arrival's planned turn at the runway's end: the new plan rolls to the end and back as the old one did, not off at the first exit (#1658).
+- A procedure runway fix (RWxx) already within 50 m of where it belongs (its end's landing threshold, displaced or not, in an approach or STAR; the pavement end in a SID) is no longer moved onto the layout's point. The World places runway fixes from the procedures as read whenever a layout arrives, so they still follow a layout that changes (#1646).
+
 ## [0.189.0] - 2026-11-23
 
 ### Added
