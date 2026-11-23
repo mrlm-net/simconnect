@@ -1313,9 +1313,9 @@ func (c *ArrivalController) planExit(x airport.RunwayExit, ai, endTurn bool) err
 
 // exitTurnReach is how fast (m/s) an aircraft whose nose gear is at nose
 // may be to leave by the planned exit (#1586): braking at the rollout's
-// BrakeDecel it slows to the exit speed at the exit and, through the exit's
+// BrakeDecel it slows to the exit speed by the exit and, through the exit's
 // turn, to the turn speed its radius allows at ExitLateralAccel (v²/r,
-// about 0.15 g), as the injected rollout is planned.
+// about 0.15 g), as the injected rollout is flown.
 func (c *ArrivalController) exitTurnReach(nose airport.LatLon) float64 {
 	ro := c.rolloutProfile()
 	route := c.plan.Route.Points
@@ -1331,10 +1331,15 @@ func (c *ArrivalController) exitTurnReach(nose airport.LatLon) float64 {
 	if c.plan.Exit.HighSpeed {
 		exitKts = ro.HighSpeedExitKts
 	}
-	at := localDist(nose, route[0])
-	path.LimitRange(at, at, exitKts, ro.BrakeDecel)
 	path.limitTurnOff(c.plan.End.Heading, 0, path.Length(), ro.ExitKts)
-	return path.limit[0]
+	// The exit speed by the exit, braking at BrakeDecel to it from here
+	// (#1671). Worked out here, not put on the path: a cap on a range of no
+	// length held no point of it and capped nothing. Not from
+	// rolloutExitLeadM before it, where the rollout plans it: one a little
+	// over its plan there brakes on to the exit and still makes it (LKPR 30,
+	// a P28A at 53 kt 155 m short of R).
+	ve := exitKts * ktsToMS
+	return math.Min(path.limit[0], math.Sqrt(ve*ve+2*ro.BrakeDecel*localDist(nose, route[0])))
 }
 
 // exitInReach (#1586): taken over on the runway, the aircraft must slow to

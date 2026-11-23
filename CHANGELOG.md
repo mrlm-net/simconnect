@@ -7,6 +7,12 @@ This project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 ---
 
+## [0.189.3] - 2026-11-23
+
+### Fixed
+
+- Whether the planned exit is still in reach when the landing roll is taken over is judged with the exit speed at the exit, braking to it at the rollout's rate, not with the exit's turn alone: an exit too fast to make is given up for a later one at once instead of being missed late; worked out for the arrival alone, the ground path speed limits shared by tugs and service vehicles unchanged (#1671)
+
 ## [0.189.2] - 2026-11-23
 
 ### Fixed
