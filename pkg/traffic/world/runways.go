@@ -1095,6 +1095,18 @@ func (t *towers) forgetTail(tail string) {
 	delete(t.waiting, tail)
 }
 
+// crewGoAround marks tail's go-around given, its crew's own (#1681): the
+// tower does not send it round again; false when one was given already.
+func (t *towers) crewGoAround(tail string) bool {
+	t.mu.Lock()
+	defer t.mu.Unlock()
+	if t.given[tail+" goaround"] {
+		return false
+	}
+	t.given[tail+" goaround"] = true
+	return true
+}
+
 // forgetGoAround lets an arrival be sent around again on its next approach.
 func (t *towers) forgetGoAround(tail string) {
 	t.mu.Lock()

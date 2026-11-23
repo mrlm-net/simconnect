@@ -600,7 +600,29 @@ func (c *ArrivalController) onApproachFrame(m arrivalMonitor) {
 		c.lights.Logo = !c.aircraft().Lights.NoLogo
 		c.setInjectedLights(lightsRollout, "lights approach (injected)")
 	}
-	pose := c.blend.apply(c.approach.Step(math.Max(dt, 0)), math.Max(dt, 0))
+	onPath := c.approach.Step(math.Max(dt, 0))
+	pose := c.blend.apply(onPath, math.Max(dt, 0))
+	if !c.last.Unstable && c.blend.judgeGate(onPath.HeightFt) {
+		c.last.Unstable = true
+		c.note("not stable at the gate: the hand-over's height still off", nil)
+		// More left than can fade before touchdown (#1681): its crew goes
+		// round, its own call; one that lands from it has the height faded
+		// by unstableTouchdownFt, never snapped onto the runway.
+		if t := secondsTo(onPath, unstableTouchdownFt); c.blend.ftLeft > t {
+			if c.landsUnstable {
+				c.blend.refit(t)
+				c.note("landing not stable: the height faded by 50 ft", nil)
+			} else if err := c.goAroundLocked(); err == nil {
+				c.last.CrewGoAround = true
+				c.note("crew go-around: not stable at the gate", nil)
+				c.emit(nil, true)
+				return
+			} else {
+				c.note("crew go-around refused", err)
+			}
+		}
+		c.emit(nil, true)
+	}
 	pose.MainGearBehindM = c.profile().RefAheadMeters // the flare turns on the main gear too
 	pose.Landing = true
 	pose.RunwayFt = c.plan.Runway.Altitude / 0.3048 // a steady glide path over any terrain

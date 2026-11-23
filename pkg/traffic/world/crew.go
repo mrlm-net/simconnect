@@ -24,6 +24,34 @@ const (
 	crewUnstableShare = 0.0005
 )
 
+// An arrival near its final is given the others' streams for its
+// go-around's circuit side up front (#1458): its crew may go round on its
+// own, not stable at the gate, with no time for the world to ask first
+// (#1681). Again every streamsAheadEvery below streamsAheadFt.
+const (
+	streamsAheadEvery = 20 * time.Second
+	streamsAheadFt    = 5000.0
+)
+
+// streamsAhead gives it's arrival the streams, ev its last event (it.mu
+// held: the streams are looked up off it).
+func (it *controlled) streamsAhead(ev *traffic.ArrivalEvent) {
+	if ev.State != traffic.ArrivalApproaching || ev.OnGround || ev.AGL <= 0 || ev.AGL > streamsAheadFt {
+		return
+	}
+	now := it.cc.clock.Now()
+	if !it.streamsAt.IsZero() && now.Sub(it.streamsAt) < streamsAheadEvery {
+		return
+	}
+	it.streamsAt = now
+	cc, arr := it.cc, it.arr
+	go func() { arr.SetGoAroundStreams(cc.arrivalStreams(it)) }()
+}
+
+// crewUnstableLimit is crewNoClearanceLimit for approaches not stable at
+// the gate (crewUnstable, #1681).
+const crewUnstableLimit = crewNoClearanceLimit
+
 // crewNoClearanceLimit is the go-around for want of a landing clearance after
 // which a crew stops coming back (#1411). A clearance in between does not
 // reset it: the flight has still used the fuel.
@@ -108,6 +136,73 @@ func (t *towers) crewDecides(icao string, list []traffic.RunwayUser, ours map[st
 		if !staffed {
 			it.call(traffic.PosTower, prioUrgent, func() { it.say(it.goAroundAck()) })
 		}
+	}
+}
+
+// crewUnstable: it, an arrival of ours, is not stable at the gate, its
+// hand-over's height still fading there (#1681): the crew goes around on
+// its own (#621), as for want of a landing clearance (crewDecides). The
+// crew's call, so on a staffed station too: #1096 keeps the AI controller
+// from moving a player's flight, not its crew. Not the user's own with
+// held gates on the map, the user being the tower there: logged. The AI's
+// tower acknowledges; a staffed station's player answers. crewRound: the
+// arrival's crew went round already, the height left more than could fade
+// before touchdown: its way back planned, said. As for want of a landing
+// clearance (crewNoClearanceLimit), the crew takes the flight to its
+// alternate at the crewUnstableLimit-th: never round for ever; with
+// nowhere else to go it lands from the next, its height faded by 50 ft.
+// Once the tower's go-around is given (said already), not again.
+func (cc *controlCenter) crewUnstable(it *controlled, crewRound bool) {
+	cs := it.Tail
+	it.mu.Lock()
+	staffed := it.gates.Load() && !it.manualSet
+	it.mu.Unlock()
+	if it.gates.Load() && !staffed {
+		cc.log.printf("%-6s crew: approach not stable at the gate, held gates: the user's call, landing from it", cs)
+		return
+	}
+	if !crewRound && cc.crewGoAround != nil && !cc.crewGoAround(cs) {
+		return // sent round already: said once
+	}
+	if crewRound && cc.crewGoAround != nil {
+		cc.crewGoAround(cs) // the tower does not send it round again
+	}
+	it.mu.Lock()
+	n := it.unstableRounds + 1
+	it.unstableRounds = n
+	if n >= crewUnstableLimit && cc.crewDiverting != nil && cc.crewDiverting(cs) {
+		it.landsAnyway = true // at its alternate already: nowhere else to go
+	}
+	lands := it.landsAnyway
+	it.mu.Unlock()
+	if lands && !crewRound {
+		cc.log.printf("%-6s crew: approach not stable at the gate again (%d), nowhere else to go: landing from it", cs, n)
+		return
+	}
+	why := "approach not stable"
+	if n >= crewUnstableLimit && (cc.crewDiverting == nil || !cc.crewDiverting(cs)) {
+		to := ""
+		if cc.crewDivert != nil {
+			to = cc.crewDivert(it.ICAO, cs)
+		}
+		if to != "" {
+			why += ", diverting to " + cc.clearanceLimit(to)
+		} else {
+			it.mu.Lock()
+			it.landsAnyway = true // no alternate known: it lands from the next
+			it.mu.Unlock()
+		}
+	}
+	cc.log.printf("%-6s crew: going around — %s", cs, why)
+	it.say(traffic.GoingAroundFor(cs, why))
+	if crewRound {
+		_ = cc.do(func() error { cc.planRejoin(it); return nil })
+	} else if err := cc.do(func() error { return it.act("goaround", 0) }); err != nil {
+		cc.log.printf("%-6s crew go-around: %v", cs, err)
+		return
+	}
+	if !staffed {
+		it.call(traffic.PosTower, prioUrgent, func() { it.say(it.goAroundAck()) })
 	}
 }
 

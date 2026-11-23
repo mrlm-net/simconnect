@@ -249,6 +249,13 @@ func planArrival(route []airport.NavPoint, end airport.RunwayEnd, joinMeters, jo
 type joinBlend struct {
 	dLat, dLon, dFt, dHdg float64
 	left                  float64 // seconds
+	// ftLeft of ftFor seconds: the height's own fade, as long as left's
+	// unless that would change the height faster than joinBlendMaxFpm
+	// (joinBlendFtSeconds, #1681).
+	ftLeft, ftFor float64
+	// gateFt: the stabilised-approach gate its approach is judged at
+	// (gateFor; judgeGate), 0 none or judged.
+	gateFt float64
 	// dPitch, dBank: the attitude it had, faded out over attitudeLeft
 	// seconds (#1636: rolled level from its base turn in one write).
 	dPitch, dBank, attitudeLeft float64
@@ -259,6 +266,103 @@ type joinBlend struct {
 // attitudeBlendSeconds: out of a 25° banked turn at 7.5°/s at most.
 const attitudeBlendSeconds = 5.0
 
+// joinBlendMaxFpm: the most the height changes at the takeover, the
+// approach's own descent and the blend together: an airliner's descent
+// (#1681: AAL432 put 7,000 ft down onto the final in 30 s). A var for the
+// tests.
+var joinBlendMaxFpm = 3000.0
+
+// StabilisedGateFt: the stabilised-approach gate of an IFR approach, its
+// height above the runway (the airlines' usual criterion): the
+// hand-over's height not faded by there, the approach is not stable
+// (ArrivalEvent.Unstable). StabilisedVisualGateFt: the visual one, for an
+// approach joined too low for the first (a close-in join).
+const (
+	StabilisedGateFt       = 1000.0
+	StabilisedVisualGateFt = 500.0
+)
+
+// stableOffsetFt: the hand-over's height still to fade at the gate that
+// leaves the approach stable: about a dot of glide path there.
+const stableOffsetFt = 100.0
+
+// joinGateMarginFt: a gate is judged only for an approach joined this far
+// above it, the descent JoinBlendSeconds of a normal hand-over takes: one
+// joined just above it would still be fading a normal offset there.
+const joinGateMarginFt = 300.0
+
+// gateFor is the gate an approach joined at joinFt above the runway is
+// judged at: StabilisedGateFt, StabilisedVisualGateFt joined too low for
+// that, 0 none (a VFR circuit's final, joined at some 300 ft) (#1681).
+func gateFor(joinFt float64) float64 {
+	for _, g := range []float64{StabilisedGateFt, StabilisedVisualGateFt} {
+		if joinFt >= g+joinGateMarginFt {
+			return g
+		}
+	}
+	return 0
+}
+
+// unstableTouchdownFt: an approach that lands not stable at the gate
+// has its hand-over's height faded by this height (SetLandsUnstable).
+const unstableTouchdownFt = 50.0
+
+// secondsTo is how long the path p comes down to ft above the runway.
+func secondsTo(p ApproachPose, ft float64) float64 {
+	return math.Max(p.HeightFt-ft, 0) / math.Max(math.Abs(p.VerticalFpm), 100) * 60
+}
+
+// refit fades the height still left over the next seconds instead: on
+// from where it is, never a step.
+func (b *joinBlend) refit(seconds float64) {
+	left := b.heightLeft()
+	b.dFt, b.ftFor, b.ftLeft = left, math.Max(seconds, 1), math.Max(seconds, 1)
+}
+
+// SetLandsUnstable has the arrival land from an approach not stable at
+// the gate, the hand-over's height faded by unstableTouchdownFt, its crew
+// not going round: the user's own with held gates (#1096), or a crew with
+// nowhere else to go (#1681). Off, its crew goes round where the height
+// cannot fade before touchdown.
+func (c *ArrivalController) SetLandsUnstable(on bool) {
+	c.mu.Lock()
+	c.landsUnstable = on
+	c.mu.Unlock()
+}
+
+// heightLeft is the hand-over's height offset still shown (after apply).
+func (b *joinBlend) heightLeft() float64 {
+	if b.ftLeft <= 0 || b.ftFor <= 0 {
+		return 0
+	}
+	k := b.ftLeft / b.ftFor
+	return b.dFt * k * k * (3 - 2*k)
+}
+
+// judgeGate reports, once, on the frame its path passes its gate (pathFt
+// above the runway), whether the approach is not stable there: the
+// hand-over's height still more than stableOffsetFt off (#1681).
+func (b *joinBlend) judgeGate(pathFt float64) bool {
+	if b.gateFt <= 0 || pathFt > b.gateFt {
+		return false
+	}
+	b.gateFt = 0
+	return math.Abs(b.heightLeft()) > stableOffsetFt
+}
+
+// joinBlendMinRoomFpm: what the blend may take at least, however steep
+// the approach is where it takes over.
+const joinBlendMinRoomFpm = 1000.0
+
+// joinBlendFtSeconds is how long the height offset dFt fades at the
+// takeover onto an approach descending pathFpm: JoinBlendSeconds, or
+// longer where that would be faster than joinBlendMaxFpm with the
+// approach's descent (the fade's steepest is 1.5 times its average).
+func joinBlendFtSeconds(dFt, pathFpm float64) float64 {
+	room := math.Max(joinBlendMaxFpm-math.Abs(pathFpm), joinBlendMinRoomFpm)
+	return math.Max(JoinBlendSeconds, 1.5*math.Abs(dFt)/room*60)
+}
+
 func (b *joinBlend) apply(p ApproachPose, dt float64) ApproachPose {
 	b.attitudeFresh = false
 	if b.attitudeLeft > 0 {
@@ -268,16 +372,20 @@ func (b *joinBlend) apply(p ApproachPose, dt float64) ApproachPose {
 		p.PitchDeg += b.dPitch * k
 		p.BankDeg += b.dBank * k
 	}
-	if b.left <= 0 {
-		return p
+	if b.left > 0 {
+		b.left = math.Max(0, b.left-dt)
+		k := b.left / JoinBlendSeconds
+		k = k * k * (3 - 2*k) // smooth: no jerk at either end
+		p.Position.Lat += b.dLat * k
+		p.Position.Lon += b.dLon * k
+		p.Heading = math.Mod(p.Heading+b.dHdg*k+360, 360)
 	}
-	b.left = math.Max(0, b.left-dt)
-	k := b.left / JoinBlendSeconds
-	k = k * k * (3 - 2*k) // smooth: no jerk at either end
-	p.Position.Lat += b.dLat * k
-	p.Position.Lon += b.dLon * k
-	p.HeightFt += b.dFt * k
-	p.Heading = math.Mod(p.Heading+b.dHdg*k+360, 360)
+	if b.ftLeft > 0 {
+		b.ftLeft = math.Max(0, b.ftLeft-dt)
+		k := b.ftLeft / b.ftFor
+		k = k * k * (3 - 2*k)
+		p.HeightFt += b.dFt * k
+	}
 	return p
 }
 
@@ -373,7 +481,7 @@ func (c *ArrivalController) onProcedureFrame(m arrivalMonitor) {
 		c.emit(nil, c.last.MissedJoin != "" && c.joinMinM < 0)
 		return
 	}
-	c.last.MissedJoin, c.joinMinM = "", 0
+	c.last.MissedJoin, c.joinMinM, c.last.Unstable, c.last.CrewGoAround = "", 0, false, false
 	c.flyingProc, c.circuit = false, false
 	start := math.Max(c.proc.minJoin(), math.Min(along, c.proc.JoinMeters+JoinCaptureMeters))
 	if err := c.startInjectedApproach(start); err != nil {
@@ -395,6 +503,18 @@ func (c *ArrivalController) onProcedureFrame(m arrivalMonitor) {
 	c.blend = joinBlend{dLat: pos.Lat - p.Position.Lat, dLon: pos.Lon - p.Position.Lon, dFt: above - p.HeightFt,
 		dHdg: headingDiff(p.Heading, m.Heading), left: JoinBlendSeconds,
 		attitudeFresh: true}
+	// The height at an airliner's rate at most (#1681): over JoinBlendSeconds
+	// for every arrival MSFS AI brings in near its path.
+	path := math.Max(math.Abs(p.VerticalFpm), ProcedureDescentFtPerNm*p.GroundSpeedKts/60)
+	c.blend.ftFor = joinBlendFtSeconds(c.blend.dFt, path)
+	// One that lands from it anyway (SetLandsUnstable) fades it by
+	// unstableTouchdownFt from here: one fade over the whole final, not a
+	// steeper one from the gate.
+	if t := math.Max(p.HeightFt-unstableTouchdownFt, 0) / path * 60; c.landsUnstable && c.blend.ftFor > t {
+		c.blend.ftFor = math.Max(t, JoinBlendSeconds)
+	}
+	c.blend.ftLeft = c.blend.ftFor
+	c.blend.gateFt = gateFor(p.HeightFt)
 	c.blendAttitude()
 	c.note("joined the final: injected approach", nil)
 }

@@ -249,6 +249,11 @@ func (c *ArrivalController) goAroundClimbNM() float64 {
 func (c *ArrivalController) GoAround() error {
 	c.mu.Lock()
 	defer c.mu.Unlock()
+	return c.goAroundLocked()
+}
+
+// goAroundLocked is GoAround with c.mu held.
+func (c *ArrivalController) goAroundLocked() error {
 	if c.inj == nil {
 		return ErrNotInjected
 	}
@@ -332,15 +337,16 @@ func (c *ArrivalController) GoAround() error {
 	climb := at(climbNM, 0)
 	crosswind := at(climbNM, GoAroundOffsetNm)
 	abeam := at(0, GoAroundOffsetNm)
-	downwindEnd := at(-join/1852-1, GoAroundOffsetNm)
-	align := at(-join/1852-ProcedureAlignNm, 0)
+	ext, downwindFt, alignFt := goAroundDescent(join/1852, joinFt, circuitFt)
+	downwindEnd := at(-join/1852-1-ext, GoAroundOffsetNm)
+	align := at(-join/1852-ProcedureAlignNm-ext, 0)
 	joinAt := at(-join/1852, 0)
 	wps := []types.SIMCONNECT_DATA_WAYPOINT{
 		procedureWaypoint(climb, circuitFt, ProcedureApproachSpeedKts),
 		procedureWaypoint(crosswind, circuitFt, ProcedureApproachSpeedKts),
 		procedureWaypoint(abeam, circuitFt, ProcedureApproachSpeedKts),
-		procedureWaypoint(downwindEnd, circuitFt, ProcedureApproachSpeedKts),
-		procedureWaypoint(align, joinFt+ProcedureAlignNm*ProcedureDescentFtPerNm, ProcedureApproachSpeedKts),
+		procedureWaypoint(downwindEnd, downwindFt, ProcedureApproachSpeedKts),
+		procedureWaypoint(align, alignFt, ProcedureApproachSpeedKts),
 		procedureWaypoint(joinAt, joinFt, ProcedureApproachSpeedKts),
 	}
 	// Its track points, named for the map and the radio.
@@ -378,6 +384,22 @@ func (c *ArrivalController) GoAround() error {
 	c.goArounds++
 	c.setState(ArrivalApproaching, nil)
 	return nil
+}
+
+// goAroundDescent is how a go-around's circuit comes down from circuitFt
+// to its join (joinNM out, at joinFt): from abeam the threshold at
+// ProcedureDescentFtPerNm at most, the downwind and the final extended by
+// ext NM where that way is too short, and the downwind's end and the align
+// point at the altitudes of that descent (#1681: AAL432 round at
+// 13,950 ft, 7,000 ft above the final at the join and put onto it in
+// 30 s).
+func goAroundDescent(joinNM, joinFt, circuitFt float64) (ext, downwindFt, alignFt float64) {
+	baseNM := math.Hypot(ProcedureAlignNm-1, GoAroundOffsetNm)
+	need := (circuitFt - joinFt) / ProcedureDescentFtPerNm
+	ext = math.Max(0, (need-(joinNM+1+baseNM+ProcedureAlignNm))/2)
+	alignFt = joinFt + (ProcedureAlignNm+ext)*ProcedureDescentFtPerNm
+	downwindFt = math.Min(circuitFt, alignFt+baseNM*ProcedureDescentFtPerNm)
+	return ext, downwindFt, alignFt
 }
 
 // ReduceToFinalSpeed has an arrival on its injected final fly its final
