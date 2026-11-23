@@ -292,7 +292,7 @@ func (a *actuatorSim) pump(target string, ctl interface{ Handle(engine.Message) 
 	defer a.srv.remove(target)
 	defer a.srv.remove(target + wayOffSuffix)
 	defer a.endLive(target) // its puppets, if any, go (#964)
-	defer a.drop(ctl) // done: no more messages for it (#65)
+	defer a.drop(ctl)       // done: no more messages for it (#65)
 	defer func() {
 		a.mu.Lock()
 		delete(a.vehicles, target)
