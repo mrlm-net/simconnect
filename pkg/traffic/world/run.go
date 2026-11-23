@@ -244,8 +244,11 @@ type state struct {
 	towers         *towers        // runway controllers (#393)
 	conflicts      *conflictWatch // airborne conflicts and resolutions (#395)
 	tcas           *tcasWatch     // TCAS of ours (#450)
-	// procedures are the SIDs, STARs and approaches by ICAO (#312).
-	procedures map[string]airport.Procedures
+	// procedures are the SIDs, STARs and approaches by ICAO (#312), their
+	// runway fixes on the layout's runway ends; proceduresRead the same as
+	// read, which a changed layout places again (#1646).
+	procedures     map[string]airport.Procedures
+	proceduresRead map[string]airport.Procedures
 	// airportRefs: every airport the simulator knows, worldwide, where it
 	// is (ICAO → its list entry), asked once a connection: an overflight's
 	// ends without loading them (planOverflight).

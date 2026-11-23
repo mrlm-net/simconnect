@@ -11,9 +11,15 @@ import (
 // MAP of most finals) at the runway's centre, not its threshold: 1 NM down
 // a 3.7 km runway (#1573). AtRunwayEnds puts them on the runway ends.
 const (
-	// runwayFixSameMeters: a runway fix this close to its end is left as
-	// it is.
+	// runwayFixSameMeters: a fix placed from the runway's centre is this
+	// close to its end.
 	runwayFixSameMeters = 5.0
+	// runwayFixThresholdMeters: a runway fix this close to where it
+	// belongs (its end's landing threshold, or pavement end in a SID) is
+	// there already, as charted, and is left as it is (#1646): a charted
+	// threshold and the layout's differ by some metres, a runway's centre
+	// is hundreds of metres away.
+	runwayFixThresholdMeters = 50.0
 	// runwayFixReachMeters: a runway fix further from its end than the
 	// runway's length and this is not that runway's (another airport's
 	// layout, a renumbered runway): left as it is.
@@ -26,11 +32,13 @@ const (
 // pavement end (RunwayEnd.Threshold), where the take-off starts, in
 // departures. The facility data puts them at the runway's centre (#1573),
 // so the MAP, the glide path and the flown final would end there. A fix
-// already on its end (within a few metres), one whose runway l does not
-// have, or one too far from it to be that runway's is kept; so are all of
-// them when l is nil or another airport's. moved reports whether any fix
-// moved. p's slices are shared where nothing moved: p itself comes back
-// when no fix did, so placing the fixes again costs nothing.
+// already where it belongs (within runwayFixThresholdMeters), one whose
+// runway l does not have, or one too far from it to be that runway's is
+// kept; so are all of them when l is nil or another airport's. moved reports whether any fix moved. p's slices are shared
+// where nothing moved: p itself comes back when no fix did, so placing the
+// fixes again costs nothing. For a layout that changed, place them again
+// from the procedures as read: a placed fix is at a threshold, which this
+// keeps (#1646).
 func (p Procedures) AtRunwayEnds(l *Layout) (Procedures, bool) {
 	if l == nil || len(l.Runways) == 0 || (p.ICAO != "" && l.ICAO != "" && !strings.EqualFold(p.ICAO, l.ICAO)) {
 		return p, false
@@ -125,8 +133,8 @@ func placeTransitions(ts []Transition, place func([]Leg) ([]Leg, bool)) ([]Trans
 
 // runwayFixAt is where lg's runway fix belongs on l: its end's landing
 // threshold (landing) or pavement end; ok false when lg is no runway fix,
-// l has no such end, or the fix is on it already or too far from it
-// (runwayFixSameMeters, runwayFixReachMeters).
+// l has no such end, or the fix is there already or too far from it
+// (runwayFixThresholdMeters, runwayFixReachMeters).
 func (l *Layout) runwayFixAt(lg Leg, landing bool) (LatLon, bool) {
 	if lg.FixKind != "R" || !lg.HasFix() {
 		return LatLon{}, false
@@ -145,7 +153,7 @@ func (l *Layout) runwayFixAt(lg Leg, landing bool) (LatLon, bool) {
 				return LatLon{}, false
 			}
 			d := calc.HaversineMeters(at.Lat, at.Lon, lg.Position.Lat, lg.Position.Lon)
-			if d <= runwayFixSameMeters || d > r.Length+runwayFixReachMeters {
+			if d <= runwayFixThresholdMeters || d > r.Length+runwayFixReachMeters {
 				return LatLon{}, false
 			}
 			return at, true

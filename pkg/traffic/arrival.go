@@ -1157,12 +1157,14 @@ func (c *ArrivalController) ChangeStand(parking int) error {
 	// The whole ground part planned again, as Start plans it, with the same
 	// exit: the route, the vacate stop, the taxi-in waypoints and the stop
 	// on the stand (#87: only the route was replaced; it taxied the new
-	// route and parked on the old stop).
+	// route and parked on the old stop). Planned to the end and back
+	// (#1631), still so (#1658: it braked for the exit it can't make).
 	exit := c.plan.Exit
 	req := c.req
 	plan, err := PlanArrival(g, req.Runway, parking, ArrivalOptions{
 		SpawnNm: c.plan.SpawnNm, Exit: &exit, Route: req.Options, GroundAGL: req.GroundAGL, NoseOffset: req.NoseOffset, StandSide: req.StandSide,
 		TouchdownKts: approachProfileOf(req).TouchdownKts, BrakeDecel: req.Rollout.BrakeDecel,
+		endTurn: c.plan.EndTurn,
 	})
 	if err != nil {
 		return err
@@ -1223,7 +1225,8 @@ func (c *ArrivalController) VacateAt(x airport.RunwayExit) error {
 	g := c.req.Graph
 	req := c.req
 	rolling := c.state == ArrivalRollout
-	if rolling && c.plan.Exit.Node == x.Node {
+	// Named the exit it is planned back to from the end: that plan (#1658).
+	if (rolling || c.plan.EndTurn) && c.plan.Exit.Node == x.Node {
 		return nil
 	}
 	if why := c.exitTight(x); why != "" {
@@ -1243,7 +1246,11 @@ func (c *ArrivalController) VacateAt(x airport.RunwayExit) error {
 			return fmt.Errorf("%w: %s", ErrExitTooClose, x.Taxiway)
 		}
 	}
-	if err := c.planExit(x, true); err != nil {
+	// Another one it doesn't make before the end: to the end and back to it
+	// (#1658). On the roll canMakeExit has found it made.
+	endTurn := !rolling && c.plan.EndTurn &&
+		!exitReach{approachProfileOf(req).TouchdownKts, req.Rollout.BrakeDecel}.makes(g, c.plan.End.Name, x)
+	if err := c.planExit(x, true, endTurn); err != nil {
 		return err
 	}
 	if rolling && c.mover != nil {
@@ -1279,11 +1286,12 @@ func (c *ArrivalController) exitTight(x airport.RunwayExit) string {
 // planExit plans the arrival again with exit x, from the landing on: the
 // route, the vacate stop and the taxi-in; ai: MSFS AI landing it is given
 // the new landing chain too. c.mu held.
-func (c *ArrivalController) planExit(x airport.RunwayExit, ai bool) error {
+func (c *ArrivalController) planExit(x airport.RunwayExit, ai, endTurn bool) error {
 	req := c.req
 	plan, err := PlanArrival(req.Graph, req.Runway, req.Parking, ArrivalOptions{
 		SpawnNm: c.plan.SpawnNm, Exit: &x, Route: req.Options, GroundAGL: req.GroundAGL, NoseOffset: req.NoseOffset, StandSide: req.StandSide,
 		TouchdownKts: approachProfileOf(req).TouchdownKts, BrakeDecel: req.Rollout.BrakeDecel,
+		endTurn: endTurn,
 	})
 	if err != nil {
 		return err
@@ -1351,7 +1359,7 @@ func (c *ArrivalController) exitInReach(kts float64, nose airport.LatLon) {
 		if x.Along <= c.plan.Exit.Along || c.exitTight(x) != "" {
 			continue
 		}
-		if c.planExit(x, false) != nil {
+		if c.planExit(x, false, false) != nil {
 			continue
 		}
 		if c.exitTurnReach(nose) >= v {
@@ -1381,6 +1389,10 @@ func (c *ArrivalController) canMakeExit(x airport.RunwayExit) error {
 	}
 	end := c.plan.End
 	along := alongHeading(end.Threshold, end.Heading, NoseGear(pos, hdg, c.profile()))
+	// Round at the end already, what lies further along is behind it (#1658).
+	if c.plan.EndTurn && math.Abs(headingDiff(hdg, end.Heading)) > 90 {
+		return fmt.Errorf("%w: turned round, past %s", ErrExitTooClose, x.Taxiway)
+	}
 	if x.Along <= along {
 		return fmt.Errorf("%w: past %s", ErrExitTooClose, x.Taxiway)
 	}

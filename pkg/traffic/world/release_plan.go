@@ -257,9 +257,13 @@ func (cc *controlCenter) inPicture(id uint32) bool {
 // reason to stop (live, DSXHZ held at FL100, never cleared on).
 func (it *controlled) climbWhenClear() {
 	it.mu.Lock()
-	ft, id := it.radarFt, it.objectID
+	ft, id, byPlayer := it.radarFt, it.objectID, !it.climbClearedAt.IsZero()
 	it.mu.Unlock()
-	if ft <= 0 || !it.cc.inPicture(id) {
+	if ft <= 0 || byPlayer || !it.cc.inPicture(id) {
+		return // gone, or the player's climb stands
+	}
+	if it.departurePlayers() { // theirs while staffed (#1665)
+		it.cc.pending.later(it.cc.clock.Now().Add(climbRecheckEvery), it.climbWhenClear)
 		return
 	}
 	if who := it.climbMeets(ft); who != "" {

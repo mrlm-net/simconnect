@@ -50,7 +50,16 @@ const (
 // the meeting later, and where they still meet as one descends through
 // the other's level, a level for that one (levels only for crossing).
 // Speed, one vector and a level: no orbit, no hold.
+//
+// A player's go-around is the player's to space (#1096): no time to lose
+// and no vector from the AI, only our own arrivals levelled clear of it
+// (#1648: JBU1547 sent round in game mode, told by the AI to lose 58 s).
 func (cc *controlCenter) planRejoin(me *controlled) {
+	if me.gates.Load() {
+		cc.log.printf("%-6s go-around: the player's, its way back the player's to space", me.Tail)
+		cc.rejoinLevels(me)
+		return
+	}
 	slot, behind, before := cc.rejoinSlot(me)
 	if slot > 0 {
 		a, err := me.arr.AbsorbDelay(slot)
@@ -97,6 +106,9 @@ func (cc *controlCenter) rejoinLevels(me *controlled) {
 	level := math.Ceil((myFt+traffic.VerticalSeparationFt)/500) * 500
 	levels := map[string]float64{} // those levelled: at what
 	stop := func(m rejoinMeet, ft float64, below string) bool {
+		if m.it.gates.Load() {
+			return false // the player's to level (#1096)
+		}
 		forNM := math.Max(m.at.GroundKts, traffic.ProcedureApproachSpeedKts) * (max(m.c.In, m.c.ClosestIn) + time.Minute).Hours()
 		if err := m.it.arr.StopDescent(ft, forNM); err != nil {
 			cc.log.printf("%-6s go-around: %s to stop descent at %.0f ft refused: %v", me.Tail, m.it.Tail, ft, err)

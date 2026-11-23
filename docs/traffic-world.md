@@ -174,7 +174,7 @@ With the schedule on, the World flies the traffic a real airport sees overhead: 
 
 ### Overflights on the centre frequency
 
-With `overflightRadio`, the overflights and transits are worked by the centre station whose sector holds them: `traffic.PickStation` over the focus airport's stations at the `center` position. That is the scenery's centre frequency, or a local station set with `PUT /api/stations?icao=` (an `area` polygon makes a sector). Without a centre station that has a frequency they say nothing.
+With `overflightRadio`, the overflights and transits are worked by the centre station whose sector holds them: `traffic.PickStation` over the first focus airport's stations at the `center` position, or over another focus airport's where a player staffs its centre there (#1684). That is the scenery's centre frequency, or a local station set with `PUT /api/stations?icao=` (an `area` polygon makes a sector). Without a centre station that has a frequency they say nothing.
 
 - **Check-in:** entering the area, the crew calls the station with its level: "Praha Radar, CSA123, flight level 370". A climbing or descending transit says "passing flight level 183, climbing flight level 240".
 - **Hand-off:** leaving its sector, the station hands it to the next sector's station ("contact <station> <freq>"); the crew reads back and checks in there. Leaving the area, it is handed to the next unit, not named. Virtual tracks talk as the aircraft do.

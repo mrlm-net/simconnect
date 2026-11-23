@@ -85,6 +85,10 @@ type stoppedLevel struct {
 	// late (stopIsPlayers).
 	since time.Time
 	net   bool
+	// atFt: the level it was stopped at; held: the player's departure, its
+	// route holds that level on past the change's end (holdStops, #1665).
+	atFt float64
+	held bool
 }
 
 // routeClimbs reports whether planned's next altitude off altFt (by more
@@ -447,7 +451,7 @@ func (w *conflictWatch) tick(now time.Time, aircraft []traffic.TrackedAircraft) 
 				on = playerFt // said as cleared, not to the thousand
 			}
 			if ok && hold == nil {
-				w.stopped[r.Callsign] = stoppedLevel{icao: icao, pos: pos, altFt: on, climb: up, other: otherOf(c, r.Callsign), planned: planned, since: w.s.cc.clock.Now(), net: net}
+				w.stopped[r.Callsign] = stoppedLevel{icao: icao, pos: pos, altFt: on, climb: up, other: otherOf(c, r.Callsign), planned: planned, since: w.s.cc.clock.Now(), net: net, atFt: r.AltFt}
 			}
 		}
 		w.done = append(w.done, resolutionView{At: now, Resolution: r, Said: said, SafetyNet: net})
@@ -456,6 +460,7 @@ func (w *conflictWatch) tick(now time.Time, aircraft []traffic.TrackedAircraft) 
 		}
 		w.mu.Unlock()
 	}
+	theirs := w.holdStops(aircraft)
 	w.mu.Lock()
 	involved := map[string]bool{}
 	for _, c := range cs {
@@ -523,7 +528,7 @@ func (w *conflictWatch) tick(now time.Time, aircraft []traffic.TrackedAircraft) 
 		switch {
 		case !airborne[cs]:
 			delete(w.stopped, cs)
-		case !involved[cs] && (apart || !now.Before(w.busy[cs]) && clear):
+		case !involved[cs] && !theirs[cs] && (apart || !now.Before(w.busy[cs]) && clear):
 			cleared = append(cleared, cs)
 		}
 	}
@@ -577,7 +582,8 @@ func (w *conflictWatch) tick(now time.Time, aircraft []traffic.TrackedAircraft) 
 			it.mu.Lock()
 			identified := it.identified
 			it.mu.Unlock()
-			if !identified {
+			// Held for the player (#1665): no identification is to come.
+			if !identified && !st.held {
 				w.s.cc.log.printf("%-6s conflict over: the climb comes with its identification", cs)
 				continue
 			}

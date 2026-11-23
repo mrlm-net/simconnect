@@ -253,11 +253,7 @@ func (w *World) LoadProceduresFile(path string) (string, error) {
 		return "", fmt.Errorf("%s: no ICAO", path)
 	}
 	w.st.mu.Lock()
-	if w.st.procedures == nil {
-		w.st.procedures = map[string]airport.Procedures{}
-	}
-	w.st.procedures[p.ICAO] = p
-	w.st.placeRunwayFixesLocked(p.ICAO)
+	w.st.storeProceduresLocked(p)
 	w.st.mu.Unlock()
 	return p.ICAO, nil
 }

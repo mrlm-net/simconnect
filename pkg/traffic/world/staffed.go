@@ -356,6 +356,7 @@ func (it *controlled) climbTo(ft, throughFt float64, expedite bool) error {
 	}
 	it.mu.Lock()
 	it.clearedFt, it.higherAt = ft, time.Time{}
+	it.climbClearedAt = it.cc.clock.Now()
 	it.mu.Unlock()
 	ta := it.cc.taOf(it.ICAO)
 	said := traffic.Climb(traffic.PosDeparture, it.Tail, ft, ta)
@@ -456,6 +457,11 @@ func (cc *controlCenter) crewAsksHigher(items []*controlled, now time.Time) {
 			it.levelSet = true
 		}
 		it.mu.Unlock()
+		// Stopped for traffic: that level stands, the conflict watch holds
+		// it (holdStops, #1665).
+		if stopped := cc.climbStopped; level && stopped != nil && stopped(it.Tail) {
+			level = false
+		}
 		if level {
 			// Handed to the simulator: it levels there, not on to its
 			// cruise as the simulator's own flight would.
