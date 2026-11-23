@@ -7,6 +7,30 @@ This project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 ---
 
+## [0.190.0] - 2026-11-23
+
+### Changed
+
+- Traffic: turn speeds follow ICAO Doc 9157 Part 2. `LateralAccel` is 1.3 m/s² (0.133 g, 1.2.23) on the true radius, a heavy's too (it was 0.6, a heavy's 0.5, on twice the radius): an A320's taxi corner is about 6.9 kt, under the 10 kt flight crew manuals give for turns of 90° or more. `ExitLateralAccel` is 1.1 m/s² (it was 1.5 on twice the radius), the operational turn-off speeds of Table 1-8 (13 kt on 40 m, 16 kt on 60 m): an exit's tightest part is taken at about 11–14 kt, and an injected arrival may judge an exit out of reach earlier. A light single clears the runway about 1–2 s later by a right-angle exit (a P28A at LKPR R, about 31 m in radius: TestLightAircraftLandingRoll allows it 38.5 s, was 37). Sources, ICAO Doc 9157 Part 2, 5th ed., Amendment 1 (18/6/21), https://www.bazl.admin.ch/dam/en/sd-web/h7SYVJZ5kRTq/9157_p2_cons_en.pdf: 1.2.22, "it is assumed that the radii of curvature are equal to one-half of the separation distance indicated in Table 1-1" (code letter A: 11.5 m); 1.2.23, "if it is assumed that the lateral load factor is limited to 0.133 g: V = (127.133 × 0.133 R)½ = 4.1120(R½), where R is in metres"; Table 1-8, "Aircraft speed versus the radius of a rapid exit taxiway" (R m: Vdes / Vop kt: 40: 14/13, 60: 17/16, 120: 24/22, 160: 28/24), "Based on the design exit speed Vdes complying with a lateral acceleration of 0.133 g, the operational turn-off speed Vop is determined empirically". A motion or rollout profile with lateral values of its own now turns about 30% slower, until they are doubled
+- Traffic: braking ahead of a turn is planned no firmer than the vehicle's jerk builds up in the time its speed takes to answer (taxiing aircraft and tugs 0.4 m/s², a follow-me car 0.4 instead of 1.5): planned firmer, a tug met its turns 2.7 m/s over its plan and was cut down a metre a second in a frame. The time a pushback waits for its tug follows the tug's planned speeds
+
+### Fixed
+
+- Traffic: aircraft and service vehicles slow for the radius they really turn on (#1651, #1664). The speed plan measured a turn between chords to the path's own points, which gave twice the radius on an arc, and no turn at all where an arc was followed by a long straight: a tug drove its 6 m arcs at 13 kt, and is now planned at about 4 kt on them. Where a turn is too tight for its speed the plan is lowered so that it turns no quicker than 19.4°/s (ICAO Doc 9157 Part 2, 1.2.22–1.2.23: code A's 180° turn on 11.5 m at 0.133 g), below `MinTurnKts` if need be: the end turn round of a short runway (TFFJ) is taken at about 4.5 kt instead of 8. A bend of a degree in a runway's centreline is still no turn, nor a jog of a metre or two sideways that turns back within ±24 m (LKPR 30's node at R, 1–2 m off the centreline: a P28A touching down late was judged too fast for R and rolled on to P, 60 s to clear). The speed plan also keeps its own points every 4 m, so a turn's speed stays in the turn and does not spread along the straight beside it. The line driven is unchanged
+- **Tugs slow for their turns** (#1664): a tug plans its speed by the radius it truly turns on, about 25°/s at most (29°/s on a pivot at 3 kt), driving in, off and home. Every ground mover also brakes ahead for its turns as it will be placed, its trailing gear followed along the way, and as a last resort turns no quicker than 30°/s as placed (a tug turned 80°/s at 5 kt on its way home)
+- Traffic: a speed cap over part of a path (a stand entry, a rollout's exit speed) holds from where it starts: it was planned only at the plan's points inside it, and an aircraft entered a 5 kt stand entry at 5.6 kt. The braking down to a stand entry eases off as a crew lets off the brakes, so it is at its speed by the entry (#1651)
+- Traffic: a ground mover slowed by a tight turn just before its stop pulls away again: a tug 25 m short of the nose crept on at 0.02 kt and never joined (LKPR A4, C22; EGLL 505) (#1651)
+- Traffic: a service vehicle's way that turns out and joins its road a few metres on, turning back through two corners, is taken as the turn back it is: a rescue truck sent home as it drove (LROP 08R) swung through a cusp and its speed dropped from 2.9 kt to 0 in a step (#1651)
+- A departure is no longer put on a stand in the way in of a backtracking arrival that has landed, or that will be down before the departure could reach its holding point. Before, the arrival taxied past it at 16 m or stood nose to nose with it (TFFJ).
+  - A spawn by hand (`POST /api/control`) that would go there is deferred: it answers `202 Accepted` with a `DeferredReply` (`{"deferred": true, "tail", "reason"}`) and spawns the departure once a stand out of that way is free (#1694).
+- A departure already standing in such an arrival's way in is ordered with the arrival by one rule, which the push and taxi holds all ask:
+  - before landing, it goes first if it can be at its holding point in time, or if the arrival has no way in clear of it;
+  - otherwise it waits, and the arrival's way in is planned around it;
+  - from touchdown on, the arrival goes first.
+  - A decision that the departure goes first is kept for that pair (#1694).
+- An arrival is no longer given a stand where its body would come within wingtip clearance of a runway entry path, unless no other stand fits (logged). Departures lining up passed one parked there at 8 m (#1694).
+- A departure is no longer cleared to taxi, or put on a stand, where a backtracking arrival will swing across its way while turning onto its own stand. The pairing now compares the way the arrival actually drives from touchdown, stand join included (`ArrivalController.TaxiInWay`, also carried over the director link), instead of its route alone. At TFFJ the two had passed each other at 18.8 m (#1694).
+
 ## [0.189.4] - 2026-11-23
 
 ### Fixed

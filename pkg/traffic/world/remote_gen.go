@@ -446,6 +446,12 @@ func (r *remoteArr) Plan() *traffic.ArrivalPlan {
 	return o0
 }
 
+func (r *remoteArr) TaxiInWay() []airport.LatLon {
+	var o0 []airport.LatLon
+	r.c.dropped(r.c.call(r.t, "TaxiInWay", []any{}, &o0))
+	return o0
+}
+
 func (r *remoteArr) ProcedurePlan() []traffic.RoutePoint {
 	var o0 []traffic.RoutePoint
 	r.c.dropped(r.c.call(r.t, "ProcedurePlan", []any{}, &o0))

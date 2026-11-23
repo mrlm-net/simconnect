@@ -239,7 +239,8 @@ func (s typeSpec) profile() AircraftProfile {
 	a.ApproachKts, a.TouchdownKts, a.StartKts = s.vapp, s.vapp-5, s.vapp+15
 	a.ApproachPitchDeg, a.FlarePitchDeg, a.FlareFt, a.TouchdownFpm = s.pitch, s.flarePitch, s.flareFt, s.tdFpm
 	if s.heavy {
-		m.LateralAccel, m.Accel, m.Decel = 0.5, 0.35, 0.45
+		// ICAO's lateral load factor is one for every code letter.
+		m.LateralAccel, m.Accel, m.Decel = 1.3, 0.35, 0.45
 		push = 2.5
 		r.HighSpeedExitKts = 30
 		a.DerotateSeconds = 5

@@ -59,11 +59,14 @@ type controlled struct {
 	wayOffRetryAt                 atomic.Int64
 	// wayOffLooking: its way off is being asked of the actuator (#1655).
 	wayOffLooking atomic.Bool
-	// apronBlocked: none clear of who stands on the apron, logged (#1641).
-	apronBlocked atomic.Bool
+	// apronBlocked: none clear of who stands on the apron, logged (#1641);
+	// apronLooked: its way in is planned by keepWayOffClear.
+	apronBlocked, apronLooked atomic.Bool
 	// pairHeldFrom: since when it waits for a backtracking arrival still on
-	// approach (pairedArrival). it.mu.
+	// approach (pairedArrival); pairFirst: the arrivals whose way in it
+	// stands in that it goes before (departureFirst). it.mu.
 	pairHeldFrom time.Time
+	pairFirst    map[*controlled]bool
 
 	// askedAt: when it was spawned; holdIDs: removed before the simulator
 	// answered, so its IDs wait for a late answer (spawnstuck.go).
@@ -1201,7 +1204,20 @@ func (cc *controlCenter) spawn(g *airport.Graph, r SpawnRequest) (*controlled, e
 		if r.Circuit {
 			use = standGA
 		}
+		// An arrival not beside a runway entry, unless none other fits
+		// (#1694, entry_stands.go).
+		var beside []int
+		if r.Kind == "arrival" {
+			beside = cc.entryStands(g, req.HalfSpan, model)
+			req.Avoid = append(req.Avoid, beside...)
+		}
 		s, err := assignStand(alloc, req, use)
+		if err != nil && len(beside) > 0 {
+			req.Avoid = req.Avoid[:len(req.Avoid)-len(beside)]
+			if s, err = assignStand(alloc, req, use); err == nil {
+				cc.log.printf("%-6s arrival: stand %s beside a runway entry, no other fits", r.Tail, g.Layout.Parking[s].Label())
+			}
+		}
 		if err != nil {
 			return nil, err
 		}
@@ -2739,7 +2755,18 @@ func registerControl(mux *http.ServeMux, st *state) {
 		// Out of a backtracking arrival's way in (#1641): searched here,
 		// not on the connection's goroutine.
 		chosen := false
-		if s := cc.standForDeparture(g, req); s >= 0 {
+		s, wait := cc.departureStand(g, req)
+		if wait {
+			// None out of the way in of one landed: spawned once there is
+			// one, never on a stand it comes by (#1641).
+			cc.log.printf("%-6s departure: spawned once a stand out of the landed arrivals' way in is free", req.Tail)
+			cc.pending.later(cc.clock.Now().Add(wayOffRetry), func() { go cc.spawnWhenClear(g, req) })
+			w.Header().Set("Content-Type", "application/json")
+			w.WriteHeader(http.StatusAccepted)
+			_ = json.NewEncoder(w).Encode(DeferredReply{Deferred: true, Tail: req.Tail, Reason: "every stand that fits is on the way in of an arrival that has landed"})
+			return
+		}
+		if s >= 0 {
 			req.Stand, chosen = s, true
 		}
 		var it *controlled
@@ -3190,6 +3217,15 @@ func registerControl(mux *http.ServeMux, st *state) {
 		}
 		w.WriteHeader(http.StatusNoContent)
 	})
+}
+
+// DeferredReply is the body of a spawn put off, not done yet (202
+// Accepted, #1641): Tail the call sign it will have, Reason why. It is
+// spawned once it can be, without another call.
+type DeferredReply struct {
+	Deferred bool   `json:"deferred"`
+	Tail     string `json:"tail"`
+	Reason   string `json:"reason"`
 }
 
 // defaultSchedule is the built-in schedule data: telephony and airport

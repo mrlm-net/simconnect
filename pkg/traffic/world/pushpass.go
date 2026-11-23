@@ -95,9 +95,9 @@ func (it *controlled) passingFor() (*controlled, bool) {
 		if !ok || !movable {
 			continue
 		}
-		// Standing where a backtracking arrival on approach can't come by,
-		// it goes first: waited for, neither would move (#1641).
-		if o.arr != nil && o.arr.State() == traffic.ArrivalApproaching && o.wayInBlockedBy(it) {
+		// Standing where a backtracking arrival can't come by: the order
+		// is departureFirst's (#1641).
+		if o.arr != nil && o.wayInBlockedBy(it) && it.departureFirst(o) {
 			continue
 		}
 		o.mu.Lock()

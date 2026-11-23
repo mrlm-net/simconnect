@@ -26,7 +26,7 @@ pose := mover.Step(1.0 / 60)                    // every frame
 ```
 
 - **Corners** are rounded within `CornerMeters` (25 m) of each route point, with `GroundPathSmoothingPasses` (6) Chaikin passes.
-- **Speed** is planned from the turn radius, `v = √(LateralAccel · r)`, with braking planned ahead of each turn. The aircraft is already at a turn's speed `TurnLookaheadMeters` before it.
+- **Speed** is planned from the radius truly turned on (over ±`TurnWindowMeters`, half of that in a tighter turn), `v = √(LateralAccel · r)`, with braking planned ahead of each turn at `Decel`, but no firmer than `Jerk` builds up in time. The plan has a point at least every 4 m, whatever the route's own spacing. A jog of a metre or two sideways that turns back within ±24 m (a runway node off the centreline) is no turn. Where a turn is too tight for that speed, `MinTurnKts` included, it is lowered so that the body, its gear trailing the path, turns no quicker than 19.4°/s, also where it sets off across its path. The aircraft is already at a turn's speed `TurnLookaheadMeters` before it.
 - **Acceleration is jerk-limited** (`Jerk`), so every speed change starts and ends softly. The mover brakes exactly onto the end of the path.
 - **Steering:** the nose gear follows the path and the main gear trails it at `WheelbaseMeters`, like a towed trailer. The fuselage points from the main gear to the nose, so the heading eases into and out of every turn, and the main gear cuts inside the turn as on a real jet. The geometry uses local metres; repeated bearing and displacement round trips drift and make the aircraft slide.
 - **Holds:** `HoldAt(d)` stops the nose gear `d` metres along the path, for a hold-short line, traffic ahead or a stop bar. `ClearHold()` lets the aircraft continue.
@@ -36,7 +36,7 @@ pose := mover.Step(1.0 / 60)                    // every frame
 | `WheelbaseMeters` | 12.6 |
 | `RefAheadMeters` (sim reference point ahead of the main gear) | 1.0 |
 | `CruiseKts` / `MinTurnKts` | 15 / 3 |
-| `LateralAccel` | 0.6 m/s² |
+| `LateralAccel` | 1.3 m/s² (0.133 g, ICAO Doc 9157 Part 2, 1.2.23), a heavy's too |
 | `Accel` / `Decel` / `Jerk` | 0.45 m/s² / 0.5 m/s² / 0.2 m/s³ |
 | `SpanMeters` / `TailMeters` (main gear to the tail end; clearance checks such as the pushback swing past neighbouring stands) | 35.8 / 20.5 |
 

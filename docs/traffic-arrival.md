@@ -185,7 +185,7 @@ ctl.Start(traffic.ArrivalRequest{Graph: g, Runway: "06", Parking: stand, Model: 
 | `BrakeDecel` | 2.5 m/s² (down to `SlowKts`; jerk `RolloutJerk` 0.6 m/s³) |
 | `SlowKts` | 80 |
 | `HighSpeedExitKts` / `ExitKts` | 32 / 12 |
-| `ExitLateralAccel` | 1.5 m/s² (cornering through the exit) |
+| `ExitLateralAccel` | 1.1 m/s² (cornering through the exit: the operational turn-off speeds of ICAO Doc 9157 Part 2, Table 1-8, on 40-120 m radii) |
 
 ## After landing
 

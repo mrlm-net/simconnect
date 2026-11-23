@@ -71,12 +71,30 @@ const lightTouchdownMeters = exitLightTouchdownMeters - TouchdownSpreadMeters
 // and exit speeds (the rollout's one even deceleration), and is allowed
 // that time too (#1609: the P28A on 30 touches down 150–270 m in and
 // clears 39 s to 32 s later, about 0.06 s for every metre earlier).
+//
+// The P28A's 38.5 s (37 before #1651): R is a right-angle exit, about 31 m
+// in radius as it is driven, now turned off at ICAO's operational speed and
+// code A's turn rate instead of about 0.3 g, 1.3 s and 0.9 s more at the
+// same touchdown. ICAO Doc 9157 Part 2 (5th ed., Amendment 1, 18/6/21;
+// https://www.bazl.admin.ch/dam/en/sd-web/h7SYVJZ5kRTq/9157_p2_cons_en.pdf):
+//   - 1.2.22: "it is assumed that the radii of curvature are equal to
+//     one-half of the separation distance indicated in Table 1-1": code
+//     letter A, 11.5 m.
+//   - 1.2.23: "if it is assumed that the lateral load factor is limited to
+//     0.133 g: V = (127.133 × 0.133 R)½ = 4.1120(R½), where R is in
+//     metres" (km/h): 13.9 km/h on 11.5 m, 19.4°/s (plannedTurnDegPerSec).
+//   - Table 1-8, "Aircraft speed versus the radius of a rapid exit taxiway"
+//     (R m: Vdes kt / Vop kt): 40: 14/13, 60: 17/16, 120: 24/22, 160:
+//     28/24; "Based on the design exit speed Vdes complying with a lateral
+//     acceleration of 0.133 g, the operational turn-off speed Vop is
+//     determined empirically": Vop²/R is 1.1 m/s² (ExitLateralAccel), 11.4
+//     kt on 31 m.
 func TestLightAircraftLandingRoll(t *testing.T) {
 	for _, c := range []struct {
 		model, end, exit string
 		maxSecs          float64
 	}{
-		{"C172", "24", "C", 60}, {"C172", "06", "L", 70}, {"P28A", "30", "R", 37}, {"A320", "24", "D", 60},
+		{"C172", "24", "C", 60}, {"C172", "06", "L", 70}, {"P28A", "30", "R", 38.5}, {"A320", "24", "D", 60},
 	} {
 		td, secs, along, exit := landingRoll(t, c.model, c.end)
 		t.Logf("%s on %s: touchdown %.0f m, clear %.1f s later at exit %s (%.0f m along)", c.model, c.end, td, secs, exit, along)

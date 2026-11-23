@@ -43,6 +43,7 @@ func (cc *controlCenter) keepWayOffClear(items []*controlled) {
 		if !ok {
 			continue
 		}
+		it.apronLooked.Store(true)
 		if r, linked := p.(*remotePlanner); linked {
 			if it.wayOffLooking.Swap(true) {
 				it.wayOffBlocked.Store(false) // not answered yet: not "no way off"
@@ -236,6 +237,16 @@ func (cc *controlCenter) planWayOff(it *controlled, p wayOffPlanner, occ []airpo
 			case da < db:
 				return -1
 			case da > db:
+				return 1
+			}
+			return 0
+		})
+		// Beside a runway entry last: only where no other will do (#1694).
+		slices.SortStableFunc(stands, func(a, b int) int {
+			switch ea, eb := cc.besideEntry(it.graph, a, model), cc.besideEntry(it.graph, b, model); {
+			case !ea && eb:
+				return -1
+			case ea && !eb:
 				return 1
 			}
 			return 0

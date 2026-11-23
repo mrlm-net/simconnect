@@ -167,3 +167,32 @@ func (c *ArrivalController) taxiPathFrom(nose airport.LatLon, from int) (*Ground
 	path.LimitEnd(StandSlowMeters, StandTaxiSpeedKts)
 	return path, crossingZones(c.req.Graph, route, holds), nil
 }
+
+// TaxiInWay is the way an injected arrival on the ground drives from where
+// its nose gear is to its stop on the stand, as its ground path has it:
+// the turn onto the stand included, and the loop round behind the stop
+// mark where it turns on the stand. That is what it sweeps, not only the
+// route it follows (#1694: TFFJ, swinging onto 7W it came 27 m past the
+// route's last turn, 18.8 m from a departure taxiing out). From touchdown
+// on, as far as its ground path goes yet (off the runway, then in to the
+// stand). nil without a ground path (in the air, or not injected) and once
+// parked.
+func (c *ArrivalController) TaxiInWay() []airport.LatLon {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	if c.mover == nil {
+		return nil
+	}
+	switch c.state {
+	case ArrivalRollout, ArrivalVacating, ArrivalAwaitingTaxi, ArrivalTaxiing, ArrivalParking:
+	default:
+		return nil
+	}
+	path := c.mover.Path()
+	if path == nil || len(path.pts) < 2 {
+		return nil
+	}
+	s := c.mover.Pose().Distance
+	i, _ := path.segment(s)
+	return append([]airport.LatLon{path.PointAt(s)}, path.pts[i:]...)
+}
