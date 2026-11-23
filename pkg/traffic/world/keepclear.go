@@ -41,12 +41,12 @@ func (cc *controlCenter) keepClear() {
 		if it.dep == nil {
 			continue
 		}
-		if o, ok := occupiedBy(it.dep); ok {
+		if o, st, ok := takenBy(it); ok {
 			occ = append(occ, taken{it, o})
 			// Its state only: a push's place shrinks every frame as it goes,
 			// and re-planned for each, every taxiing aircraft searched its
 			// route every second (live, LKPR: 80–90 ms each time).
-			fmt.Fprintf(&key, "%s/%d;", it.Tail, it.dep.State())
+			fmt.Fprintf(&key, "%s/%s;", it.Tail, st)
 		}
 	}
 	cc.keepClearOfOncoming(items)
@@ -146,17 +146,18 @@ func (cc *controlCenter) keepClearOfOncoming(items []*controlled) {
 		way     []airport.LatLon
 		half    float64
 		movable bool
+		fresh   bool
 	}
 	var ours []onGround
 	for _, it := range items {
-		route, way, movable, ok := it.groundWay()
+		route, way, movable, ok, fresh := it.groundWayRead(true)
 		if !ok {
 			continue
 		}
 		it.mu.Lock()
 		half, manual := traffic.MotionProfileFor(it.view.Model).SpanMeters/2, it.view.Manual
 		it.mu.Unlock()
-		ours = append(ours, onGround{it, route, way, half, movable && !manual})
+		ours = append(ours, onGround{it, route, way, half, movable && !manual, fresh})
 	}
 	now := cc.clock.Now()
 	if cc.opposedTried == nil {
@@ -171,6 +172,9 @@ func (cc *controlCenter) keepClearOfOncoming(items []*controlled) {
 		for _, b := range ours[i+1:] {
 			if a.it.ICAO != b.it.ICAO || (!a.movable && !b.movable) {
 				continue
+			}
+			if !a.fresh || !b.fresh {
+				continue // its last snapshot only: looked at once fresh (#1673)
 			}
 			// Once per pair of routes: what is ahead of each only shrinks
 			// along the same route (live, the same pair logged every 30 s).
@@ -219,11 +223,68 @@ func (cc *controlCenter) keepClearOfOncoming(items []*controlled) {
 // TaxiController.Occupies can answer: over a link each asking is a round trip,
 // and State comes from the snapshot.
 func occupiedBy(dep departureCtl) (airport.Occupied, bool) {
-	switch dep.State() {
-	case traffic.TaxiAwaitingPushback, traffic.TaxiPushback, traffic.TaxiAwaitingTaxi:
-		return dep.Occupies()
+	if !occupying(dep.State()) {
+		return airport.Occupied{}, false
 	}
-	return airport.Occupied{}, false
+	return dep.Occupies()
+}
+
+// takenBy is occupiedBy for departure it, with its state for keepClear's
+// key. On the director's loop: over a link (#1673) from the actuator's
+// snapshot only, never a wait of up to wireCallTimeout for everything else
+// the loop runs; from the last one when a command on its way dropped it,
+// its state marked "~" so that it is looked at again once fresh. Never
+// "clear" on that: one not known to take a place takes where it stands
+// ("?": no snapshot yet). An actuator from before, whose snapshot has no
+// Occupies, is asked as before.
+func takenBy(it *controlled) (airport.Occupied, string, bool) {
+	r, linked := it.dep.(*remoteDep)
+	if !linked {
+		st := it.dep.State()
+		o, ok := occupiedBy(it.dep)
+		return o, fmt.Sprint(int(st)), ok
+	}
+	standing := func(key string) (airport.Occupied, string, bool) {
+		p, ok := it.placeNow()
+		return p, key, ok
+	}
+	var st traffic.TaxiState
+	known, fresh := r.c.lastRead(r.t, "State", &st)
+	if !known {
+		return standing("?")
+	}
+	key := fmt.Sprint(int(st))
+	if !fresh {
+		key += "~"
+	}
+	if !occupying(st) {
+		if !fresh {
+			return standing(key)
+		}
+		return airport.Occupied{}, "", false
+	}
+	var o airport.Occupied
+	var ok bool
+	if known, _ := r.c.lastRead(r.t, "Occupies", &o, &ok); !known {
+		if !fresh {
+			return standing(key)
+		}
+		o, ok = it.dep.Occupies() // an actuator from before
+	}
+	if !ok && !fresh {
+		return standing(key)
+	}
+	return o, key, ok
+}
+
+// occupying is whether a departure in state st may take a place
+// (TaxiController.Occupies).
+func occupying(st traffic.TaxiState) bool {
+	switch st {
+	case traffic.TaxiAwaitingPushback, traffic.TaxiPushback, traffic.TaxiAwaitingTaxi:
+		return true
+	}
+	return false
 }
 
 // awayFrom is pts without those within opposedEndMeters of end.
@@ -273,30 +334,59 @@ func (it *controlled) turningIn() bool {
 // taxi-in, a departure taxiing); ok false when it is not on the ground
 // with a route.
 func (it *controlled) groundWay() (r *airport.Route, way []airport.LatLon, movable, ok bool) {
+	r, way, movable, ok, _ = it.groundWayRead(false)
+	return r, way, movable, ok
+}
+
+// groundWayRead is groundWay; onLoop: on the director's loop, where over a
+// link it is read from the actuator's snapshot only, the last one when a
+// command dropped it (fresh false), and not at all without one (#1673).
+func (it *controlled) groundWayRead(onLoop bool) (r *airport.Route, way []airport.LatLon, movable, ok, fresh bool) {
+	fresh = true
+	read := func(f, known bool) bool {
+		fresh = fresh && f
+		return known
+	}
 	switch {
 	case it.dep != nil:
-		switch it.dep.State() {
+		st, f, known := readNow(onLoop, it.dep, "State", it.dep.State)
+		if !read(f, known) {
+			return nil, nil, false, false, false
+		}
+		switch st {
 		case traffic.TaxiAwaitingPushback, traffic.TaxiPushback, traffic.TaxiAwaitingTaxi:
 		case traffic.TaxiTaxiing:
 			movable = true
 		default:
-			return nil, nil, false, false
+			return nil, nil, false, false, fresh
 		}
-		r = it.dep.Route()
+		route, f, known := readNow(onLoop, it.dep, "Route", it.dep.Route)
+		if !read(f, known) {
+			return nil, nil, false, false, false
+		}
+		r = route
 	case it.arr != nil:
-		switch it.arr.State() {
+		st, f, known := readNow(onLoop, it.arr, "State", it.arr.State)
+		if !read(f, known) {
+			return nil, nil, false, false, false
+		}
+		switch st {
 		case traffic.ArrivalVacating:
 		case traffic.ArrivalAwaitingTaxi, traffic.ArrivalTaxiing:
 			movable = true
 		default:
-			return nil, nil, false, false
+			return nil, nil, false, false, fresh
 		}
-		if p := it.arr.Plan(); p != nil {
+		p, f, known := readNow(onLoop, it.arr, "Plan", it.arr.Plan)
+		if !read(f, known) {
+			return nil, nil, false, false, false
+		}
+		if p != nil {
 			r = p.Route
 		}
 	}
 	if r == nil || len(r.Points) < 2 {
-		return nil, nil, false, false
+		return nil, nil, false, false, fresh
 	}
 	it.mu.Lock()
 	pos := it.view.Position
@@ -308,9 +398,9 @@ func (it *controlled) groundWay() (r *airport.Route, way []airport.LatLon, movab
 		}
 	}
 	if near >= len(r.Points)-1 {
-		return nil, nil, false, false
+		return nil, nil, false, false, fresh
 	}
-	return r, r.Points[near:], movable, true
+	return r, r.Points[near:], movable, true, fresh
 }
 
 // occupiedFor is the places other departures at its airport take now.

@@ -182,6 +182,7 @@ func (st *state) actuate(ctx context.Context, cc *controlCenter, client engine.C
 		followMe: func(w arrivalStart, g *airport.Graph, prof traffic.MotionProfile) traffic.FollowMeService {
 			return newFollowMe(cc, client, w.FollowMe, g, w.ReqBase, prof)
 		}}
+	a.do = cc.do
 	a.heard = st.core.hooks.OnTransmission
 	srv.add("sim", a)
 	cc.onModels = func(titles []string) { out.put("models", titles) }
@@ -226,11 +227,7 @@ func (st *state) actuate(ctx context.Context, cc *controlCenter, client engine.C
 				continue
 			}
 			go func() {
-				var r wireMsg
-				if err := cc.do(func() error { r = srv.dispatch(m); return nil }); err != nil {
-					r = wireMsg{Kind: wireReply, ID: m.ID, Err: err.Error()}
-				}
-				_ = l.Send(r)
+				_ = l.Send(srv.answer(m, cc.do))
 			}()
 		}
 	}()

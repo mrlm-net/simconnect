@@ -7,6 +7,15 @@ This project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 ---
 
+## [0.188.16] - 2026-11-23
+
+### Fixed
+
+- At a field with one way between runway and apron, a departure and an arrival backtracking to it are planned against each other: the departure gets a stand out of the arrival's way in and waits to push or taxi until the arrival is parked when it can't be away before the landing, and the arrival's way in and stand are planned before touchdown clear of who stands on the apron. A player's flight keeps its route, stand and clearances. `StandRequirements.Avoid` lists stands never to assign (#1641)
+- With the director split from the actuator, an arrival's way off the runway and its stand are planned clear of departures too: asked and searched off the director's loop, so the check never waits on a slow link there and an unanswered one never sends an arrival round, then put in place on the actuator. An older actuator keeps its behaviour, and a player's arrival is never planned (#1655)
+- With the director split from the actuator, keeping taxiing aircraft clear of each other no longer waits on the link on the director's loop: it reads the actuator's snapshot, the last one while a command is on its way, and an aircraft known only from that is looked at again once fresh and never counted clear. The take of a planned way off the runway waits on the link off the loop and is never a player's flight (#1673)
+- An arrival given another runway keeps its stop off the parking line on a stand set beside it (StandSide) (#1667)
+
 ## [0.188.15] - 2026-11-22
 
 ### Fixed

@@ -95,6 +95,11 @@ func (it *controlled) passingFor() (*controlled, bool) {
 		if !ok || !movable {
 			continue
 		}
+		// Standing where a backtracking arrival on approach can't come by,
+		// it goes first: waited for, neither would move (#1641).
+		if o.arr != nil && o.arr.State() == traffic.ArrivalApproaching && o.wayInBlockedBy(it) {
+			continue
+		}
 		o.mu.Lock()
 		half := traffic.MotionProfileFor(o.view.Model).SpanMeters / 2
 		o.mu.Unlock()
@@ -258,38 +263,12 @@ func (it *controlled) backtrackWay(taxiIn bool) []airport.LatLon {
 // a departure going out along that way the other way is held on its
 // stand, or where it is, till the arrival is by — told once, asked again
 // every pushPassRetry. Only those arrivals: elsewhere the head-on check
-// as before.
+// as before. Paired with it from its approach on, and wherever their ways
+// meet (#1641, apron_pair.go: pairedArrival).
 
 // backtrackOpposedM: a departure's route this near an arrival's way off,
 // the other way, is held for it.
 const backtrackOpposedM = 30.0
-
-// backtrackOpposed is a backtracking arrival at its airport whose way to
-// its stand runs along its route (from its stand, or where it is) the
-// other way; nil none. Departures awaiting their push or taxi only.
-func (it *controlled) backtrackOpposed() *controlled {
-	if it.dep == nil {
-		return nil
-	}
-	switch it.dep.State() {
-	case traffic.TaxiAwaitingPushback, traffic.TaxiAwaitingTaxi:
-	default:
-		return nil
-	}
-	r := it.dep.Route()
-	if r == nil || len(r.Points) < 2 {
-		return nil
-	}
-	for _, o := range it.cc.snapshotItems() {
-		if o == it || o.ICAO != it.ICAO {
-			continue
-		}
-		if way := o.backtrackWay(true); len(way) > 1 && waysOpposed(r.Points, way, backtrackOpposedM) {
-			return o
-		}
-	}
-	return nil
-}
 
 // waysOpposed reports whether ways a and b come within reach of each other
 // heading at least 120° apart somewhere (sampled every pushPassStepM*2).
@@ -327,17 +306,24 @@ func waysOpposed(a, b []airport.LatLon, reach float64) bool {
 }
 
 // holdForBacktrack is whether ground holds its push or taxi (req) for a
-// backtracking arrival coming the other way (backtrackOpposed).
+// backtracking arrival it is paired with (pairedArrival): until that is
+// parked, but for one still on approach no longer than pushLegMaxWait, or
+// a stream of arrivals would hold it for good.
 func (it *controlled) holdForBacktrack(req string) bool {
-	o := it.backtrackOpposed()
-	if o == nil {
-		return false
-	}
+	o, approaching := it.pairedArrival()
 	now := it.cc.clock.Now()
 	it.mu.Lock()
-	if it.request != req {
+	if o == nil {
+		it.pairHeldFrom = time.Time{}
 		it.mu.Unlock()
 		return false
+	}
+	if it.request != req || approaching && !it.pairHeldFrom.IsZero() && now.Sub(it.pairHeldFrom) > pushLegMaxWait {
+		it.mu.Unlock()
+		return false
+	}
+	if it.pairHeldFrom.IsZero() {
+		it.pairHeldFrom = now
 	}
 	first := !it.spoken["standby backtrack"]
 	it.spoken["standby backtrack"] = true

@@ -115,7 +115,10 @@ func (r *remoteSim) StartArrival(defBase, reqBase uint32, req traffic.ArrivalReq
 		w.FollowMe = f.Title()
 	}
 	evs := r.c.subscribe(w.Target)
-	if err := r.c.call(r.t, "StartArrival", []any{w}); err != nil {
+	// Whether it plans its way off (#1655): no result from an actuator
+	// from before, so false.
+	var plans bool
+	if err := r.c.call(r.t, "StartArrival", []any{w}, &plans); err != nil {
 		r.c.unsubscribe(w.Target)
 		return nil, nil, err
 	}
@@ -132,7 +135,7 @@ func (r *remoteSim) StartArrival(defBase, reqBase uint32, req traffic.ArrivalReq
 			}
 		}
 	}()
-	return &remoteArr{c: r.c, t: w.Target}, out, nil
+	return &remoteArr{c: r.c, t: w.Target, plansWayOff: plans}, out, nil
 }
 
 // ── The actuator's sim port ────────────────────────────────────────────────
@@ -161,6 +164,9 @@ type actuatorSim struct {
 	bus    func(w departureStart, g *airport.Graph, prof traffic.MotionProfile, title string, n int) traffic.FuelService
 	// followMe makes an arrival's follow-me car (#890).
 	followMe func(w arrivalStart, g *airport.Graph, prof traffic.MotionProfile) traffic.FollowMeService
+	// do runs on the connection's goroutine, for a way off put in place
+	// (#1655); nil: at once.
+	do func(func() error) error
 
 	mu   sync.Mutex
 	ctls []interface{ Handle(engine.Message) bool } // started off the wire
@@ -248,11 +254,12 @@ func (a *actuatorSim) StartDeparture(w departureStart) error {
 	return nil
 }
 
-// StartArrival starts an arrival off the wire, as StartDeparture.
-func (a *actuatorSim) StartArrival(w arrivalStart) error {
+// StartArrival starts an arrival off the wire, as StartDeparture, and says
+// whether it plans its way off too, under its own target (#1655).
+func (a *actuatorSim) StartArrival(w arrivalStart) (plansWayOff bool, err error) {
 	g, err := a.graph(w.ICAO)
 	if err != nil {
-		return err
+		return false, err
 	}
 	req := w.Req
 	req.Graph = g
@@ -261,10 +268,14 @@ func (a *actuatorSim) StartArrival(w arrivalStart) error {
 	}
 	ctl, evs, err := a.localSim.StartArrival(w.DefBase, w.ReqBase, req)
 	if err != nil {
-		return err
+		return false, err
 	}
 	a.keep(ctl)
 	a.srv.add(w.Target, ctl)
+	p, plansWayOff := ctl.(wayOffPlanner)
+	if plansWayOff {
+		a.srv.add(w.Target+wayOffSuffix, &actuatorWayOff{p: p, do: a.do})
+	}
 	a.addLive(w.Target, ctl, req.Model, req.Tail)
 	go a.pump(w.Target, ctl, func(yield func(any, error) bool) {
 		for ev := range evs {
@@ -273,12 +284,13 @@ func (a *actuatorSim) StartArrival(w arrivalStart) error {
 			}
 		}
 	})
-	return nil
+	return plansWayOff, nil
 }
 
 // pump sends target's events until they end, then forgets the target.
 func (a *actuatorSim) pump(target string, ctl interface{ Handle(engine.Message) bool }, events func(yield func(any, error) bool)) {
 	defer a.srv.remove(target)
+	defer a.srv.remove(target + wayOffSuffix)
 	defer a.endLive(target) // its puppets, if any, go (#964)
 	defer a.drop(ctl) // done: no more messages for it (#65)
 	defer func() {

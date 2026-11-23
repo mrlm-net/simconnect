@@ -577,6 +577,17 @@ func (s *scheduler) spawnWith(f traffic.ManagedFlight, pre *planned, model strin
 		if o := f.Observed; o != nil && o.OnGround {
 			s, err = cc.allocator(g).AssignNear(sr, o.Position, realStandNearM)
 		}
+		// Out of a backtracking arrival's way in, or not until it is by
+		// (#1641). Never a player's.
+		if err != nil && !req.Gates {
+			i, ok, e := cc.clearDepartureStand(g, cc.allocator(g), sr, req.StandUse, m, req.Runway)
+			if ok && e != nil {
+				return fmt.Errorf("%w: %v", traffic.ErrSpawnBlocked, e) // tried again
+			}
+			if ok {
+				s, err = i, nil
+			}
+		}
 		// By its use (#833): gates for an airliner, GA ramps for a light
 		// aircraft or a business jet (#568, #619), cargo stands for a
 		// freighter; then another that fits.

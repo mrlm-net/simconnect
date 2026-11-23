@@ -80,6 +80,9 @@ type StandRequirements struct {
 	// departure's destination; "" unknown): the stand areas of its side of
 	// the Schengen border first, another area's last (StandAreaFor).
 	Other string
+	// Avoid are stands Assign never takes: where standing would be in the
+	// way another is planned along (#1641). Empty: none.
+	Avoid []int
 }
 
 // StandAllocator assigns stands at one airport and keeps track of who is on
@@ -314,7 +317,7 @@ func (a *StandAllocator) Assign(req StandRequirements) (int, error) {
 	a.mu.Lock()
 	var own, open []int
 	for _, i := range l.SuitableStands(half, req.Types...) {
-		if a.blockedBy(i, half, req.Owner) != "" {
+		if a.blockedBy(i, half, req.Owner) != "" || slices.Contains(req.Avoid, i) {
 			continue
 		}
 		p := l.Parking[i]

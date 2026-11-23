@@ -8,14 +8,15 @@ import (
 )
 
 // WayOffClear reports whether the way back off the runway of an arrival
-// rolling to the end (ArrivalPlan.EndTurn), and on to its stand, passes
-// none of occ: where others stand or will hold short (#1640: at TFFJ it
-// stood on the runway nose to nose with the departure holding short on its
-// exit, each waiting for the other). True for any other arrival.
+// backtracking (ArrivalPlan.Backtrack, EndTurn: rolling to the end first),
+// and on to its stand, passes none of occ: where others stand or will hold
+// short (#1640: at TFFJ it stood on the runway nose to nose with the
+// departure holding short on its exit, each waiting for the other). True
+// for any other arrival.
 func (c *ArrivalController) WayOffClear(occ []airport.Occupied) bool {
 	c.mu.Lock()
 	defer c.mu.Unlock()
-	if c.plan == nil || !c.plan.EndTurn || c.plan.Route == nil || len(occ) == 0 {
+	if c.plan == nil || !(c.plan.EndTurn || c.plan.Backtrack) || c.plan.Route == nil || len(occ) == 0 {
 		return true
 	}
 	opts := withSpan(c.req.Options, c.profile())
@@ -28,10 +29,11 @@ func (c *ArrivalController) WayOffClear(occ []airport.Occupied) bool {
 // held during the search: nil when none is clear or it is committed, else
 // the step that puts the plan in place, for the connection's goroutine
 // (false: it touched down, or was planned afresh, meanwhile). Before the
-// rollout only, flown by injection.
+// rollout only, flown by injection. One backtracking without the turn at
+// the end keeps its exit (#1641: only the way on to a stand differs).
 func (c *ArrivalController) PlanWayOff(parking int, occ []airport.Occupied) func() bool {
 	c.mu.Lock()
-	if c.plan == nil || !c.plan.EndTurn || c.state >= ArrivalRollout || !c.req.InjectApproach && !c.flyingProc {
+	if c.plan == nil || !(c.plan.EndTurn || c.plan.Backtrack) || c.state >= ArrivalRollout || !c.req.InjectApproach && !c.flyingProc {
 		c.mu.Unlock()
 		return nil
 	}
@@ -45,21 +47,30 @@ func (c *ArrivalController) PlanWayOff(parking int, occ []airport.Occupied) func
 		return nil
 	}
 	opts.Occupied = occ
-	opposite := oppositeEnd(old.Runway, old.End).Name
+	from := oppositeEnd(old.Runway, old.End).Name
 	r, a0 := endTurnRadius(old.Runway)
-	for _, x := range endTurnExits(g, old.Runway, old.End) {
-		plan, err := PlanArrival(g, opposite, parking, ArrivalOptions{
+	var exits []airport.RunwayExit
+	if old.EndTurn {
+		exits = endTurnExits(g, old.Runway, old.End)
+	} else {
+		from, exits = old.End.Name, []airport.RunwayExit{old.Exit}
+		opts.UseRunwayPaths = true // back along it, as it was planned (backtrackExit)
+	}
+	for _, x := range exits {
+		plan, err := PlanArrival(g, from, parking, ArrivalOptions{
 			SpawnNm: old.SpawnNm, Exit: &x, Route: opts, GroundAGL: req.GroundAGL, NoseOffset: req.NoseOffset, StandSide: req.StandSide,
 			TouchdownKts: approachProfileOf(req).TouchdownKts, BrakeDecel: req.Rollout.BrakeDecel,
 		})
-		if err != nil || g.TurnsBack(plan.Route) || g.PassesOccupied(plan.Route, 0, opts) {
+		if err != nil || g.TurnsBack(plan.Route) || g.PassesOccupied(plan.Route, 0, opts) || !old.EndTurn && !plan.Backtrack {
 			continue
 		}
 		// Landing as planned; only the way back differs (endTurnPlan).
 		plan.Spawn, plan.End, plan.Waypoints = old.Spawn, old.End, slices.Clone(old.Waypoints)
-		plan.Backtrack, plan.ClearIndex = true, len(x.Path)-1
-		plan.EndTurn, plan.EndTurnMeters = true, 2*math.Max(0, x.Along-(a0+2*r))+(math.Pi+0.5)*r
-		plan.Exit.Along = old.Runway.Length - x.Along
+		if old.EndTurn {
+			plan.Backtrack, plan.ClearIndex = true, len(x.Path)-1
+			plan.EndTurn, plan.EndTurnMeters = true, 2*math.Max(0, x.Along-(a0+2*r))+(math.Pi+0.5)*r
+			plan.Exit.Along = old.Runway.Length - x.Along
+		}
 		return func() bool {
 			c.mu.Lock()
 			defer c.mu.Unlock()

@@ -535,6 +535,25 @@ func (r *remoteArr) VectorDue() (traffic.Vector, bool) {
 	return o0, o1
 }
 
+// remoteWayOff is the director's wayOffCalls: each call a wire call.
+func (r *remoteWayOff) CheckWayOff(occ []airport.Occupied) (bool, error) {
+	var o0 bool
+	err := r.c.call(r.t, "CheckWayOff", []any{occ}, &o0)
+	return o0, err
+}
+
+func (r *remoteWayOff) SearchWayOff(step uint64, parking int, occ []airport.Occupied) (bool, error) {
+	var o0 bool
+	err := r.c.call(r.t, "SearchWayOff", []any{step, parking, occ}, &o0)
+	return o0, err
+}
+
+func (r *remoteWayOff) TakeWayOff(step uint64, parking int, occ []airport.Occupied) (bool, error) {
+	var o0 bool
+	err := r.c.call(r.t, "TakeWayOff", []any{step, parking, occ}, &o0)
+	return o0, err
+}
+
 // remoteSim is the director's simPort: each call a wire call.
 func (r *remoteSim) SpawnEnroute(o traffic.NonATCOpts, reqID uint32) error {
 	err := r.c.call(r.t, "SpawnEnroute", []any{o, reqID})
