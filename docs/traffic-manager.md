@@ -49,7 +49,7 @@ The World's settings for all of this are in [Changing the timing](#changing-the-
 
 The limits are `MaxAircraft` in total (default 24) and `MaxPerAirport` (default 16). Spawns are spaced: arrivals `ArrivalSpacing` (3 min) apart, departures `DepartureSpacing` (1 min). The Source is asked `Horizon` (2 h) ahead, an hour at a time. Flights already too late when they are added are left out, so a schedule started mid-day does not show the morning as cancelled. A failed spawn is tried again after `RetryAfter` (30 s), up to `MaxAttempts` (3); one unanswered for `SpawnTimeout` (2 min) counts as failed. Done and cancelled flights stay on the boards for `Keep` (1 h).
 
-`Add(flights)` adds flights beside the Source's (flights at chosen times); a flight already known by kind and call sign keeps its state. `SetAirports`, `SetEnabled` and `SetLimits` change the managed airports, spawning and the limits while it runs; `Replan` asks the Source again for the hours ahead.
+`Add(flights)` adds flights beside the Source's (flights at chosen times); a flight already known by kind and call sign keeps its state. `SetAirports`, `SetEnabled` and `SetLimits` change the managed airports, spawning and the limits while it runs; `SetStartStands` and `SetNightStops` a session's `StartStands` and `NightStops` (0 the options' again, negative none; `SetTiming` leaves them); `Replan` asks the Source again for the hours ahead.
 
 ## Changing the timing
 
@@ -200,7 +200,7 @@ Other traffic is a layer in the Map section (**Other traffic**), drawn in blue. 
 
 The API:
 - `GET /api/schedule` returns the settings and every flight.
-- `POST /api/schedule` takes `{"enabled", "airports": ["LKPR", "LKTB"] (or "icao"), "density", "maxAircraft", "seed", "ifr", "vfr", "generator", "offsetMin", "others": "respect"|"ignore"}` (`world.ScheduleSettings`).
+- `POST /api/schedule` takes `{"enabled", "airports": ["LKPR", "LKTB"] (or "icao"), "density", "maxAircraft", "seed", "ifr", "vfr", "generator", "offsetMin", "others": "respect"|"ignore", "startStands", "nightStops"}` (`world.ScheduleSettings`). `startStands` and `nightStops` size, for this session, the departures put on their stands per airport when its traffic begins and those parked there through the night (#1677): absent keeps what is set, 0 the default again (half `maxAircraft`; `nightStops` the tuning's), negative none. A session's `nightStops` wins over the tuning's. `GET /api/schedule` gives them back when set.
 - `GET /api/flights` lists the manager's flights; `POST /api/flights` adds flights ([Traffic World](traffic-world.md#flights-at-a-chosen-time)).
 - `GET /api/boards?icao=` returns an airport's departures and arrivals.
 - `POST /api/world/remove {"objectId"}` removes an aircraft that is not ours.

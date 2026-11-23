@@ -95,6 +95,58 @@ type ScheduleAirport struct {
 	// Carriers are the airlines its STANDS name that the config does not know
 	// (standCarriers, #1172): the scenery's own answer to who parks here.
 	Carriers []Airline `json:"carriers,omitempty"`
+
+	// tie: a focus airport's tie (ScheduleOptions.Ties, #1678).
+	tie AirportTie
+}
+
+// AirportTie ties a focus airport whose code says nothing of where it is
+// (an airport the player built, #1678) to the timetable. The zero value
+// ties nothing: the airport is served by its code, as any other.
+type AirportTie struct {
+	// Region is the ICAO region (two letters) its airlines serve it by,
+	// and its clock's; "" its code's first two letters, or Like's.
+	Region string `json:"region,omitempty"`
+	// Like is a real airport of the config it stands for, at the same
+	// place: that airport's bases count as bases here, its region and
+	// clock are taken when Region is empty, its stands' airlines when the
+	// focus airport's own stands name none (its layout in
+	// ScheduleOptions.Layouts), and no flight goes between the two. ""
+	// none.
+	Like string `json:"like,omitempty"`
+}
+
+// region is the ICAO region the focus airport's airlines serve it by.
+func (a ScheduleAirport) region() string {
+	switch {
+	case a.tie.Region != "":
+		return a.tie.Region
+	case a.tie.Like != "":
+		return a.tie.Like[:min(2, len(a.tie.Like))]
+	}
+	return a.ICAO[:min(2, len(a.ICAO))]
+}
+
+// clock is the code the airport's local time is found by (LocalHour).
+func (a ScheduleAirport) clock() string {
+	switch {
+	case a.tie.Region != "":
+		return a.tie.Region
+	case a.tie.Like != "":
+		return a.tie.Like
+	}
+	return a.ICAO
+}
+
+// basedHere reports whether the airport is a base of al: its own code, or
+// the airport it is like.
+func (a ScheduleAirport) basedHere(al Airline) bool {
+	return contains(al.Bases, a.ICAO) || (a.tie.Like != "" && contains(al.Bases, a.tie.Like))
+}
+
+// isHere reports whether icao is the airport itself, or the one it is like.
+func (a ScheduleAirport) isHere(icao string) bool {
+	return icao == a.ICAO || (a.tie.Like != "" && icao == a.tie.Like)
 }
 
 // TypeLimits are what a type can fly: the range and the runway it needs.
@@ -134,6 +186,9 @@ type ScheduleOptions struct {
 	// before): none is given again (#98: numbers were unique only within one
 	// call, and a repeat was dropped or two flights shared a call sign).
 	Used map[string]bool
+	// Ties are focus airports' region and like-airport apart from their
+	// codes, by code (#1678); nil none: each served by its code.
+	Ties map[string]AirportTie
 }
 
 // Schedule generates the flights with a departure (at a focus airport) or
@@ -160,17 +215,19 @@ func Schedule(cfg ScheduleConfig, opts ScheduleOptions, from, to time.Time) []Fl
 		if !ok {
 			continue
 		}
-		shares := standShares(opts.Layouts[icao])
+		focus.tie = opts.Ties[icao]
+		stands := focus.standsLayout(opts.Layouts)
+		shares := standShares(stands)
 		// The stands' own carriers that the config does not know (#1172).
 		known := map[string]bool{}
 		for _, a := range g.cfg.Airlines {
 			known[strings.ToUpper(a.ICAO)] = true
 		}
-		focus.Carriers = standCarriers(cfg, opts.Layouts[icao], known, icao)
+		focus.Carriers = standCarriers(cfg, stands, known, focus.region())
 		size := []float64{0, 0.2, 0.5, 1}[max(1, min(3, focus.Size))]
 		// The waves on the airport's clock (LocalHour).
 		for h := from.Truncate(time.Hour); h.Before(to); h = h.Add(time.Hour) {
-			local := LocalHour(focus.ICAO, focus.Position, h)
+			local := LocalHour(focus.clock(), focus.Position, h)
 			n := g.count(opts.PeakPerHour * size * opts.Density * cfg.Waves[local])
 			for i := 0; i < n; i++ {
 				// Timetables use whole five minutes.
@@ -204,12 +261,28 @@ func DrawFlight(cfg ScheduleConfig, opts ScheduleOptions, icao string, at time.T
 	if !ok {
 		return Flight{}, false
 	}
+	focus.tie = opts.Ties[icao]
+	stands := focus.standsLayout(opts.Layouts)
 	known := map[string]bool{}
 	for _, a := range cfg.Airlines {
 		known[strings.ToUpper(a.ICAO)] = true
 	}
-	focus.Carriers = standCarriers(cfg, opts.Layouts[icao], known, icao)
-	return g.flight(focus, standShares(opts.Layouts[icao]), at, arrival)
+	focus.Carriers = standCarriers(cfg, stands, known, focus.region())
+	return g.flight(focus, standShares(stands), at, arrival)
+}
+
+// standsLayout is the layout whose stands say who parks at the focus
+// airport: its own, or, when its stands name no airline, the one of the
+// airport it is like (AirportTie.Like) if given.
+func (a ScheduleAirport) standsLayout(layouts map[string]*airport.Layout) *airport.Layout {
+	own := layouts[a.ICAO]
+	if a.tie.Like == "" || len(standShares(own)) > 0 {
+		return own
+	}
+	if l := layouts[a.tie.Like]; l != nil {
+		return l
+	}
+	return own
 }
 
 // focusTime is when a flight is at a focus airport: its departure from
@@ -416,7 +489,7 @@ func fleetForStand(cfg ScheduleConfig, radiusM float64) map[string]float64 {
 
 // flight draws one departure from (or arrival at) focus at time at.
 func (g *scheduler) flight(focus ScheduleAirport, shares map[string]float64, at time.Time, arrival bool) (Flight, bool) {
-	prefix := focus.ICAO[:min(2, len(focus.ICAO))]
+	prefix := focus.region()
 	airlines := append(append([]Airline(nil), g.cfg.Airlines...), focus.Carriers...)
 	var weights []float64
 	// ONE RULE FOR PRESENCE, both lists. A configured base is the config saying the
@@ -430,7 +503,7 @@ func (g *scheduler) flight(focus ScheduleAirport, shares map[string]float64, at 
 	for _, a := range g.cfg.Airlines {
 		w := a.Weight
 		switch {
-		case contains(a.Bases, focus.ICAO):
+		case focus.basedHere(a):
 			w *= 8 // its base, as the config declares it
 		case shares[a.ICAO] > 0:
 			w *= homeWeight(shares[a.ICAO])
@@ -480,10 +553,10 @@ func (g *scheduler) flight(focus ScheduleAirport, shares map[string]float64, at 
 // airline when focus is not one, else anywhere in its regions, bigger
 // airports more often.
 func (g *scheduler) otherEnd(al Airline, focus ScheduleAirport) (ScheduleAirport, bool) {
-	if !contains(al.Bases, focus.ICAO) {
+	if !focus.basedHere(al) {
 		var bases []ScheduleAirport
 		for _, b := range al.Bases {
-			if a, ok := g.airports[b]; ok {
+			if a, ok := g.airports[b]; ok && !focus.isHere(b) {
 				bases = append(bases, a)
 			}
 		}
@@ -494,7 +567,7 @@ func (g *scheduler) otherEnd(al Airline, focus ScheduleAirport) (ScheduleAirport
 	var cands []ScheduleAirport
 	var weights []float64
 	for _, a := range g.cfg.Airports {
-		if a.ICAO == focus.ICAO || (!contains(al.Regions, "*") && !contains(al.Regions, a.ICAO[:min(2, len(a.ICAO))])) {
+		if focus.isHere(a.ICAO) || (!contains(al.Regions, "*") && !contains(al.Regions, a.ICAO[:min(2, len(a.ICAO))])) {
 			continue
 		}
 		cands = append(cands, a)

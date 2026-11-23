@@ -111,6 +111,10 @@ type ManagedFlight struct {
 	seenAt      time.Time // last seen in the picture
 	noEnroute   bool      // the enroute spawn failed: straight to the STAR entry
 	dropped     bool      // a real flight the feed dropped: removed once parked (#841)
+
+	// limitHeld: what limit held it from its start ("" none): a departure
+	// spawned late by it is retimed (#1679).
+	limitHeld string
 }
 
 // Departure reports whether the flight departs from its managed airport.
@@ -390,6 +394,9 @@ type TrafficManager struct {
 	// flying: the airports whose arrivals on their way in were picked
 	// (startAirborne).
 	flying map[string]bool
+	// sessionStartStands, sessionNightStops: the session's StartStands and NightStops
+	// (SetStartStands, SetNightStops, #1677); 0 the options'.
+	sessionStartStands, sessionNightStops int
 
 	// Lifecycle events (#368): collected under mu, delivered after it.
 	pending []ManagerEvent
@@ -847,6 +854,7 @@ func (m *TrafficManager) due(now time.Time, spawn *[]ManagedFlight) {
 			// were, held by the object limit).
 			if total >= o.MaxAircraft || at[f.Airport] >= o.MaxPerAirport {
 				f.Note = fmt.Sprintf("aircraft limit (%d at %s, %d in all)", o.MaxPerAirport, f.Airport, o.MaxAircraft)
+				f.limitHeld = f.Note
 				continue
 			}
 			if o.MaxObjects > 0 && o.Objects != nil {
@@ -857,6 +865,7 @@ func (m *TrafficManager) due(now time.Time, spawn *[]ManagedFlight) {
 				}
 				if n+spawning[f.Airport] >= o.MaxObjects {
 					f.Note = fmt.Sprintf("object limit %d at %s", o.MaxObjects, f.Airport)
+					f.limitHeld = f.Note
 					continue
 				}
 			}
@@ -879,9 +888,31 @@ func (m *TrafficManager) due(now time.Time, spawn *[]ManagedFlight) {
 		f.Attempts++
 		_, f.Stage = m.start(f, now)
 		f.Note = "" // no longer held
+		if m.retimeLate(f, now) {
+			m.emit(EventEstimated, f, now, f.Note)
+		}
+		f.limitHeld = ""
 		m.set(f, FlightSpawning, now)
 		*spawn = append(*spawn, *f)
 	}
+}
+
+// retimeLate gives a departure held by a limit past its start its time on
+// the stand, as a late inbound aircraft delays a real departure rather than
+// shortening its turn (#1679): Estimated becomes now plus DepartureLead
+// when that is past its STD, Note "late: " and the limit. It reports a
+// change. Night stops, start stands, turnarounds and real aircraft keep
+// their times.
+func (m *TrafficManager) retimeLate(f *ManagedFlight, now time.Time) bool {
+	if f.limitHeld == "" || !f.Departure() || f.NightStop || f.StartStand || f.TurnFrom != "" || f.Observed != nil {
+		return false
+	}
+	push := now.Add(m.opts.DepartureLead)
+	if !push.After(later(f.STD, f.Estimated)) {
+		return false
+	}
+	f.Estimated, f.Note = push, "late: "+f.limitHeld
+	return true
 }
 
 // nightStops picks, in an airport's night, the morning wave's departures
@@ -889,6 +920,7 @@ func (m *TrafficManager) due(now time.Time, spawn *[]ManagedFlight) {
 // NightStops an airport (#1294).
 func (m *TrafficManager) nightStops(now time.Time) {
 	o := m.opts
+	o.NightStops = m.nightStopsNow()
 	if o.Night == nil || o.NightStops < 0 {
 		return
 	}
@@ -927,6 +959,21 @@ func (m *TrafficManager) nightStops(now time.Time) {
 // within StartWindow than StartStands, those due up to this far ahead
 // stand on their stands overnight (startStands).
 const StartOvernightWindow = 18 * time.Hour
+
+// nextMorning is when the morning wave begins after icao's next night
+// from now (Night), looked at by the quarter hour up to
+// StartOvernightWindow ahead; zero without one.
+func (m *TrafficManager) nextMorning(icao string, now time.Time) time.Time {
+	if m.opts.Night == nil {
+		return time.Time{}
+	}
+	for t := now; !t.After(now.Add(StartOvernightWindow)); t = t.Add(15 * time.Minute) {
+		if morning, ok := m.opts.Night(icao, t); ok {
+			return morning
+		}
+	}
+	return time.Time{}
+}
 
 // startsAirborne reports whether arrival f, due too soon at now for its
 // STAR entry, is one already on its way in where traffic begins at its
@@ -967,6 +1014,7 @@ func (m *TrafficManager) startAirborne(now time.Time) {
 // its schedule has departures.
 func (m *TrafficManager) startStands(now time.Time) {
 	o := m.opts
+	o.StartStands, o.NightStops = m.startStandsNow(), m.nightStopsNow()
 	if o.StartStands < 0 {
 		return
 	}
@@ -1009,13 +1057,23 @@ func (m *TrafficManager) startStands(now time.Time) {
 	// up to StartOvernightWindow, stand there overnight (NightStop): an
 	// apron always holds aircraft parked for the night, low-cost bases and
 	// the morning wave (the user, live LKPR 22:15: "no planes on the
-	// parkings outside gates").
+	// parkings outside gates"). Only those due from the morning after the
+	// airport's next night: in the day, none stands hours ahead (#1677).
+	mornings := map[string]time.Time{}
 	for _, f := range cands {
 		if have[f.Airport] >= limit {
 			continue
 		}
 		if f.STD.After(now.Add(o.StartWindow)) {
 			if o.NightStops < 0 {
+				continue
+			}
+			morning, ok := mornings[f.Airport]
+			if !ok {
+				morning = m.nextMorning(f.Airport, now)
+				mornings[f.Airport] = morning
+			}
+			if morning.IsZero() || f.STD.Before(morning) {
 				continue
 			}
 			f.NightStop = true
@@ -1252,6 +1310,49 @@ func (m *TrafficManager) SetLimits(maxAircraft, maxPerAirport int) {
 	if maxPerAirport > 0 {
 		m.opts.MaxPerAirport = maxPerAirport
 	}
+}
+
+// SetStartStands sets this session's StartStands per airport (#1677), for
+// airports whose traffic begins from now on: n of them, negative none, 0
+// the options' StartStands again. Unlike SetTiming's NightStops, a
+// tuning set after it does not change it.
+func (m *TrafficManager) SetStartStands(n int) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	m.sessionStartStands = n
+}
+
+// SetNightStops sets this session's NightStops per airport (#1677): n of
+// them, negative none, 0 the options' NightStops (the tuning's) again. It
+// wins over SetTiming's.
+func (m *TrafficManager) SetNightStops(n int) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	m.sessionNightStops = n
+}
+
+// StandLimits are the session's StartStands and NightStops (SetStartStands,
+// SetNightStops); 0 where the options' are used.
+func (m *TrafficManager) StandLimits() (startStands, nightStops int) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	return m.sessionStartStands, m.sessionNightStops
+}
+
+// startStandsNow and nightStopsNow are the limits in use: the session's,
+// else the options'. Under mu.
+func (m *TrafficManager) startStandsNow() int {
+	if m.sessionStartStands != 0 {
+		return m.sessionStartStands
+	}
+	return m.opts.StartStands
+}
+
+func (m *TrafficManager) nightStopsNow() int {
+	if m.sessionNightStops != 0 {
+		return m.sessionNightStops
+	}
+	return m.opts.NightStops
 }
 
 // SetMaxObjects changes MaxObjects (0: no limit).
