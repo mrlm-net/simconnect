@@ -42,6 +42,12 @@ type NavPoint struct {
 	// Vectors marks a manual termination (VM, FM): fly the heading, then
 	// expect radar vectors. The point is openLegMeters along it.
 	Vectors bool `json:"vectors,omitempty"`
+	// DMEArc marks a point that is there to fly a DME arc about its navaid
+	// (#1646): a point along the arc, or the intercept before it. Straight
+	// is where the point is with that leg kept straight, zero when there is
+	// none then.
+	DMEArc   bool   `json:"dmeArc,omitempty"`
+	Straight LatLon `json:"straight,omitzero"`
 }
 
 // Computed returns whether the point is not a charted fix.
@@ -273,6 +279,12 @@ func (p Procedures) Arrival(runway, entryFix string) ([]NavPoint, error) {
 // where the aircraft is before the first leg, at alt meters; it is not
 // itself a point.
 func resolveLegs(legs []Leg, start LatLon, alt, magVar float64) []NavPoint {
+	return resolveLegsWith(soundArcs(legs, start, alt, magVar), start, alt, magVar)
+}
+
+// resolveLegsWith is resolveLegs of legs whose DME arcs are judged already
+// (soundArcs).
+func resolveLegsWith(legs []Leg, start LatLon, alt, magVar float64) []NavPoint {
 	if magVar > 180 {
 		magVar -= 360
 	}
@@ -297,11 +309,16 @@ func resolveLegs(legs []Leg, start LatLon, alt, magVar float64) []NavPoint {
 	for i, l := range legs {
 		switch l.Type {
 		case types.SIMCONNECT_FACILITY_LEG_TYPE_RF, types.SIMCONNECT_FACILITY_LEG_TYPE_AF:
-			// Arcs: points every 15° on the way, then the fix.
-			if have && l.HasFix() && (l.ArcCenter.Lat != 0 || l.ArcCenter.Lon != 0) {
-				arc := arcPoints(l.ArcCenter, cur, l.Position, l.TurnRight)
-				for k := 2; k < len(arc)-1; k += 3 {
-					emit(NavPoint{Position: arc[k], LegType: l.Type,
+			// Arcs: points every 15° on the way, then the fix; a DME arc of
+			// 10° or more has one at least (SBRJ's 13° to PROTE lies 340 m
+			// off its chord).
+			if center, ok := l.arcCentre(cur); have && ok {
+				arc, first := l.arcTo(center, cur), 2
+				if len(arc) == 3 && l.Type == types.SIMCONNECT_FACILITY_LEG_TYPE_AF {
+					first = 1
+				}
+				for k := first; k < len(arc)-1; k += 3 {
+					emit(NavPoint{Position: arc[k], LegType: l.Type, DMEArc: l.ArcCenter == (LatLon{}),
 						Course: calc.BearingDegrees(cur.Lat, cur.Lon, arc[k].Lat, arc[k].Lon)})
 				}
 			}
@@ -339,12 +356,22 @@ func resolveLegs(legs []Leg, start LatLon, alt, magVar float64) []NavPoint {
 		if i+1 < len(legs) {
 			next = &legs[i+1]
 		}
-		emit(openPoint(l, cur, &alt, trueCourse(l), func() (LatLon, float64, bool) {
-			if next == nil || !next.HasFix() || next.Type != types.SIMCONNECT_FACILITY_LEG_TYPE_CF {
-				return LatLon{}, 0, false
+		toArc := false
+		n := openPoint(l, cur, &alt, trueCourse(l), func() (float64, bool) {
+			if next == nil || !next.HasFix() {
+				return 0, false
 			}
-			return next.Position, trueCourse(*next), true
-		}))
+			if next.Type == types.SIMCONNECT_FACILITY_LEG_TYPE_CF {
+				return interceptMeters(cur, trueCourse(l), next.Position, trueCourse(*next))
+			}
+			d, ok := arcInterceptMeters(l, next, cur, trueCourse(l))
+			toArc = ok
+			return d, ok
+		})
+		if toArc {
+			n.DMEArc, n.Straight = true, displace(cur, trueCourse(l), openLegMeters)
+		}
+		emit(n)
 	}
 	return out
 }
@@ -360,9 +387,9 @@ const (
 // (true): a climb (CA, VA, FA) at climbGradient to its altitude, a DME
 // distance (CD, VD, FC, FD) its distance (dmeEndMeters where the navaid is
 // known), an intercept (CI, VI) where it
-// meets the next leg's course, anything else openLegMeters. alt is the
-// altitude so far, raised by climbs.
-func openPoint(l Leg, cur LatLon, alt *float64, c float64, intercept func() (LatLon, float64, bool)) NavPoint {
+// meets the next leg's course or DME arc (intercept says how far), anything
+// else openLegMeters. alt is the altitude so far, raised by climbs.
+func openPoint(l Leg, cur LatLon, alt *float64, c float64, intercept func() (float64, bool)) NavPoint {
 	n := NavPoint{LegType: l.Type, Course: c, SpeedMax: l.Speed}
 	n.AltMin, n.AltMax = altLimits(l)
 	d := openLegMeters
@@ -382,10 +409,8 @@ func openPoint(l Leg, cur LatLon, alt *float64, c float64, intercept func() (Lat
 		}
 	case types.SIMCONNECT_FACILITY_LEG_TYPE_CI, types.SIMCONNECT_FACILITY_LEG_TYPE_VI:
 		if intercept != nil {
-			if fix, fc, ok := intercept(); ok {
-				if x, ok := interceptMeters(cur, c, fix, fc); ok {
-					d = x
-				}
+			if x, ok := intercept(); ok {
+				d = x
 			}
 		}
 	case types.SIMCONNECT_FACILITY_LEG_TYPE_VM, types.SIMCONNECT_FACILITY_LEG_TYPE_FM:
@@ -409,13 +434,19 @@ func dmeEndMeters(l Leg, p LatLon, c float64) (float64, bool) {
 	if l.OriginFix == "" || l.Distance <= 0 || (l.Origin.Lat == 0 && l.Origin.Lon == 0) {
 		return 0, false
 	}
+	return circleMeters(p, c, l.Origin, l.Distance)
+}
+
+// circleMeters is how far along course c (true) from p is first radius
+// meters from center; false as dmeEndMeters says.
+func circleMeters(p LatLon, c float64, center LatLon, radius float64) (float64, bool) {
 	kLat := 111320.0
 	kLon := kLat * math.Cos(p.Lat*math.Pi/180)
-	ox, oy := (l.Origin.Lon-p.Lon)*kLon, (l.Origin.Lat-p.Lat)*kLat
+	ox, oy := (center.Lon-p.Lon)*kLon, (center.Lat-p.Lat)*kLat
 	ax, ay := math.Sin(c*math.Pi/180), math.Cos(c*math.Pi/180)
-	// |t·a - o| = Distance.
+	// |t·a - o| = radius.
 	along := ox*ax + oy*ay
-	disc := along*along - (ox*ox + oy*oy - l.Distance*l.Distance)
+	disc := along*along - (ox*ox + oy*oy - radius*radius)
 	if disc < 0 {
 		return 0, false
 	}

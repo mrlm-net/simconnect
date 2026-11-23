@@ -154,10 +154,16 @@ func (p *ArrivalProcedure) minJoin() float64 {
 // point joinMeters out on the final of end (threshold elevation fieldFt),
 // where the approach is at joinFt MSL: the route's points up to the final,
 // then two centreline points (aligned ProcedureAlignNm before the join,
-// and the join). Altitudes descend ProcedureDescentFtPerNm back from the
-// join point, at most ProcedureTopFt (unless a constraint is higher) and
+// and the join), a DME arc's points only where they make that way no
+// worse (soundArcRoute). Altitudes descend ProcedureDescentFtPerNm
+// back from the join point, at most ProcedureTopFt (unless a constraint is higher) and
 // within each point's constraints.
 func PlanArrivalProcedure(route []airport.NavPoint, end airport.RunwayEnd, joinMeters, joinFt float64) (*ArrivalProcedure, error) {
+	return planArrival(soundArcRoute(route, end, joinMeters, joinFt), end, joinMeters, joinFt)
+}
+
+// planArrival is PlanArrivalProcedure of route's points as they are.
+func planArrival(route []airport.NavPoint, end airport.RunwayEnd, joinMeters, joinFt float64) (*ArrivalProcedure, error) {
 	t, hdg := end.LandingThreshold(), end.Heading
 	outbound := math.Mod(hdg+180, 360)
 	fLat, fLon := calc.DisplaceByHeading(t.Lat, t.Lon, outbound, 30*1852)

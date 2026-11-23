@@ -289,6 +289,7 @@ func (c *ArrivalController) ChangeRunway(runway string, procedure, missed []airp
 	}
 	join := math.Max(plan.SpawnNm, ProcedureJoinNm) * 1852
 	jp := NewApproachMover(plan.End.LandingThreshold(), plan.End.Heading, join, approachProfileOf(req)).Pose()
+	procedure = soundArcRoute(procedure, plan.End, join, g.Layout.Altitude/0.3048+jp.HeightFt)
 	proc, err := PlanArrivalProcedure(procedure, plan.End, join, g.Layout.Altitude/0.3048+jp.HeightFt)
 	if err != nil {
 		return err

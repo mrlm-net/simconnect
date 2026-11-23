@@ -215,7 +215,7 @@ func (cc *controlCenter) gameTick(now time.Time) {
 	var occupying []onRunway
 	for _, it := range items {
 		it.mu.Lock()
-		v := it.view
+		v, pushAt := it.view, it.pushAt
 		it.mu.Unlock()
 		switch {
 		case !g.done[v.ID] && ((v.Kind == "departure" && v.State == traffic.TaxiComplete.String()) ||
@@ -228,7 +228,7 @@ func (cc *controlCenter) gameTick(now time.Time) {
 			}
 			g.event(gameFlightPoints, "%s %s", v.Tail, verb)
 		}
-		if waitingForATC(v) {
+		if waitingForATC(v) && pastTime(pushAt, now) {
 			if g.waitFrom[v.ID].IsZero() {
 				g.waitFrom[v.ID] = now
 			}
@@ -328,14 +328,24 @@ func (g *game) newConflict(kind, a, b string, now time.Time) bool {
 }
 
 // waitingForATC reports an aircraft stopped for a clearance only the
-// player can give.
+// player can give. A departure on its stand waits only once its crew has
+// called: before that it is boarding, with nobody to answer (#1675).
 func waitingForATC(v ControlView) bool {
 	switch v.State {
-	case traffic.TaxiAwaitingPushback.String(), traffic.TaxiAwaitingTaxi.String(), traffic.TaxiHoldingShort.String(), traffic.TaxiLinedUp.String(),
+	case traffic.TaxiAwaitingPushback.String():
+		return v.Request != ""
+	case traffic.TaxiAwaitingTaxi.String(), traffic.TaxiHoldingShort.String(), traffic.TaxiLinedUp.String(),
 		traffic.ArrivalAwaitingTaxi.String(), traffic.ArrivalHoldingShort.String():
 		return true
 	}
 	return v.AtLimit
+}
+
+// pastTime reports whether t (a departure's STD) has come by now; zero
+// always has. A crew calls DepartureLead before its STD, and is only kept
+// waiting from the later of the two (#1675).
+func pastTime(t, now time.Time) bool {
+	return t.IsZero() || !now.Before(t)
 }
 
 // runwayOccupied is the runway an aircraft is on: lining up, lined up or

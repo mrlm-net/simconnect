@@ -480,7 +480,8 @@ func (c *ArrivalController) goAroundToDownwind(join, joinFt, circuitFt float64) 
 	cross := func(p airport.LatLon) float64 {
 		return calc.CrossTrackMeters(t.Lat, t.Lon, ahead.Lat, ahead.Lon, p.Lat, p.Lon)
 	}
-	route := c.req.Procedure
+	// Rejoined at a fix, on straight legs (#1646).
+	route := withoutArcs(c.req.Procedure, nil)
 	climbNM := c.goAroundClimbNM()
 	k := -1
 	for i, n := range route {
