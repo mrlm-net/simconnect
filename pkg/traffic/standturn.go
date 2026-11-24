@@ -196,8 +196,10 @@ func resampleLine(p []airport.LatLon, step float64) []airport.LatLon {
 	return append(out, p[len(p)-1])
 }
 
-// pathMinRadius is the tightest radius of g between from and to metres,
-// measured over ±TurnWindowMeters as the speed planning does.
+// pathMinRadius is the tightest radius of g between from and to metres by
+// the chords over ±TurnWindowMeters: about twice the true radius on an
+// arc, the measure standTurnTighterWheelbases was set on. The speed plan
+// does not use it (speedLimits).
 func pathMinRadius(g *GroundPath, from, to float64) float64 {
 	best := math.Inf(1)
 	for s := math.Max(from, TurnWindowMeters); s <= to-TurnWindowMeters; s += 1 {

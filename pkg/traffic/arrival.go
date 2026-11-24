@@ -1325,7 +1325,7 @@ func (c *ArrivalController) planExit(x airport.RunwayExit, ai, endTurn bool) err
 // may be to leave by the planned exit (#1586): braking at the rollout's
 // BrakeDecel it slows to the exit speed by the exit and, through the exit's
 // turn, to the turn speed its radius allows at ExitLateralAccel (v²/r,
-// about 0.15 g), as the injected rollout is flown.
+// about 0.11 g) and the turn-rate cap, as the injected rollout is flown.
 func (c *ArrivalController) exitTurnReach(nose airport.LatLon) float64 {
 	ro := c.rolloutProfile()
 	route := c.plan.Route.Points
@@ -1349,7 +1349,7 @@ func (c *ArrivalController) exitTurnReach(nose airport.LatLon) float64 {
 	// over its plan there brakes on to the exit and still makes it (LKPR 30,
 	// a P28A at 53 kt 155 m short of R).
 	ve := exitKts * ktsToMS
-	return math.Min(path.limit[0], math.Sqrt(ve*ve+2*ro.BrakeDecel*localDist(nose, route[0])))
+	return math.Min(path.limitAt(0), math.Sqrt(ve*ve+2*ro.BrakeDecel*localDist(nose, route[0])))
 }
 
 // exitInReach (#1586): taken over on the runway, the aircraft must slow to

@@ -96,6 +96,7 @@ type arrivalCtl interface {
 	LeaveHold() error
 	Orbit() (time.Duration, error)
 	Plan() *traffic.ArrivalPlan
+	TaxiInWay() []airport.LatLon
 	ProcedurePlan() []traffic.RoutePoint
 	ProcedureRoute() []airport.LatLon
 	CircuitFinal() bool

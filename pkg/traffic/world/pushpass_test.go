@@ -28,6 +28,7 @@ type passArr struct {
 
 func (a *passArr) State() traffic.ArrivalState { return a.state }
 func (a *passArr) Plan() *traffic.ArrivalPlan  { return a.plan }
+func (a *passArr) TaxiInWay() []airport.LatLon { return nil }
 
 // The live case (LKPR 2026-11-11): CSA1889 on C26 pushed onto H1 facing
 // north-west, ending at 50.10439 14.26463; TVS1832 taxied in along H1 the

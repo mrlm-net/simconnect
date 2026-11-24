@@ -386,7 +386,8 @@ func nearestDepot(l *airport.Layout, p airport.LatLon) (airport.LatLon, bool) {
 
 // ArriveWithin is how long the tug may take to reach the nose: its way in
 // (and VehicleGateAllowance for each gate on it, its calls to ground)
-// at road speed and half as long again, and at least TugArriveTimeout
+// at its planned speeds, slower in the turns (#1651), and half as long
+// again, and at least TugArriveTimeout
 // (#736: from the depot far off the LKPR S apron, 2.6–2.9 km, it takes six
 // minutes).
 func (t *SimObjectTug) ArriveWithin() time.Duration {
@@ -395,7 +396,7 @@ func (t *SimObjectTug) ArriveWithin() time.Duration {
 	if t.inPath == nil {
 		return TugArriveTimeout
 	}
-	drive := time.Duration(t.inPath.Length() / (TugRoadKts * 1852 / 3600) * 1.5 * float64(time.Second))
+	drive := time.Duration(t.inPath.planSeconds() * 1.5 * float64(time.Second))
 	if t.layout != nil && t.atc != nil {
 		// Each gate on its way: its call to ground and the answer.
 		drive += time.Duration(len(vehicleGates(t.layout, t.inPath))) * VehicleGateAllowance

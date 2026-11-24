@@ -301,8 +301,19 @@ func wayAcrossStand(l *airport.Layout, own airport.LatLon, pts []airport.LatLon)
 // back; 119K's bus forward and back down beside the fuselage).
 func wayTurnsBack(pts []airport.LatLon) bool {
 	for i := 1; i+1 < len(pts); i++ {
-		if math.Abs(headingDiff(localBearing(pts[i-1], pts[i]), localBearing(pts[i], pts[i+1]))) > wayTurnBackDeg {
+		turn := headingDiff(localBearing(pts[i-1], pts[i]), localBearing(pts[i], pts[i+1]))
+		if math.Abs(turn) > wayTurnBackDeg {
 			return true
+		}
+		// Two turns the same way either side of a leg too short to round
+		// them on are one at a point (LROP 08R: a rescue truck sent home
+		// as it drove turned out 90° and joined its road 2.6 m on through
+		// 106° and 90° more, a turn back its path could only take as a
+		// cusp).
+		if i+2 < len(pts) && localDist(pts[i], pts[i+1]) < wayTurnRadiusM {
+			if next := headingDiff(localBearing(pts[i], pts[i+1]), localBearing(pts[i+1], pts[i+2])); math.Abs(turn+next) > wayTurnBackDeg {
+				return true
+			}
 		}
 	}
 	return false

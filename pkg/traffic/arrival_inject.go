@@ -812,7 +812,7 @@ type RolloutProfile struct {
 
 // DefaultRolloutProfile is an A320 family rollout.
 func DefaultRolloutProfile() RolloutProfile {
-	return RolloutProfile{BrakeDecel: 2.5, SlowKts: 80, HighSpeedExitKts: 32, ExitKts: 12, ExitLateralAccel: 1.5}
+	return RolloutProfile{BrakeDecel: 2.5, SlowKts: 80, HighSpeedExitKts: 32, ExitKts: 12, ExitLateralAccel: 1.1}
 }
 
 func (c *ArrivalController) rolloutProfile() RolloutProfile {
