@@ -84,6 +84,31 @@ type rescueCrew struct {
 	// kts is its speed: the simulator's, or from its positions when more
 	// (AI on the ground report 0 kt while moving).
 	kts float64
+	// reported: the vehicles standing on the arrival's way off the
+	// runway, reported to the ground picture (rescueKeepOff), by object.
+	reported map[*traffic.SimObjectRescue]uint32
+	// stuck: those logged as having no point to move to; retryAt: not
+	// looked for a way off again before this, unless the plan changes.
+	stuck   map[*traffic.SimObjectRescue]bool
+	retryAt map[*traffic.SimObjectRescue]time.Time
+	// move: the search for their ways off running or ended, one at a time.
+	move *rescueMoveSearch
+	// waysFor, keepOff: the arrival's plan and the ways it may vacate by.
+	waysFor *traffic.ArrivalPlan
+	keepOff [][]airport.LatLon
+}
+
+// setPlan takes the arrival's plan as it is now: the ways to keep off,
+// worked out again only as it changes.
+func (c *rescueCrew) setPlan(plan *traffic.ArrivalPlan) {
+	if plan == c.waysFor {
+		return
+	}
+	c.waysFor, c.keepOff = plan, nil
+	c.stuck, c.retryAt = nil, nil // looked for afresh
+	if plan != nil && c.graph != nil {
+		c.keepOff = traffic.RescueVacateWays(c.graph, plan)
+	}
 }
 
 // observe takes the aircraft as seen now: its speed from how far it moved
@@ -135,6 +160,10 @@ func (c *rescueCrew) enter() {
 	}
 	c.ahead = way.Ahead
 	for _, t := range c.trucks {
+		if c.reported[t] != 0 {
+			// Standing in its way: it stays (rescueWatch).
+			continue
+		}
 		_ = t.Enter(way)
 	}
 }
@@ -160,6 +189,24 @@ type rescueCrews struct {
 	mu   sync.Mutex
 	by   map[string]*rescueCrew // by the aircraft's name
 	sent map[string]bool        // names already given a crew: one each
+
+	// findMoves, when set, is the backstop's search instead of
+	// findRescueMoves (tests count and hold it).
+	findMoves func(rescueMoveAsk) []rescueMove
+
+	// search runs the searches for a crew sent and for its vehicles' ways
+	// in and home (#1670): nil, at once (tests); the connection's control
+	// center runs each off its goroutine (rescueSearchOff), what it finds
+	// put in place by a step or frame after it ends.
+	search func(func())
+	// sending are the crews whose standby points and ways are looked for.
+	sending []*rescueSend
+}
+
+// rescueSearchOff runs f on a goroutine of its own, a panic logged as the
+// tick's are.
+func rescueSearchOff(f func()) {
+	go recoverTick("rescue search", f)
 }
 
 // rescueTitles are the vehicles of a crew: an ambulance for a medical, else
@@ -251,7 +298,7 @@ func (cc *controlCenter) rescueRunway(name string, user bool, icao string) strin
 func (cc *controlCenter) rescueTick(now time.Time) {
 	prio := cc.core.prio.all()
 	cc.rescue.mu.Lock()
-	idle := len(prio) == 0 && len(cc.rescue.by) == 0
+	idle := len(prio) == 0 && len(cc.rescue.by) == 0 && len(cc.rescue.sending) == 0
 	cc.rescue.mu.Unlock()
 	if idle {
 		return
@@ -284,9 +331,20 @@ func (cc *controlCenter) rescueStep(now time.Time, prio map[string]bool, aircraf
 		}
 		cc.sendRescue(name, a, cc.core.prio.kind(name) == traffic.EmergencyMedical)
 	}
+	// The ways the arrivals waited for vacate by (#1632), read before the
+	// crews are locked: byTail takes cc.mu.
+	plans := cc.rescuePlans()
 	cc.rescue.mu.Lock()
 	defer cc.rescue.mu.Unlock()
+	cc.rescueSent()
 	for name, c := range cc.rescue.by {
+		if c.state == rescueStandby || c.state == rescueDown {
+			c.setPlan(plans[name])
+			// Reported before it moves off: in the way until it is off it.
+			cc.rescueWatch(c, now)
+			cc.rescueKeepOff(c, now)
+		}
+		cc.rescueWatch(c, now)
 		a, ok := seen[name]
 		if ok {
 			c.observe(a)
@@ -297,6 +355,7 @@ func (cc *controlCenter) rescueStep(now time.Time, prio map[string]bool, aircraf
 		}
 		switch {
 		case done:
+			cc.rescueForget(c)
 			cc.ids.Release(c.defBase)
 			delete(cc.rescue.by, name)
 			cc.log.printf("%-6s rescue: back at the station", name)
@@ -329,7 +388,8 @@ func (cc *controlCenter) rescueStep(now time.Time, prio map[string]bool, aircraf
 			}
 			// Its stay counts once a vehicle is with it (they drive from
 			// standby by the taxiways), or rescueReachWithin after they set off.
-			if c.stoppedAt.IsZero() && !c.with() && now.Sub(c.enteredAt) < rescueReachWithin {
+			// Stopped short of one standing on its way, that one is with it.
+			if c.stoppedAt.IsZero() && !c.with() && !c.inWay() && now.Sub(c.enteredAt) < rescueReachWithin {
 				break
 			}
 			if c.stoppedAt.IsZero() {
@@ -375,59 +435,126 @@ func (cc *controlCenter) sendRescue(name string, a traffic.TrackedAircraft, medi
 			keepOff = traffic.RescueVacateWays(g, plan)
 		}
 	}
-	spots := traffic.RescueStandbyClear(g.Layout, rwy, len(legs), keepOff, 0)
-	if len(spots) < len(legs) {
-		cc.log.printf("%-6s rescue: runway %s unknown at %s", name, rwy, a.Airport)
-		return
-	}
-	// In the order they will reach them: none waiting on the way of
-	// another to its point (#1622).
-	depots := make([]*airport.LatLon, len(legs))
-	for i, leg := range legs {
-		depots[i] = leg.depot
-	}
-	spots = traffic.RescueAssign(g.Layout, depots, spots)
 	defBase, reqBase, err := cc.ids.Acquire()
 	if err != nil {
 		cc.log.printf("%-6s rescue: %v", name, err)
 		return
 	}
-	c := &rescueCrew{tail: name, icao: a.Airport, runway: rwy, medical: medical, defBase: defBase, target: a, graph: g}
-	stations := map[airport.LatLon]bool{}
-	var prev *traffic.SimObjectRescue
+	s := &rescueSend{legs: legs, keepOff: keepOff, done: make(chan struct{}),
+		crew: &rescueCrew{tail: name, icao: a.Airport, runway: rwy, medical: medical, defBase: defBase, target: a, graph: g}}
 	for i, leg := range legs {
 		t := traffic.NewSimObjectRescue(cc.client, cc.inj, leg.title, reqBase+uint32(i))
-		t.Layout = g.Layout
+		t.Layout, t.Depot, t.Search = g.Layout, leg.depot, cc.rescue.search
+		s.trucks = append(s.trucks, t)
+	}
+	// Its standby points and the ways there are searches (#1670): off
+	// the connection's goroutine, the crew sent by the step or frame
+	// after they end (rescueSent).
+	find := func() {
+		defer close(s.done)
+		s.find()
+	}
+	cc.rescue.mu.Lock()
+	defer cc.rescue.mu.Unlock()
+	if cc.rescue.search == nil {
+		find()
+		cc.rescueSend(s)
+		return
+	}
+	cc.rescue.sending = append(cc.rescue.sending, s)
+	cc.rescue.search(find)
+}
+
+// rescueSend is a crew to send: its vehicles, not yet in the simulator,
+// and what the search found for them, to read once done is closed.
+type rescueSend struct {
+	crew    *rescueCrew
+	legs    []rescueLeg
+	keepOff [][]airport.LatLon
+	trucks  []*traffic.SimObjectRescue
+	done    chan struct{}
+	// steps send each of trucks to its standby point (PlanStandby); none:
+	// no points for the crew.
+	steps []func() error
+}
+
+// find is the search for s: the standby points, kept off the ways the
+// arrival may vacate by (#1632), and each vehicle's way to its point. No
+// lock held.
+func (s *rescueSend) find() {
+	l := s.crew.graph.Layout
+	spots := traffic.RescueStandbyClear(l, s.crew.runway, len(s.legs), s.keepOff, 0)
+	if len(spots) < len(s.legs) {
+		return
+	}
+	// In the order they will reach them: none waiting on the way of
+	// another to its point (#1622).
+	depots := make([]*airport.LatLon, len(s.legs))
+	for i, leg := range s.legs {
+		depots[i] = leg.depot
+	}
+	spots = traffic.RescueAssign(l, depots, spots)
+	for i, t := range s.trucks {
+		s.steps = append(s.steps, t.PlanStandby(spots[i]))
+	}
+}
+
+// rescueSent sends the crews whose search has ended. It never waits for
+// one running. cc.rescue.mu held.
+func (cc *controlCenter) rescueSent() {
+	keep := cc.rescue.sending[:0]
+	for _, s := range cc.rescue.sending {
+		select {
+		case <-s.done:
+			cc.rescueSend(s)
+		default:
+			keep = append(keep, s)
+		}
+	}
+	clear(cc.rescue.sending[len(keep):])
+	cc.rescue.sending = keep
+}
+
+// rescueSend sends the crew s found standby points and ways for.
+// cc.rescue.mu held.
+func (cc *controlCenter) rescueSend(s *rescueSend) {
+	c := s.crew
+	if len(s.steps) < len(s.trucks) {
+		cc.log.printf("%-6s rescue: runway %s unknown at %s", c.tail, c.runway, c.icao)
+		cc.ids.Release(c.defBase)
+		return
+	}
+	stations := map[airport.LatLon]bool{}
+	var prev *traffic.SimObjectRescue
+	for i, t := range s.trucks {
+		leg := s.legs[i]
 		// From one depot one after another, not on top of one another
 		// (the default crew too: both from the depot nearest, #1597).
 		t.After = prev
 		if leg.depot != nil {
-			t.Depot, t.After = leg.depot, prev
 			stations[*leg.depot] = true
 		}
-		if err := t.Standby(spots[i]); err != nil {
-			cc.log.printf("%-6s rescue: %s: %v", name, leg.title, err)
+		if err := s.steps[i](); err != nil {
+			cc.log.printf("%-6s rescue: %s: %v", c.tail, leg.title, err)
 			continue
 		}
 		c.trucks = append(c.trucks, t)
 		prev = t
 	}
 	if len(c.trucks) == 0 {
-		cc.ids.Release(defBase)
+		cc.ids.Release(c.defBase)
 		return
 	}
-	cc.rescue.mu.Lock()
-	cc.rescue.by[name] = c
-	cc.rescue.mu.Unlock()
+	cc.rescue.by[c.tail] = c
 	what := "fire trucks"
-	if medical {
+	if c.medical {
 		what = "ambulance"
 	}
 	from := ""
 	if len(stations) > 0 {
 		from = fmt.Sprintf(" from %d fire station(s)", len(stations))
 	}
-	cc.log.printf("%-6s rescue: %d %s%s to standby beside %s %s", name, len(c.trucks), what, from, a.Airport, rwy)
+	cc.log.printf("%-6s rescue: %d %s%s to standby beside %s %s", c.tail, len(c.trucks), what, from, c.icao, c.runway)
 }
 
 // rescueLeg is one vehicle of a crew: its title and the fire station it
@@ -491,6 +618,284 @@ func (cc *controlCenter) rescuePlan(l *airport.Layout, rwy string, medical bool)
 	return legs
 }
 
+// rescuePlans are the plans of the arrivals the crews wait for, by name.
+// Neither cc.mu nor cc.rescue.mu held.
+func (cc *controlCenter) rescuePlans() map[string]*traffic.ArrivalPlan {
+	cc.rescue.mu.Lock()
+	if len(cc.rescue.by) == 0 {
+		// None out, as on nearly every frame: nothing to look up.
+		cc.rescue.mu.Unlock()
+		return nil
+	}
+	runways := map[string]string{}
+	for name, c := range cc.rescue.by {
+		runways[name] = c.runway
+	}
+	cc.rescue.mu.Unlock()
+	plans := map[string]*traffic.ArrivalPlan{}
+	for name, rwy := range runways {
+		if it := cc.byTail(name); it != nil && it.arr != nil {
+			if plan := it.arr.Plan(); plan != nil && plan.End.Name == rwy {
+				plans[name] = plan
+			}
+		}
+	}
+	return plans
+}
+
+// rescueKeepOff is the backstop for a vehicle standing at standby on the
+// way the arrival vacates by (#1654): planned, or changed, after the crew
+// took its points (RescueStandbyClear kept them off the ways known then).
+// It looks for the nearest standby point clear of that way and of the
+// others that it has a way to. Each look is route searches, so it runs off
+// the connection's goroutine with no lock held (as #1640's way off), one
+// at a time a crew, and is not run again for a vehicle within wayOffRetry
+// unless the plan changes; a frame sends the vehicle (rescueMoved). Either
+// way it is reported to the ground picture while on that way (rescueWatch).
+// Of the arrival it reads the plan only: its exit, route, stand and
+// clearance stay as they are, a player's (#1096) or not.
+// cc.rescue.mu held.
+func (cc *controlCenter) rescueKeepOff(c *rescueCrew, now time.Time) {
+	cc.rescueMoved(c)
+	if c.move != nil || c.graph == nil {
+		return
+	}
+	a := rescueMoveAsk{layout: c.graph.Layout, runway: c.runway, crew: len(c.trucks), keepOff: c.keepOff}
+	for _, t := range c.trucks {
+		pose, _, ok := t.Standing()
+		if !ok || now.Before(c.retryAt[t]) || !traffic.RescueOnWays(pose.Position, c.keepOff, 0) {
+			continue
+		}
+		if c.retryAt == nil {
+			c.retryAt = map[*traffic.SimObjectRescue]time.Time{}
+		}
+		c.retryAt[t] = now.Add(wayOffRetry)
+		a.from = append(a.from, rescueMoveFrom{truck: t, at: pose.Position})
+	}
+	if len(a.from) == 0 {
+		return
+	}
+	a.taken = map[*traffic.SimObjectRescue][]airport.LatLon{}
+	for _, t := range c.trucks {
+		if p, route, ok := t.Track(); ok {
+			a.taken[t] = []airport.LatLon{p.Position}
+			if len(route) > 0 {
+				a.taken[t] = append(a.taken[t], route[len(route)-1])
+			}
+		}
+	}
+	find := cc.rescue.findMoves
+	if find == nil {
+		find = findRescueMoves
+	}
+	s := &rescueMoveSearch{plan: c.waysFor, done: make(chan struct{})}
+	c.move = s
+	go func() {
+		defer close(s.done)
+		recoverTick("rescue move", func() { s.moves = find(a) })
+	}()
+}
+
+// rescueMoveAsk is what a search for ways off starts from: a copy, read
+// without the crews' lock.
+type rescueMoveAsk struct {
+	layout  *airport.Layout
+	runway  string
+	crew    int
+	keepOff [][]airport.LatLon
+	from    []rescueMoveFrom
+	// taken: where each of the crew stands or drives to.
+	taken map[*traffic.SimObjectRescue][]airport.LatLon
+}
+
+// rescueMoveFrom is a vehicle to move off and where it stands.
+type rescueMoveFrom struct {
+	truck *traffic.SimObjectRescue
+	at    airport.LatLon
+}
+
+// rescueMove is what a search found for a vehicle: the step sending it
+// (nil: no way), of free points.
+type rescueMove struct {
+	truck *traffic.SimObjectRescue
+	apply func() bool
+	free  int
+}
+
+// rescueMoveSearch is a search for plan, its moves there to read once done
+// is closed.
+type rescueMoveSearch struct {
+	plan  *traffic.ArrivalPlan
+	done  chan struct{}
+	moves []rescueMove
+}
+
+// findRescueMoves is the search (rescueKeepOff). No lock held.
+func findRescueMoves(a rescueMoveAsk) []rescueMove {
+	spots := traffic.RescueStandbyClear(a.layout, a.runway, a.crew+rescueSpareSpots, a.keepOff, 0)
+	var out []rescueMove
+	for _, f := range a.from {
+		// Every free one tried, not the nearest only: beside the runway a
+		// point can lie out of reach of any taxiway (XONE: the second
+		// truck's nearest, 285 m from C, and it stayed on the exit).
+		var others []airport.LatLon
+		for t, pts := range a.taken {
+			if t != f.truck {
+				others = append(others, pts...)
+			}
+		}
+		free := rescueFreeSpots(f.at, others, spots)
+		m := rescueMove{truck: f.truck, free: len(free)}
+		for _, at := range free {
+			if m.apply = f.truck.PlanMove(at); m.apply != nil {
+				a.taken[f.truck] = append(a.taken[f.truck], at.Position)
+				break
+			}
+		}
+		out = append(out, m)
+	}
+	return out
+}
+
+// rescueMoved sends the vehicles the search that has ended found ways off
+// for, if its plan is still the arrival's and the crew still waits at
+// standby. It never waits for one running. On the connection's goroutine,
+// cc.rescue.mu held.
+func (cc *controlCenter) rescueMoved(c *rescueCrew) {
+	s := c.move
+	if s == nil {
+		return
+	}
+	select {
+	case <-s.done:
+	default:
+		return
+	}
+	c.move = nil
+	if s.plan != c.waysFor || c.state != rescueStandby && c.state != rescueDown {
+		return
+	}
+	for _, m := range s.moves {
+		if m.apply != nil {
+			if m.apply() {
+				delete(c.stuck, m.truck)
+				delete(c.retryAt, m.truck)
+				cc.log.printf("%-6s rescue: a vehicle stood on the way off the runway, moves off it", c.tail)
+			}
+			continue
+		}
+		if c.stuck[m.truck] {
+			continue
+		}
+		why := "no point free"
+		if m.free > 0 {
+			why = fmt.Sprintf("no way to the %d points free", m.free)
+		}
+		cc.log.printf("%-6s rescue: a vehicle stands on the way off the runway, %s: reported to ground", c.tail, why)
+		if c.stuck == nil {
+			c.stuck = map[*traffic.SimObjectRescue]bool{}
+		}
+		c.stuck[m.truck] = true
+	}
+}
+
+// rescueWatch reports, each frame, the vehicles on the arrival's way off
+// the runway as standing (ReportStanding), so it stops short of them
+// rolling out, vacating or taxiing (aircraft do not see the vehicles):
+// from the frame one stands on it at standby, until it is off it, driving
+// off to another point or home too. The aircraft slow, one reported stays
+// so until the crew goes home: setting off to the aircraft it stood nose
+// to nose with, the two drove through each other. cc.rescue.mu held.
+func (cc *controlCenter) rescueWatch(c *rescueCrew, now time.Time) {
+	for _, t := range c.trucks {
+		pose, _, out := t.Track()
+		if !out {
+			cc.rescueForgetOne(c, t)
+			continue
+		}
+		id, reported := c.reported[t]
+		if !reported || c.state != rescueFollowing {
+			if !traffic.RescueOnWays(pose.Position, c.keepOff, 0) {
+				cc.rescueForgetOne(c, t)
+				continue
+			}
+		}
+		if !reported {
+			if c.state != rescueStandby && c.state != rescueDown {
+				continue
+			}
+			_, obj, standing := t.Standing()
+			if !standing {
+				continue
+			}
+			if c.reported == nil {
+				c.reported = map[*traffic.SimObjectRescue]uint32{}
+			}
+			id = obj
+			c.reported[t] = id
+		}
+		if cc.world != nil {
+			cc.world.Ground(c.icao).ReportStanding(id, pose.Position, pose.Heading, traffic.RescueBodyProfile(), now)
+		}
+	}
+}
+
+// inWay reports whether a vehicle reported standing is still on the
+// arrival's way.
+func (c *rescueCrew) inWay() bool {
+	for t := range c.reported {
+		if p, _, ok := t.Track(); ok && traffic.RescueOnWays(p.Position, c.keepOff, 0) {
+			return true
+		}
+	}
+	return false
+}
+
+// rescueSpareSpots: standby points asked beyond the crew's, for one to
+// move to off an arrival's way. Enough that those beside the runway lie
+// close enough to a turn-off to reach: with 3, all but one of XONE's were
+// out of reach of a taxiway.
+const rescueSpareSpots = 10
+
+// rescueFreeSpots are the points of spots, nearest from first, none
+// within RescueSpacingMeters of one taken.
+func rescueFreeSpots(from airport.LatLon, taken []airport.LatLon, spots []traffic.GroundPose) []traffic.GroundPose {
+	var out []traffic.GroundPose
+	for _, s := range spots {
+		free := true
+		for _, q := range taken {
+			free = free && calc.HaversineMeters(s.Position.Lat, s.Position.Lon, q.Lat, q.Lon) >= traffic.RescueSpacingMeters
+		}
+		if free {
+			out = append(out, s)
+		}
+	}
+	dist := func(i int) float64 {
+		return calc.HaversineMeters(out[i].Position.Lat, out[i].Position.Lon, from.Lat, from.Lon)
+	}
+	sort.SliceStable(out, func(i, j int) bool { return dist(i) < dist(j) })
+	return out
+}
+
+// rescueForget drops c's vehicles from the ground picture (rescueKeepOff).
+// cc.rescue.mu held.
+func (cc *controlCenter) rescueForget(c *rescueCrew) {
+	for t := range c.reported {
+		cc.rescueForgetOne(c, t)
+	}
+}
+
+func (cc *controlCenter) rescueForgetOne(c *rescueCrew, t *traffic.SimObjectRescue) {
+	id, ok := c.reported[t]
+	if !ok {
+		return
+	}
+	delete(c.reported, t)
+	if cc.world != nil {
+		cc.world.Ground(c.icao).Forget(id)
+	}
+}
+
 // rescueHome sends c's vehicles home. cc.rescue.mu held.
 func (cc *controlCenter) rescueHome(c *rescueCrew, why string) {
 	c.state = rescueHome
@@ -505,9 +910,17 @@ func (cc *controlCenter) rescueHome(c *rescueCrew, why string) {
 // rescueFrame drives the crews out by a frame: on their way, or after
 // their aircraft (where it was last seen, moved on at its speed since).
 func (cc *controlCenter) rescueFrame(now time.Time) {
+	// The plans as they are this frame: a vehicle on a way just planned is
+	// reported at once, not at the next second's step.
+	plans := cc.rescuePlans()
 	cc.rescue.mu.Lock()
 	defer cc.rescue.mu.Unlock()
-	for _, c := range cc.rescue.by {
+	cc.rescueSent()
+	for name, c := range cc.rescue.by {
+		if c.state == rescueStandby || c.state == rescueDown {
+			c.setPlan(plans[name])
+		}
+		cc.rescueMoved(c)
 		dt := now.Sub(c.frameAt).Seconds()
 		c.frameAt = now
 		if dt <= 0 || dt > 0.5 {
@@ -520,8 +933,13 @@ func (cc *controlCenter) rescueFrame(now time.Time) {
 				first = append(first, p.Position)
 			}
 			var err error
-			if c.state == rescueFollowing {
+			if c.state == rescueFollowing && c.reported[t] == 0 {
 				a := c.target
+				size := traffic.ProfileFor(a.Title).Motion
+				if a.SpanM > 0 {
+					size.SpanMeters = a.SpanM
+				}
+				t.Attend(traffic.GroundPose{Position: a.Position, Heading: a.Heading}, size)
 				ahead := c.kts * 1852 / 3600 * math.Min(2, now.Sub(a.Updated).Seconds())
 				off, hdg := ahead-rescueTrail*float64(i), a.Heading
 				if c.ahead {
@@ -538,6 +956,7 @@ func (cc *controlCenter) rescueFrame(now time.Time) {
 				cc.log.printf("%-6s rescue: %v", c.tail, err)
 			}
 		}
+		cc.rescueWatch(c, now)
 	}
 }
 
@@ -623,7 +1042,17 @@ func (cc *controlCenter) rescueHandle(msg engine.Message) bool {
 func (cc *controlCenter) removeRescue() {
 	cc.rescue.mu.Lock()
 	defer cc.rescue.mu.Unlock()
+	// Crews still looked for: never sent, their IDs free once the search
+	// has ended.
+	for _, s := range cc.rescue.sending {
+		go func() {
+			<-s.done
+			cc.ids.Release(s.crew.defBase)
+		}()
+	}
+	cc.rescue.sending = nil
 	for name, c := range cc.rescue.by {
+		cc.rescueForget(c)
 		for _, t := range c.trucks {
 			_ = t.Remove()
 		}

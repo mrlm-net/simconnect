@@ -356,6 +356,9 @@ func (c *ArrivalController) onInjectedFrame() {
 	// On its landing roll it never rolls through one on the runway ahead
 	// (#1680).
 	c.runwayAhead, c.runwayTo = c.state == ArrivalRollout, c.clearDist
+	// On the rollout it follows none, but does not drive through what
+	// stands on its way (#1632).
+	c.seeStanding = c.state == ArrivalRollout
 	if c.backtracking && c.mover.Pose().Distance >= c.backFrom && (c.state == ArrivalRollout || c.state == ArrivalVacating) {
 		// Backtracking at taxi speed: brakes as a taxiing crew does, and
 		// sees what is ahead off the runway before it is off it, rather

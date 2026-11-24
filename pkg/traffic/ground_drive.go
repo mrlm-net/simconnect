@@ -69,6 +69,9 @@ type groundDrive struct {
 	// it turns off sooner (ArrivalController.turnOffNearest, #1680).
 	bodyFacing bool
 	bodyAt     float64
+	// seeStanding: not following traffic, it still stops for what stands on
+	// its way (stopForStanding).
+	seeStanding bool
 	// planned is the way it will taxi, reported while it waits for its taxi
 	// clearance (#452).
 	planned []airport.LatLon
@@ -529,6 +532,7 @@ func (d *groundDrive) followAhead(now time.Time) {
 		d.givingWay = 0
 		if d.mover != nil && !d.runwayAhead {
 			d.mover.ClearTrafficStop()
+			d.stopForStanding(now)
 		}
 		if d.picture != nil && d.object != 0 {
 			d.picture.ReportIntent(d.object, nil) // not taxiing: no intent (#775)
@@ -683,6 +687,29 @@ func runOnLimit(noseTip, body, giveWay, oncoming float64, holds bool) float64 {
 		at = math.Min(at, oncoming)
 	}
 	return at - noseTip - (TrafficGapMeters - TrafficOverrunMeters)
+}
+
+// stopForStanding stops it short of what stands on its way
+// (ReportStanding) where it follows no traffic, on the rollout (#1632: an
+// arrival drove through the fire trucks on its exit). As behind traffic:
+// seen as far ahead and, found too near to stop the gap short of, braked
+// for at a rate, running on no nearer than its clearance (runOnLimit).
+func (d *groundDrive) stopForStanding(now time.Time) {
+	if !d.seeStanding || d.picture == nil || !d.picture.anyStanding(now) {
+		return
+	}
+	half := d.prof.SpanMeters / 2
+	if half <= 0 {
+		half = DefaultHalfSpanMeters
+	}
+	s0, path := d.mover.Pose().Distance, d.mover.Path()
+	body, _ := d.picture.blockingOf(d.object, path, s0, TrafficLookMeters, half, true, now)
+	if math.IsInf(body, 1) {
+		return
+	}
+	noseTip := (pushNoseFactor - 1) * d.prof.WheelbaseMeters
+	d.mover.SetTrafficStop(body - noseTip - TrafficGapMeters)
+	d.mover.runOnTo = math.Max(s0, math.Min(path.Length(), runOnLimit(noseTip, body, math.Inf(1), 0, false)))
 }
 
 // oncomingDeg is how far from the path's heading an aircraft ahead faces to

@@ -32,6 +32,15 @@ type SimObjectRescue struct {
 	// appears only once After is RescueDepotGapMeters out, so they never
 	// stand on one another there; nil or another depot, at once.
 	After *SimObjectRescue
+	// Search runs its route searches (#1670): nil, at once, on the
+	// goroutine that asks; else as Search runs them (off the goroutine
+	// that drives it), what one finds put in place by the first frame
+	// (Update, Follow) after it ends. Meanwhile it stands, or drives on as
+	// it was.
+	Search func(func())
+
+	// found is its search running, or ended and not yet put in place.
+	found *rescueFound
 
 	mu       sync.Mutex
 	pending  bool // waiting at the depot for After to move off
@@ -48,15 +57,27 @@ type SimObjectRescue struct {
 	// home, or is taken away, from standing.
 	homeAtStop bool
 	homeDecel  float64
-	pose       GroundPose
-	mover      *GroundMover // driving to standby or home; nil waiting or following
-	homing     bool
-	depot      airport.LatLon
-	hasDepot   bool
-	kts        float64 // following: its speed now
-	err        error
-	done       bool
-	entering   bool // driving its way onto the runway to the aircraft (Enter)
+	// depotKnown: no way from its depot out, so it appeared at its standby
+	// point; it still looks for one home (#1656).
+	depotKnown bool
+	// enterWay: sent in as it drove, it takes this way once it has braked
+	// to a stand (Enter). runwayStop: where it brakes to held off a runway
+	// nearer than HoldAt can stop it.
+	enterWay   *RescueWay
+	runwayStop float64
+	// body is the aircraft it attends, of bodyProf (Attend).
+	body     *GroundPose
+	bodyProf MotionProfile
+
+	pose     GroundPose
+	mover    *GroundMover // driving to standby or home; nil waiting or following
+	homing   bool
+	depot    airport.LatLon
+	hasDepot bool
+	kts      float64 // following: its speed now
+	err      error
+	done     bool
+	entering bool // driving its way onto the runway to the aircraft (Enter)
 	// rwyHold is the runway it must not drive onto (HoldOffRunway);
 	// holdFor the mover holdAt was found on (-1: no runway on its way).
 	rwyHold *airport.Runway
@@ -80,14 +101,68 @@ const (
 // NewSimObjectRescue creates a rescue vehicle of the given ground vehicle
 // title; reqID is the SimConnect request ID of its creation.
 func NewSimObjectRescue(client engine.Client, inj *Injector, title string, reqID uint32) *SimObjectRescue {
-	return &SimObjectRescue{client: client, inj: inj, title: title, reqID: reqID, block: math.Inf(1), laneStop: math.Inf(1)}
+	return &SimObjectRescue{client: client, inj: inj, title: title, reqID: reqID, block: math.Inf(1), laneStop: math.Inf(1), runwayStop: math.Inf(1)}
+}
+
+// Attend tells it where the aircraft it attends is and how big (zero: the
+// default profile): its way home keeps off that aircraft's body (#1643).
+// Without it, it relies on RescueGapMeters.
+func (r *SimObjectRescue) Attend(aircraft GroundPose, p MotionProfile) {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	if p == (MotionProfile{}) {
+		p = DefaultMotionProfile()
+	}
+	if r.body == nil {
+		r.body = new(GroundPose)
+	}
+	*r.body, r.bodyProf = aircraft, p
 }
 
 // Standby creates it at the nearest depot and sends it to at, beside the
 // runway, where it waits.
 func (r *SimObjectRescue) Standby(at GroundPose) error {
+	return r.PlanStandby(at)()
+}
+
+// PlanStandby is Standby in two (#1670): it looks for its way from the
+// depot to at without its lock held, so on any goroutine, and returns the
+// step that creates it and sends it on that way, for the goroutine that
+// drives it. Layout and Depot are set before; After is read by the step.
+func (r *SimObjectRescue) PlanStandby(at GroundPose) func() error {
 	r.mu.Lock()
-	defer r.mu.Unlock()
+	l, depot := r.Layout, r.Depot
+	r.mu.Unlock()
+	d, ok := airport.LatLon{}, false
+	var mover *GroundMover
+	if l != nil {
+		if depot != nil {
+			d, ok = *depot, true
+		} else {
+			d, ok = nearestDepot(l, at.Position)
+		}
+		if ok {
+			route, found := RescueStandbyWay(l, d, at.Position)
+			if !found {
+				route, found = rescueStandbyOffWay(l, d, at.Position)
+			}
+			if found {
+				if path, err := rescuePath(cleanWay(route), fuelRoadProfile()); err == nil {
+					mover = NewGroundMoverFrom(path, rescueRoadProfile(), localBearing(path.PointAt(0), path.PointAt(math.Min(5, path.Length()))), 0)
+				}
+			}
+		}
+	}
+	return func() error {
+		r.mu.Lock()
+		defer r.mu.Unlock()
+		return r.standby(at, d, ok, mover)
+	}
+}
+
+// standby creates it, its depot d (ok: one) and its way from there mover
+// (nil: none, it appears at at). r.mu held.
+func (r *SimObjectRescue) standby(at GroundPose, d airport.LatLon, ok bool, mover *GroundMover) error {
 	r.pose = at
 	if r.After != nil {
 		r.convoy = r.After.crew()
@@ -95,20 +170,11 @@ func (r *SimObjectRescue) Standby(at GroundPose) error {
 	if r.convoy == nil {
 		r.convoy = &rescueConvoy{}
 	}
-	if r.Layout != nil {
-		d, ok := airport.LatLon{}, false
-		if r.Depot != nil {
-			d, ok = *r.Depot, true
-		} else {
-			d, ok = nearestDepot(r.Layout, at.Position)
-		}
-		if ok {
-			if route, ok := RescueStandbyWay(r.Layout, d, at.Position); ok {
-				if path, err := rescuePath(cleanWay(route), fuelRoadProfile()); err == nil {
-					r.mover = NewGroundMoverFrom(path, rescueRoadProfile(), localBearing(path.PointAt(0), path.PointAt(math.Min(5, path.Length()))), 0)
-					r.pose, r.depot, r.hasDepot = r.mover.Pose(), d, true
-				}
-			}
+	if ok {
+		r.depot, r.depotKnown = d, true
+		if mover != nil {
+			r.mover = mover
+			r.pose, r.hasDepot, r.depotKnown = r.mover.Pose(), true, false
 		}
 	}
 	r.init = types.SIMCONNECT_DATA_INITPOSITION{
@@ -175,6 +241,11 @@ func (r *SimObjectRescue) Handle(msg engine.Message) bool {
 func (r *SimObjectRescue) Update(dt float64) error {
 	r.mu.Lock()
 	defer r.mu.Unlock()
+	return r.drive(dt)
+}
+
+// drive is Update. r.mu held.
+func (r *SimObjectRescue) drive(dt float64) error {
 	if r.pending && !r.done && r.After.clearOfDepot() {
 		r.pending = false
 		return r.client.AICreateSimulatedObject(r.title, r.init, r.reqID)
@@ -186,12 +257,19 @@ func (r *SimObjectRescue) Update(dt float64) error {
 		r.err = nil
 		return err
 	}
+	if err := r.settle(); err != nil {
+		return err
+	}
+	if r.mover != nil && r.enterWay != nil {
+		r.enterBraking(dt)
+		return r.place()
+	}
 	if r.mover != nil {
-		if !r.entering && !r.homing {
+		if !r.homing {
 			r.holdOffRunway()
 		}
 		if r.homeAtStop {
-			r.homeBrake(dt)
+			r.brake(dt, r.homeDecel)
 		} else {
 			r.applyStop()
 			r.pose = r.mover.Step(dt)
@@ -205,7 +283,9 @@ func (r *SimObjectRescue) Update(dt float64) error {
 			}
 		} else if r.pose.Arrived {
 			r.mover = nil
-			if r.homing {
+			// Home: unless at the end of the way it was on as it was sent
+			// home, its way home still looked for (#1670).
+			if r.homing && r.found == nil {
 				return r.finish()
 			}
 		}
@@ -226,6 +306,18 @@ func (r *SimObjectRescue) Follow(pose GroundPose, kts, dt float64) error {
 	if r.done || r.objectID == 0 || r.homing {
 		return nil
 	}
+	if err := r.settle(); err != nil {
+		return err
+	}
+	if r.found != nil && (r.mover != nil || r.pose.GroundSpeedKts == 0) {
+		// Its way in still looked for: on as it was, or standing (#1670).
+		// Following already, it follows on.
+		return r.drive(dt)
+	}
+	if r.mover != nil && r.enterWay != nil {
+		r.enterBraking(dt)
+		return r.place()
+	}
 	if r.mover != nil && r.entering {
 		if r.aircraft == nil {
 			r.aircraft = new(airport.LatLon)
@@ -233,34 +325,76 @@ func (r *SimObjectRescue) Follow(pose GroundPose, kts, dt float64) error {
 		*r.aircraft = pose.Position
 		// On its way in by the taxiways and the exit: to its end, or
 		// until it is near the aircraft.
-		r.pose = r.mover.Step(dt)
-		if !r.pose.Arrived && localDist(r.pose.Position, pose.Position) > RescueGapMeters+RescueJoinMeters {
+		r.holdOffRunway()
+		r.applyStop()
+		m := r.mover
+		// As it comes near, no faster than it stops in before its gap.
+		room := localDist(r.pose.Position, pose.Position) - RescueGapMeters
+		if m.v > math.Max(0, kts)*knot+math.Sqrt(2*rescueAccel*math.Max(0, room)) {
+			r.brake(dt, rescueAccel)
+		} else {
+			r.pose = m.Step(dt)
+		}
+		held := r.rwyHold != nil && r.holdFor == m && r.holdAt >= 0 && m.s < r.holdAt
+		if !r.pose.Arrived && (held || localDist(r.pose.Position, pose.Position) > RescueGapMeters+RescueJoinMeters) {
 			return r.place()
 		}
+		// The stop it had on its way goes on as its room ahead.
+		r.block = math.Min(r.block, r.laneStop-m.s)
+		// Moved on its way this frame: following from the next. Both in
+		// one frame, it jumped twice its step.
+		r.mover = nil
 		r.kts = r.pose.GroundSpeedKts
-	}
-	r.mover = nil // off its standby: following now
-	target := offsetHeading(pose.Position, pose.Heading+180, RescueGapMeters)
-	d := localDist(r.pose.Position, target)
-	if d <= RescueStopMeters {
-		r.kts, r.pose.GroundSpeedKts = 0, 0
 		return r.place()
 	}
+	r.mover = nil // off its standby: following now
+	// From the speed it has, whatever drove it last (#1643).
+	r.kts = r.pose.GroundSpeedKts
+	target := offsetHeading(pose.Position, pose.Heading+180, RescueGapMeters)
+	d := localDist(r.pose.Position, target)
+	off := headingDiff(r.pose.Heading, localBearing(r.pose.Position, target))
+	// At its place, or just past it (the place moved): it brakes straight
+	// on and waits rather than turn back round to it.
+	there := d <= RescueStopMeters || d < RescueGapMeters && math.Abs(off) > 90
+	if there {
+		off = 0
+		if r.kts == 0 {
+			return r.place()
+		}
+	}
 	want := math.Min(RescueFollowKts, math.Max(kts+5, 10))
+	if kts < 1 && d > RescueJoinMeters {
+		// To one standing, not at its place yet: there at its speed on
+		// the roads, not at 10 kt down the runway (LROP 08L: 1.6 km from
+		// its way in, still 265 m off after five minutes). Following one
+		// rolling, no faster than above.
+		want = math.Max(want, rescueRoadProfile().CruiseKts)
+	}
 	// Slowing down toward the target, or behind a vehicle that goes
 	// first: no faster than it stops in.
 	free := math.Min(d-RescueStopMeters, r.block)
+	if r.entering {
+		free = math.Min(free, r.runwayRoom())
+	}
+	if there {
+		free = 0
+	}
 	stop := math.Sqrt(2*rescueAccel*math.Max(0, free)) / knot
 	want = math.Min(want, stop)
 	if r.kts < want {
 		r.kts = math.Min(want, r.kts+rescueAccel*dt/knot)
 	} else {
-		r.kts = want
+		r.kts = math.Max(want, r.kts-rescueAccel*dt/knot)
 	}
-	step := math.Min(d, r.kts*knot*dt)
+	if r.kts == 0 {
+		// Standing (held, or behind one ahead): no turning on the spot.
+		r.pose.GroundSpeedKts = 0
+		return r.place()
+	}
+	step := r.kts * knot * dt
 	// Turning toward it no faster than rescueTurnDegS: no snap of its
 	// heading as the aircraft turns off.
-	turn := math.Max(-rescueTurnDegS*dt, math.Min(rescueTurnDegS*dt, headingDiff(r.pose.Heading, localBearing(r.pose.Position, target))))
+	turn := math.Max(-rescueTurnDegS*dt, math.Min(rescueTurnDegS*dt, off))
 	hdg := math.Mod(r.pose.Heading+turn+360, 360)
 	r.pose = GroundPose{Position: offsetHeading(r.pose.Position, hdg, step), Heading: hdg, GroundSpeedKts: r.kts}
 	return r.place()
@@ -275,7 +409,8 @@ func (r *SimObjectRescue) Home() error {
 		return nil
 	}
 	r.homing = true
-	r.laneStop = math.Inf(1)
+	r.enterWay = nil
+	r.laneStop, r.runwayStop = math.Inf(1), math.Inf(1)
 	if r.objectID == 0 {
 		r.done = true
 		r.convoy.leave(r)
@@ -296,40 +431,106 @@ func (r *SimObjectRescue) Home() error {
 // homeStanding sets it off home from where it stands, or takes it away
 // without a way there. r.mu held.
 func (r *SimObjectRescue) homeStanding() error {
-	if r.Layout != nil && r.hasDepot {
-		// From its nose, where the mover takes a path to start: from its
-		// reference point it went back a wheelbase in a frame (worldtest,
-		// the MyCrew app: 5 m as it left the stopped aircraft).
-		nose := NoseGear(r.pose.Position, r.pose.Heading, rescueRoadProfile())
-		if route, err := r.Layout.VehicleRouteJoin(nose, r.depot, true, false); err == nil && len(route) >= 2 {
-			// Without the spikes of its join and the graph's spurs (#1630
-			// (d)), so it turns out where the road truly lies behind it.
-			way := cleanWay(append([]airport.LatLon{nose}, route...))
-			// From standby or from following alike, off forwards (#1630).
-			way = r.homeWayFrom(nose, r.pose.Heading, way)
-			if path, err := rescuePath(way, fuelRoadProfile()); err == nil {
-				r.mover = NewGroundMoverFrom(path, rescueRoadProfile(), r.pose.Heading, 0)
-				r.tell()
+	if r.Layout == nil || !r.hasDepot && !r.depotKnown {
+		return r.finish()
+	}
+	a, from := r.ask(), r.pose
+	return r.search(func() func() error {
+		path := a.homePath(from)
+		return func() error {
+			if r.done || !r.homing || r.mover != nil {
 				return nil
 			}
+			if !samePlace(r.pose, from) {
+				return r.homeStanding() // moved meanwhile: from where it is
+			}
+			if path == nil {
+				return r.finish()
+			}
+			r.mover = NewGroundMoverFrom(path, rescueRoadProfile(), from.Heading, 0)
+			r.tell()
+			return nil
 		}
+	})
+}
+
+// homePath is the way home of one standing at from; nil without one.
+func (a rescueAsk) homePath(from GroundPose) *GroundPath {
+	// From its nose, where the mover takes a path to start: from its
+	// reference point it went back a wheelbase in a frame (worldtest,
+	// the MyCrew app: 5 m as it left the stopped aircraft).
+	nose := NoseGear(from.Position, from.Heading, rescueRoadProfile())
+	route, ok := a.routeHome(nose)
+	if !ok {
+		return nil
 	}
-	return r.finish()
+	// Without the spikes of its join and the graph's spurs (#1630
+	// (d)), so it turns out where the road truly lies behind it.
+	way := cleanWay(append([]airport.LatLon{nose}, route...))
+	// From standby or from following alike, off forwards (#1630).
+	way = a.homeWayFrom(nose, from.Heading, way)
+	path, err := rescuePath(way, fuelRoadProfile())
+	if err != nil {
+		return nil
+	}
+	return path
 }
 
 // homeWayFrom is the way home from nose, facing h, given the direct
 // one: that, unless it sets off backwards or runs over one of its crew
 // standing; then out round (homeOut).
-func (r *SimObjectRescue) homeWayFrom(nose airport.LatLon, h float64, direct []airport.LatLon) []airport.LatLon {
+func (a rescueAsk) homeWayFrom(nose airport.LatLon, h float64, direct []airport.LatLon) []airport.LatLon {
+	direct = a.roundBody(direct)
 	back := startsBackwards(direct, h)
-	if !back && r.overCrew(direct) == 0 {
+	if !back && a.inTheWay(direct) == 0 {
 		return direct
 	}
-	out := r.homeOut(nose, h, direct)
-	if !back && r.overCrew(out) > 0 {
+	out := a.homeOut(nose, h, direct)
+	if !back && a.inTheWay(out) > 0 {
 		return direct
 	}
 	return out
+}
+
+// routeHome is the way to its depot from p: by the node in reach, else
+// back along the runway, or the nearest path, to one (#1656).
+func (a rescueAsk) routeHome(p airport.LatLon) ([]airport.LatLon, bool) {
+	route, err := a.layout.VehicleRouteJoin(p, a.depot, true, false)
+	if err != nil || len(route) < 2 {
+		route, err = a.layout.VehicleRouteBack(p, a.depot, a.keepShortOf()...)
+	}
+	return route, err == nil && len(route) >= 2
+}
+
+// keepShortOf is the aircraft it attends, for a way along the runway.
+func (a rescueAsk) keepShortOf() []airport.LatLon {
+	if a.body == nil {
+		return nil
+	}
+	return []airport.LatLon{a.body.Position}
+}
+
+// roundBody is way round the aircraft it attends.
+func (a rescueAsk) roundBody(way []airport.LatLon) []airport.LatLon {
+	if a.body == nil || len(way) < 2 {
+		return way
+	}
+	return roundRouteOn(a.layout, way, *a.body, a.bodyProf)
+}
+
+// inTheWay is what way runs over: crew standing, the aircraft attended.
+func (a rescueAsk) inTheWay(way []airport.LatLon) int {
+	n := a.overCrew(way)
+	if a.body == nil {
+		return n
+	}
+	f := aircraftFrame{nose: NoseGear(a.body.Position, a.body.Heading, a.bodyProf), hdg: a.body.Heading, prof: a.bodyProf}
+	for i := 1; i < len(way); i++ {
+		if !f.clear(way[i-1], way[i]) {
+			return n + 1
+		}
+	}
+	return n
 }
 
 // homeRolling sends it home as it drives, its speed carried on (#1630: it
@@ -363,61 +564,119 @@ func (r *SimObjectRescue) homeRolling() {
 		decel := math.Max(prof.Decel, math.Min(rescueAccel, v*v/(2*math.Max(on, 1))))
 		prof.Decel, road.Decel = decel, decel
 	}
-	if r.Layout != nil && r.hasDepot {
-		// With no join in reach from there (the middle of a long taxiway),
-		// it keeps to its way on to where one is.
+	if r.Layout == nil || !r.hasDepot && !r.depotKnown {
+		r.homeWhenStopped(s0+on, prof.Decel)
+		return
+	}
+	// Where it may leave its way, the first that has a join in reach:
+	// with none from there (the middle of a long taxiway), it keeps to
+	// its way on to where one is. Read here, searched off the goroutine.
+	cuts := []homeCut{homeCutAt(path, s0, on, r.pose.Heading)}
+	if r.hasDepot {
 		for d := on; d >= cleanWayMeters && d <= room; d += rescueHomeLookMeters {
-			at := path.PointAt(s0 + d)
-			from := offsetHeading(at, localBearing(path.PointAt(s0+d-1), at), wayTurnRadiusM)
-			if route, err := r.Layout.VehicleRouteJoin(from, r.depot, true, false); err == nil && len(route) >= 2 {
-				on = d
-				break
-			}
+			cuts = append(cuts, homeCutAt(path, s0, d, r.pose.Heading))
 		}
 	}
-	cut, h := path.PointAt(s0), r.pose.Heading
-	kept := []airport.LatLon{cut}
+	a := r.ask()
+	_ = r.search(func() func() error {
+		cut, rest := a.homeFrom(cuts, road)
+		return func() error {
+			if r.done || !r.homing {
+				return nil
+			}
+			if r.mover != old {
+				if r.mover == nil && r.objectID != 0 {
+					return r.homeStanding() // at the end of its way meanwhile
+				}
+				return nil
+			}
+			end := s0 + cut.on
+			if rest == nil {
+				r.homeWhenStopped(end, prof.Decel)
+				return nil
+			}
+			// From where it is now, on the way it was on (#1670).
+			s := old.Pose().Distance
+			kept := []airport.LatLon{path.PointAt(s)}
+			if cut.on >= cleanWayMeters {
+				if s > end-cleanWayMeters {
+					r.homeRolling() // past where it was to leave: looked for again
+					return nil
+				}
+				for i, p := range path.pts {
+					if c := path.cum[i]; c > s+0.1 && c < end-0.1 {
+						kept = append(kept, p)
+					}
+				}
+				kept = append(kept, cut.at)
+			} else if s > s0+0.01 {
+				if s-s0 >= cleanWayMeters {
+					r.homeRolling()
+					return nil
+				}
+				rest = rest[1:] // not back to where it was
+			}
+			// Rounded again where the two meet.
+			next, err := rescueRounded(append(kept, rest...), road)
+			if err != nil {
+				r.homeWhenStopped(end, prof.Decel)
+				return nil
+			}
+			r.mover = NewGroundMoverFrom(next, prof, r.pose.Heading, old.v/ktsToMS)
+			r.mover.a = old.a
+			r.tell()
+			return nil
+		}
+	})
+}
+
+// homeCut is where one sent home driving leaves its way: on metres on, at
+// facing h, from (on a little, so the corner home is rounded) where its
+// way home starts.
+type homeCut struct {
+	on       float64
+	at, from airport.LatLon
+	h        float64
+}
+
+// homeCutAt is the cut on metres on from s0 along path, facing h there
+// when that is less than cleanWayMeters.
+func homeCutAt(path *GroundPath, s0, on, h float64) homeCut {
+	at := path.PointAt(s0)
 	if on >= cleanWayMeters {
 		end := s0 + on
-		for i, p := range path.pts {
-			if c := path.cum[i]; c > s0+0.1 && c < end-0.1 {
-				kept = append(kept, p)
-			}
-		}
 		h = localBearing(path.PointAt(end-1), path.PointAt(end))
-		cut = path.PointAt(end)
-		kept = append(kept, cut)
+		at = path.PointAt(end)
 	}
-	if r.Layout == nil || !r.hasDepot {
-		r.homeWhenStopped(s0+on, prof.Decel)
-		return
+	return homeCut{on: on, at: at, from: offsetHeading(at, h, wayTurnRadiusM), h: h}
+}
+
+// homeFrom is the way home of one sent home driving: from the first of
+// cuts after the first with a join in reach, else the first. nil without
+// a way (homeRolling).
+func (a rescueAsk) homeFrom(cuts []homeCut, road MotionProfile) (homeCut, []airport.LatLon) {
+	cut := cuts[0]
+	for _, c := range cuts[1:] {
+		if route, err := a.layout.VehicleRouteJoin(c.from, a.depot, true, false); err == nil && len(route) >= 2 {
+			cut = c
+			break
+		}
 	}
-	// Straight on from there a little, so the corner home is rounded.
-	a := offsetHeading(cut, h, wayTurnRadiusM)
-	route, err := r.Layout.VehicleRouteJoin(a, r.depot, true, false)
-	if err != nil || len(route) < 2 {
-		r.homeWhenStopped(s0+on, prof.Decel)
-		return
+	route, ok := a.routeHome(cut.from)
+	if !ok {
+		return cut, nil
 	}
-	way := cleanWay(append([]airport.LatLon{a}, route...))
-	if startsBackwards(way, h) || r.overCrew(way) > 0 {
-		way = r.homeOut(cut, h, way)
+	way := a.roundBody(cleanWay(append([]airport.LatLon{cut.from}, route...)))
+	if startsBackwards(way, cut.h) || a.inTheWay(way) > 0 {
+		way = a.homeOut(cut.at, cut.h, way)
 	} else {
-		way = append([]airport.LatLon{cut}, way...)
+		way = append([]airport.LatLon{cut.at}, way...)
 	}
 	rest, err := NewArcPath(way, road, 8)
 	if err != nil {
-		r.homeWhenStopped(s0+on, prof.Decel)
-		return
+		return cut, nil
 	}
-	// Rounded again where the two meet.
-	next, err := rescueRounded(append(kept, rest.pts...), road)
-	if err != nil {
-		r.homeWhenStopped(s0+on, prof.Decel)
-		return
-	}
-	r.mover = NewGroundMoverFrom(next, prof, r.pose.Heading, v/ktsToMS)
-	r.mover.a = old.a
+	return cut, rest.pts
 }
 
 // homeWhenStopped has it brake to a stand by stop on the way it is on,
@@ -453,12 +712,11 @@ func (r *SimObjectRescue) homeFromFollowing() bool {
 	return true
 }
 
-// homeBrake moves it on by dt along its way, slowing at homeDecel: no
-// stop point halts it from speed (it is taken away from a stand only).
-// r.mu held.
-func (r *SimObjectRescue) homeBrake(dt float64) {
+// brake moves it on by dt along its way, slowing at decel: no stop point
+// halts it from speed (it is taken away from a stand only). r.mu held.
+func (r *SimObjectRescue) brake(dt, decel float64) {
 	m := r.mover
-	next := math.Max(0, m.v-r.homeDecel*dt)
+	next := math.Max(0, m.v-decel*dt)
 	m.s = math.Min(m.path.Length(), m.s+(m.v+next)/2*dt)
 	if m.s >= m.path.Length() {
 		next = 0
@@ -515,9 +773,9 @@ const rescueRoundMeters = 6
 
 // overCrew is how many of its crew standing the first rescueCrewLookMeters
 // of way run over.
-func (r *SimObjectRescue) overCrew(way []airport.LatLon) int {
+func (a rescueAsk) overCrew(way []airport.LatLon) int {
 	n := 0
-	for _, o := range r.convoy.others(r) {
+	for _, o := range a.convoy.others(a.r) {
 		if o.v > 0 {
 			continue
 		}
@@ -536,6 +794,82 @@ func (r *SimObjectRescue) overCrew(way []airport.LatLon) int {
 		}
 	}
 	return n
+}
+
+// Standing reports where it is when it stands at its standby point: in
+// the simulator, not driving, following, entering nor going home.
+func (r *SimObjectRescue) Standing() (GroundPose, uint32, bool) {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	if !r.standing() {
+		return GroundPose{}, 0, false
+	}
+	return r.pose, r.objectID, true
+}
+
+// standing is whether it stands at its standby point. r.mu held.
+func (r *SimObjectRescue) standing() bool {
+	return r.objectID != 0 && !r.done && !r.pending && !r.homing && !r.entering && r.mover == nil
+}
+
+// PlanMove plans its drive, standing (Standing), to another standby point
+// at by the roads and taxiways (#1654: off the way an arrival vacates by,
+// planned after it took its point), without its lock held during the
+// search, so on any goroutine: nil when it is not standing or there is no
+// way, or none without turning back on itself (with at behind it, it turns
+// out to at's side first), else the step that sends it, for the goroutine
+// that drives it (false: it set off or was moved meanwhile).
+func (r *SimObjectRescue) PlanMove(at GroundPose) func() bool {
+	r.mu.Lock()
+	if !r.standing() || r.Layout == nil {
+		r.mu.Unlock()
+		return nil
+	}
+	from, l := r.pose, r.Layout
+	r.mu.Unlock()
+	// From its nose the way it faces (no turn back on the spot), ending
+	// where the way first passes the point, as on its way out.
+	nose := NoseGear(from.Position, from.Heading, rescueRoadProfile())
+	route, err := l.VehicleRoutePose(nose, from.Heading, at.Position, noHeading)
+	if err != nil || len(route) < 2 {
+		return nil
+	}
+	for i := 1; i < len(route); i++ {
+		if pointSegDist(at.Position, route[i-1], route[i]) <= rescueOnWayMeters {
+			route = route[:i:i]
+			break
+		}
+	}
+	// Its nose on past at by its length there: the vehicle itself stands
+	// at it, not short of it, back on the way it left.
+	way := cleanWay(append(append([]airport.LatLon{nose}, route...), at.Position))
+	h := from.Heading
+	if len(way) > 1 && startsBackwards(way, h) {
+		// Behind it: out to its side (turnOut) and straight to it.
+		if localDist(nose, at.Position) > rescueMoveDirectMeters {
+			return nil
+		}
+		side := math.Copysign(90, headingDiff(h, localBearing(nose, at.Position)))
+		way = append(turnOut(nose, h, side), at.Position)
+	}
+	if len(way) < 2 || wayTurnsBack(way) {
+		return nil
+	}
+	n := len(way)
+	way[n-1] = offsetHeading(at.Position, localBearing(way[n-2], at.Position), localDist(nose, from.Position))
+	path, err := rescuePath(way, fuelRoadProfile())
+	if err != nil {
+		return nil
+	}
+	return func() bool {
+		r.mu.Lock()
+		defer r.mu.Unlock()
+		if !r.standing() || r.pose.Position != from.Position || r.pose.Heading != from.Heading {
+			return false
+		}
+		r.mover = NewGroundMoverFrom(path, rescueRoadProfile(), from.Heading, 0)
+		return true
+	}
 }
 
 // startsBackwards reports whether way sets off more than a quarter turn
@@ -565,16 +899,8 @@ const rescueTurnOutAheadMeters = 5.0
 // swung round). It turns out to the side and, if need be, on round, and
 // joins the road from there, by the shortest way that does
 // not turn back. direct is the way it could not take.
-func (r *SimObjectRescue) homeOut(nose airport.LatLon, h float64, direct []airport.LatLon) []airport.LatLon {
-	side := 90.0
-	for _, p := range direct[1:] {
-		if localDist(nose, p) >= cleanWayMeters && headingDiff(h, localBearing(nose, p)) < 0 {
-			side = -90
-		}
-		if localDist(nose, p) >= cleanWayMeters {
-			break
-		}
-	}
+func (a rescueAsk) homeOut(nose airport.LatLon, h float64, direct []airport.LatLon) []airport.LatLon {
+	side := turnSide(nose, h, direct)
 	var best, round []airport.LatLon
 	bestC, roundHits := math.Inf(1), math.MaxInt
 	for _, s := range []float64{side, -side} {
@@ -585,12 +911,15 @@ func (r *SimObjectRescue) homeOut(nose airport.LatLon, h float64, direct []airpo
 				endH = h + 180
 				pts = append(pts, offsetHeading(pts[2], endH, 2*wayTurnRadiusM))
 			}
-			on, err := r.Layout.VehicleRoutePose(pts[len(pts)-1], endH, r.depot, noHeading)
+			on, err := a.layout.VehicleRoutePose(pts[len(pts)-1], endH, a.depot, noHeading)
+			if err != nil || len(on) < 2 {
+				on, err = a.layout.VehicleRouteBack(pts[len(pts)-1], a.depot, a.keepShortOf()...)
+			}
 			if err != nil || len(on) < 2 {
 				continue
 			}
-			way := append(pts[:len(pts)-1:len(pts)-1], cleanWay(on)...)
-			hits := r.overCrew(way)
+			way := a.roundBody(append(pts[:len(pts)-1:len(pts)-1], cleanWay(on)...))
+			hits := a.inTheWay(way)
 			if loop && hits < roundHits {
 				round, roundHits = way, hits
 			}
@@ -611,8 +940,42 @@ func (r *SimObjectRescue) homeOut(nose airport.LatLon, h float64, direct []airpo
 		on = on[1:]
 	}
 	pts := turnOut(nose, h, side)
-	return append(append(pts, offsetHeading(pts[2], h+180, 2*wayTurnRadiusM)), on...)
+	return a.roundBody(append(append(pts, offsetHeading(pts[2], h+180, 2*wayTurnRadiusM)), on...))
 }
+
+// turnSide is the side (90 right, -90 left) of nose, facing h, that way
+// sets off to.
+func turnSide(nose airport.LatLon, h float64, way []airport.LatLon) float64 {
+	for _, p := range way[1:] {
+		if localDist(nose, p) >= cleanWayMeters {
+			if headingDiff(h, localBearing(nose, p)) < 0 {
+				return -90
+			}
+			break
+		}
+	}
+	return 90
+}
+
+// turnRound is way from nose, facing h, setting off behind it, turned out
+// forwards: to its side and, the way still behind, on round.
+func turnRound(nose airport.LatLon, h float64, way []airport.LatLon) []airport.LatLon {
+	side := turnSide(nose, h, way)
+	pts := turnOut(nose, h, side)
+	on := way[1:]
+	for len(on) > 1 && localDist(nose, on[0]) < 2*wayTurnRadiusM {
+		on = on[1:]
+	}
+	if startsBackwards(append([]airport.LatLon{pts[2]}, on...), h+side) {
+		pts = append(pts, offsetHeading(pts[2], h+180, 2*wayTurnRadiusM))
+	}
+	return append(pts, on...)
+}
+
+// rescueMoveDirectMeters: turned out, it drives straight over the
+// pavement to a standby point this near at most (as far as one may join
+// the roads and taxiways).
+const rescueMoveDirectMeters = 150.0
 
 // Track is where it is and, driving to its standby or home, the way still
 // ahead: the path's points past the mover's distance along it (#1622: not
@@ -671,6 +1034,10 @@ func (r *SimObjectRescue) finish() error {
 	return r.client.AIRemoveObject(obj, r.reqID)
 }
 
+// RescueBodyProfile is a rescue vehicle's body, for the ground picture
+// (#1632: one standing on an arrival's way off the runway).
+func RescueBodyProfile() MotionProfile { return rescueRoadProfile() }
+
 // rescueRoadProfile drives it on the roads, faster than a fuel truck: on
 // its way to an emergency.
 func rescueRoadProfile() MotionProfile {
@@ -687,39 +1054,206 @@ const RescueJoinMeters = 20.0
 // Enter sends it from where it is (at standby) to the aircraft by way:
 // along the taxiways to the exit or entry, onto the runway by it, then on
 // as Follow drives it (#1597). Without a layout or a way by the taxiways,
-// Follow drives it straight.
+// Follow drives it straight, from the speed it has. Driving, it first
+// brakes to a stand on the way it is on (#1643).
 func (r *SimObjectRescue) Enter(way RescueWay) error {
 	r.mu.Lock()
 	defer r.mu.Unlock()
 	if r.done || r.homing {
 		return nil
 	}
-	r.entering, r.mover = true, nil
-	if r.Layout == nil {
-		return nil
-	}
-	nose := NoseGear(r.pose.Position, r.pose.Heading, rescueRoadProfile())
-	route, err := r.Layout.VehicleRouteJoin(nose, way.Node, true, true)
-	if err != nil || len(route) < 1 {
-		return nil
-	}
-	pts := append(append([]airport.LatLon{nose}, route...), way.Onto...)
-	if path, err := NewArcPath(dedupeClose(pts), fuelRoadProfile(), 8); err == nil && path.Length() > 1 {
-		r.mover = NewGroundMoverFrom(path, rescueRoadProfile(), r.pose.Heading, r.pose.GroundSpeedKts)
-	}
+	r.entering, r.enterWay = true, nil
+	r.enterFrom(way)
 	return nil
 }
 
-// dedupeClose drops points within half a metre of the one before.
-func dedupeClose(pts []airport.LatLon) []airport.LatLon {
-	out := pts[:0:0]
-	for _, p := range pts {
-		if len(out) > 0 && localDist(out[len(out)-1], p) < 0.5 {
-			continue
-		}
-		out = append(out, p)
+// enterFrom looks for its way in by way from where it is (Enter). r.mu
+// held.
+func (r *SimObjectRescue) enterFrom(way RescueWay) {
+	l, from, m := r.Layout, r.pose, r.mover
+	rolling := m != nil && m.v > 0
+	cut, h, run := airport.LatLon{}, 0.0, 0.0
+	if rolling {
+		// Straight on past its way's end as far as braking at rescueAccel
+		// takes before it turns: turned at speed, it lost speed in a step.
+		cut, h = rescueWayEnd(m.Path())
+		run = m.v*m.v/(2*rescueAccel) - (m.path.Length() - m.s)
 	}
-	return out
+	_ = r.search(func() func() error {
+		next := rescueEnterMover(l, from, way)
+		var rest []airport.LatLon
+		if rolling && next != nil {
+			rest = rescueEnterRest(l, cut, h, run, way)
+		}
+		return func() error {
+			if r.done || r.homing || !r.entering {
+				return nil
+			}
+			switch {
+			case next == nil:
+				// No way by the taxiways: Follow drives it straight.
+				r.mover = nil
+			case r.mover != nil && r.mover.v > 0 && !r.canStop():
+				// Too fast to stop on what is left of its way: in from its
+				// end, rolling; with no way on from there, Follow drives
+				// it straight.
+				if r.mover == m {
+					r.mover = rescueRollIn(m, rest, r.pose.Heading)
+				} else {
+					r.mover = nil
+				}
+			case r.mover != nil && r.mover.v > 0:
+				r.enterWay = &way
+			case r.mover == nil && r.pose.GroundSpeedKts > 0:
+				// Following already: Follow takes it on.
+			case !samePlace(r.pose, from):
+				r.enterFrom(way) // came to a stand meanwhile: from there
+			default:
+				r.mover = next
+			}
+			return nil
+		}
+	})
+}
+
+// rescueEnterMover drives one at pose on l by way, its corners rounded
+// and off forwards as its other ways (#1643: a corner tighter than the
+// wheelbase was a step in its speed); nil without a way. No lock.
+func rescueEnterMover(l *airport.Layout, pose GroundPose, way RescueWay) *GroundMover {
+	if l == nil {
+		return nil
+	}
+	h := pose.Heading
+	nose := NoseGear(pose.Position, h, rescueRoadProfile())
+	route, err := l.VehicleRouteJoin(nose, way.Node, true, true)
+	if err != nil || len(route) < 1 {
+		return nil
+	}
+	pts := cleanWay(append(append([]airport.LatLon{nose}, route...), way.Onto...))
+	if startsBackwards(pts, h) {
+		pts = turnRound(nose, h, pts)
+	}
+	// At its speed on the roads to an emergency (rescueRoadProfile), not
+	// a fuel truck's 12 kt: LKPR 12's 2 km way in took over five minutes.
+	path, err := rescuePath(pts, rescueRoadProfile())
+	if err != nil || path.Length() <= 1 {
+		return nil
+	}
+	return NewGroundMoverFrom(path, rescueRoadProfile(), h, 0)
+}
+
+// enterBraking brakes it on the way it was on, then takes the way in
+// (Enter). r.mu held.
+func (r *SimObjectRescue) enterBraking(dt float64) {
+	m := r.mover
+	// At what it can brake (Enter took the way in rolling where that is
+	// too little for what is left of its way): no stop in a frame.
+	r.brake(dt, rescueAccel)
+	if m.v == 0 && r.found == nil {
+		l, from, way := r.Layout, r.pose, *r.enterWay
+		_ = r.search(func() func() error {
+			next := rescueEnterMover(l, from, way)
+			return func() error {
+				if r.done || r.homing || r.enterWay == nil || r.mover != m {
+					return nil
+				}
+				r.mover, r.enterWay = next, nil
+				return nil
+			}
+		})
+	}
+}
+
+// canStop reports whether it stops on what is left of its way braking at
+// rescueAccel. r.mu held.
+func (r *SimObjectRescue) canStop() bool {
+	m := r.mover
+	return m.v*m.v/(2*rescueAccel) <= m.path.Length()-m.s
+}
+
+// rescueWayEnd is the end of path and the heading there.
+func rescueWayEnd(path *GroundPath) (airport.LatLon, float64) {
+	end := path.Length()
+	return path.PointAt(end), localBearing(path.PointAt(math.Max(0, end-1)), path.PointAt(end))
+}
+
+// rescueEnterRest is the way in by way from cut, facing h, at the end of
+// the way one drives on: straight on for run metres (none at 0 or less),
+// then by the taxiways from a little on, round first where they lie
+// behind; nil without one. No lock.
+func rescueEnterRest(l *airport.Layout, cut airport.LatLon, h, run float64, way RescueWay) []airport.LatLon {
+	if l == nil {
+		return nil
+	}
+	from := cut
+	if run > 0 {
+		from = offsetHeading(cut, h, run)
+	}
+	route, err := l.VehicleRouteJoin(offsetHeading(from, h, wayTurnRadiusM), way.Node, true, true)
+	if err != nil || len(route) < 1 {
+		return nil
+	}
+	pts := cleanWay(append(append([]airport.LatLon{from}, route...), way.Onto...))
+	if rescueBacksOff(pts, h) {
+		pts = turnRound(from, h, pts)
+	}
+	if run > 0 {
+		pts = append([]airport.LatLon{cut}, pts...)
+	}
+	arcs, err := NewArcPath(pts, fuelRoadProfile(), 8)
+	if err != nil {
+		return nil
+	}
+	return arcs.pts
+}
+
+// rescueBacksOff reports whether way, facing h at its start, lies behind
+// it or turns back (wayTurnsBack) within its first wayTurnBackM: rolling
+// in, a hairpin there is no way to take (LKPR 12: 10 m on, then 142° back
+// up the road it came down, a cusp its speed fell in).
+func rescueBacksOff(way []airport.LatLon, h float64) bool {
+	if startsBackwards(way, h) {
+		return true
+	}
+	n, d := 1, 0.0
+	for n < len(way) && d < wayTurnBackM {
+		d += localDist(way[n-1], way[n])
+		n++
+	}
+	return wayTurnsBack(way[:n])
+}
+
+// rescueRollInJerk (m/s³): rolling in, it is braking at rescueAccel within
+// half a second.
+const rescueRollInJerk = 2 * rescueAccel
+
+// rescueRollIn drives one on m, facing h, on along m's way to its end and
+// by rest from there, the two rounded where they meet, from its speed and
+// braking no harder than rescueAccel (as homeRolling); nil without rest.
+func rescueRollIn(m *GroundMover, rest []airport.LatLon, h float64) *GroundMover {
+	if len(rest) == 0 {
+		return nil
+	}
+	path, s := m.Path(), m.Pose().Distance
+	kept := []airport.LatLon{path.PointAt(s)}
+	for i, p := range path.pts {
+		if c := path.cum[i]; c > s+0.1 && c < path.Length()-0.1 {
+			kept = append(kept, p)
+		}
+	}
+	road, prof := rescueRoadProfile(), rescueRoadProfile()
+	road.Decel, prof.Decel = rescueAccel, rescueAccel
+	// Into its braking at once, as its run on past the way's end counts
+	// on: at the road jerk it braked at 1 m/s² by the turn, still at
+	// 12 m/s, and the turn took its speed in a step.
+	prof.Jerk = math.Max(prof.Jerk, rescueRollInJerk)
+	next, err := rescueRounded(append(kept, rest...), road)
+	if err != nil {
+		return nil
+	}
+	mv := NewGroundMoverFrom(next, prof, h, m.v/ktsToMS)
+	mv.a = m.a
+	return mv
 }
 
 // HoldOffRunway keeps it off rwy on its way to standby or home (the
@@ -752,11 +1286,14 @@ func (r *SimObjectRescue) holdOffRunway() {
 			r.mover.ClearHold()
 			r.holding = false
 		}
+		// Found again when held again.
+		r.holdFor, r.runwayStop = nil, math.Inf(1)
 		return
 	}
 	s := r.mover.Pose().Distance
 	if r.holdFor != r.mover {
-		r.holdFor, r.holdAt = r.mover, -1
+		r.holdFor, r.holdAt, r.runwayStop = r.mover, -1, math.Inf(1)
+		r.holding = false
 		path := r.mover.Path()
 		for d := s; d <= path.Length(); d += 2 {
 			if rw, on := r.Layout.RunwayAt(path.PointAt(d), RescueRunwayMarginMeters); on && rw.Index == r.rwyHold.Index {
@@ -765,11 +1302,48 @@ func (r *SimObjectRescue) holdOffRunway() {
 			}
 		}
 	}
-	if r.holdAt >= 0 && r.holdAt-rescueRunwayStopMeters > s {
-		r.mover.HoldAt(r.holdAt - rescueRunwayStopMeters)
+	if r.holdAt < 0 || !math.IsInf(r.runwayStop, 1) {
+		return
+	}
+	at, v := r.holdAt-rescueRunwayStopMeters, r.mover.v
+	switch {
+	case r.holding:
+	case at >= s+v*v/(2*r.mover.p.Decel)+v*SpeedResponseSeconds:
+		r.mover.HoldAt(at)
 		r.holding = true
+	case s < r.holdAt:
+		// Too near for HoldAt, which halts dead reached at speed: braked to
+		// as to a stop behind one ahead (applyStop, #1643).
+		r.runwayStop = at
 	}
 }
+
+// runwayRoom is how far it may go straight on before the runway it is
+// held off (entering with no way by the taxiways). r.mu held.
+func (r *SimObjectRescue) runwayRoom() float64 {
+	if r.rwyHold == nil || r.Layout == nil {
+		return math.Inf(1)
+	}
+	held := func(d float64) bool {
+		rw, on := r.Layout.RunwayAt(offsetHeading(r.pose.Position, r.pose.Heading, d), RescueRunwayMarginMeters)
+		return on && rw.Index == r.rwyHold.Index
+	}
+	if held(0) {
+		return math.Inf(1)
+	}
+	v := r.kts * knot
+	reach := v*v/(2*rescueAccel) + 2*rescueRunwayStopMeters
+	for d := rescueRunwayLookMeters; d <= reach; d += rescueRunwayLookMeters {
+		if held(d) {
+			return d - rescueRunwayStopMeters
+		}
+	}
+	return math.Inf(1)
+}
+
+// rescueRunwayLookMeters: following, it looks this far apart for a runway
+// it is held off.
+const rescueRunwayLookMeters = 5.0
 
 // KeepBehind keeps it RescueSpacingMeters behind the vehicles at ahead
 // (those that go first): on its way, stopping behind one standing on it;
@@ -834,7 +1408,7 @@ func (r *SimObjectRescue) applyStop() {
 		return
 	}
 	home := r.homeStop()
-	stop := math.Min(r.laneStop, home)
+	stop := math.Min(math.Min(r.laneStop, home), r.runwayStop)
 	if math.IsInf(stop, 1) {
 		r.mover.ClearTrafficStop()
 		return

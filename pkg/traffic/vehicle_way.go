@@ -70,7 +70,12 @@ func cleanWay(pts []airport.LatLon) []airport.LatLon {
 			// on and turned back up), where the turn has no room.
 			turn := math.Abs(headingDiff(localBearing(out[i-1], out[i]), localBearing(out[i], out[i+1])))
 			stub := (i == 1 && localDist(out[0], out[1]) < wayTurnRadiusM) || (i+2 == len(out) && localDist(out[i], out[i+1]) < wayTurnRadiusM)
-			if turn > cleanWayTurnDeg || (stub && turn > 90) {
+			// A point a dropped one left on top of its neighbour: its
+			// bearing of nothing hid the turn back over the way it came
+			// (LKPR 06's way in went on to the exit's end and straight
+			// back, a cusp the vehicle stood still in).
+			onTop := localDist(out[i-1], out[i]) < cleanWayMeters || localDist(out[i], out[i+1]) < cleanWayMeters
+			if onTop || turn > cleanWayTurnDeg || (stub && turn > 90) {
 				out = append(out[:i:i], out[i+1:]...)
 				changed = true
 				break

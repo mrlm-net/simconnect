@@ -365,6 +365,10 @@ func homeFollow(t *testing.T, crew []*SimObjectRescue, end airport.RunwayEnd, se
 	}
 }
 
+// homeFollowing: the vehicles TestRescueHomeFromFollowing sends home at
+// each airport.
+const homeFollowing = 16
+
 // TestRescueHomeFromFollowing: two sent home from following the aircraft,
 // stopped by it or still rolling, turn out forwards and go home in their
 // order. Before, they set off backwards, from 0 kt and each on its own.
@@ -398,9 +402,110 @@ func TestRescueHomeFromFollowing(t *testing.T) {
 				arrived += len(crew) - homeStranded(crew)
 			}
 		})
-		t.Logf("%s: %d pairs sent home following, %d vehicles rolling, the road behind %d; %d of %d vehicles got to the depot, the others had no way from the runway", icao, sent, rolling, behind, arrived, 2*sent)
-		if sent == 0 || rolling == 0 || behind == 0 || arrived == 0 {
+		t.Logf("%s: %d pairs sent home following, %d vehicles rolling, the road behind %d; %d of %d vehicles got to the depot", icao, sent, rolling, behind, arrived, 2*sent)
+		if sent == 0 || rolling == 0 || behind == 0 {
 			t.Errorf("%s: %d pairs, %d rolling, the road behind %d: nothing checked", icao, sent, rolling, behind)
+		}
+		// #1656: every one drives home from the runway.
+		if arrived != homeFollowing {
+			t.Errorf("%s: %d of %d vehicles got to the depot, want %d", icao, arrived, 2*sent, homeFollowing)
+		}
+	}
+}
+
+// TestRescueWayOut (#1656): the ways out to every standby point, both
+// ends of every runway, never turn back, reverse, jump or change speed in
+// a step (#1630: a spike was driven backwards, a corner stood it still).
+func TestRescueWayOut(t *testing.T) {
+	for _, icao := range homeAirports {
+		l := smoothLayout(t, icao)
+		n := 0
+		homeEnds(l, func(_ airport.Runway, end airport.RunwayEnd) {
+			for k, spot := range RescueStandby(l, end.Name, 3) {
+				c := &tugClient{}
+				r := NewSimObjectRescue(c, NewInjector(c), "Truck Fire Airport Medium", 9200)
+				r.Layout = l
+				if err := r.Standby(spot); err != nil {
+					t.Fatal(err)
+				}
+				if !r.hasDepot {
+					t.Errorf("%s %s standby %d: no way out", icao, end.Name, k)
+					continue
+				}
+				n++
+				if at := hairpin(r.mover.Path()); at >= 0 {
+					t.Errorf("%s %s standby %d: turns back %.0f m out", icao, end.Name, k, at)
+				}
+				r.Handle(assignedMsg(9200, 501))
+				for i := 0; i < 30*60*10 && r.mover != nil; i++ {
+					last := r.pose
+					if err := r.Update(homeStep); err != nil {
+						t.Fatal(err)
+					}
+					if bad := homeStepFault(last, r.pose); bad != "" {
+						t.Errorf("%s %s standby %d: %s %.1f s out", icao, end.Name, k, bad, float64(i)*homeStep)
+						break
+					}
+				}
+				if r.mover != nil {
+					t.Errorf("%s %s standby %d: never there", icao, end.Name, k)
+				}
+			}
+		})
+		if n == 0 {
+			t.Errorf("%s: no way out checked", icao)
+		}
+	}
+}
+
+// homeStepFault is what is wrong with a vehicle's step from a to b.
+func homeStepFault(a, b GroundPose) string {
+	d := localDist(a.Position, b.Position)
+	switch {
+	case d > math.Max(a.GroundSpeedKts, b.GroundSpeedKts)*ktsToMS*homeStep+homeMaxMove:
+		return fmt.Sprintf("jumped %.1f m", d)
+	case math.Abs(b.GroundSpeedKts-a.GroundSpeedKts)*ktsToMS > homeMaxSpeed:
+		return fmt.Sprintf("went from %.1f to %.1f kt in a step", a.GroundSpeedKts, b.GroundSpeedKts)
+	case d > 0.005 && math.Abs(headingDiff(b.Heading, localBearing(a.Position, b.Position))) > 90:
+		return "drove backwards"
+	case math.Abs(headingDiff(a.Heading, b.Heading)) > homeMaxSwing:
+		return fmt.Sprintf("swung %.0f°", math.Abs(headingDiff(a.Heading, b.Heading)))
+	}
+	return ""
+}
+
+// TestRescueHomeFromRunway (#1656): one standing anywhere on a runway,
+// facing either way along it, drives to its depot and goes there.
+func TestRescueHomeFromRunway(t *testing.T) {
+	for _, icao := range homeAirports {
+		l := smoothLayout(t, icao)
+		sent, far := 0, 0
+		homeEnds(l, func(rwy airport.Runway, end airport.RunwayEnd) {
+			spots := RescueStandby(l, end.Name, 1)
+			if len(spots) == 0 {
+				return
+			}
+			for s := 150.0; s < rwy.Length-100; s += 400 {
+				crew := homeCrew(t, l, spots[:1], nil)
+				if crew == nil {
+					t.Fatalf("%s %s: none to standby", icao, end.Name)
+				}
+				r := crew[0]
+				r.pose = GroundPose{Position: offsetHeading(end.Threshold, end.Heading, s), Heading: end.Heading}
+				if _, err := l.VehicleRouteJoin(NoseGear(r.pose.Position, r.pose.Heading, rescueRoadProfile()), r.depot, true, false); err != nil {
+					far++
+				}
+				sent++
+				if bad := homeRun(t, crew); bad != "" {
+					t.Errorf("%s %s, %.0f m along: %s", icao, end.Name, s, bad)
+				} else if homeStranded(crew) > 0 {
+					t.Errorf("%s %s, %.0f m along: taken away on the runway", icao, end.Name, s)
+				}
+			}
+		})
+		t.Logf("%s: %d sent home from the runway, %d with no node in reach", icao, sent, far)
+		if sent == 0 || far == 0 {
+			t.Errorf("%s: %d sent, %d out of reach: nothing checked", icao, sent, far)
 		}
 	}
 }

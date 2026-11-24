@@ -730,6 +730,9 @@ func newControlCenter(client engine.Client, k *core) *controlCenter {
 		stands:   map[string]*traffic.StandAllocator{},
 		game:     &game{log: log},
 	}
+	// The rescue crews' route searches off the connection's goroutine
+	// (#1670).
+	cc.rescue.search = rescueSearchOff
 	// Other traffic's phase by where it is on the airfield: the loaded
 	// layouts (cc.layout, set once the cache is there).
 	cc.world = traffic.NewTrafficPicture(traffic.PictureOptions{Centre: traffic.Centre{FollowUser: true},

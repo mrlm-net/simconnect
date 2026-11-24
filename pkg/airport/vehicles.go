@@ -239,30 +239,7 @@ func (l *Layout) vehicleRouteJoin(a, b LatLon, aAtNode, bAtNode, throughStands b
 	if from.seg == to.seg || (from.seg[0] == to.seg[1] && from.seg[1] == to.seg[0]) {
 		return dedupeLatLon([]LatLon{a, from.at, to.at, b}), nil
 	}
-	dist := make([]float64, len(g.pos))
-	prev := make([]int, len(g.pos))
-	for i := range dist {
-		dist[i], prev[i] = math.Inf(1), -1
-	}
-	q := &vehicleQueue{}
-	for _, n := range from.seg {
-		if d := distM(from.at, g.pos[n]); d < dist[n] {
-			dist[n] = d
-			heap.Push(q, vehicleItem{n, d})
-		}
-	}
-	for q.Len() > 0 {
-		it := heap.Pop(q).(vehicleItem)
-		if it.d > dist[it.n] || !throughStands && g.stand(it.n) {
-			continue
-		}
-		for _, e := range g.adj[it.n] {
-			if d := it.d + e.cost; d < dist[e.to] {
-				dist[e.to], prev[e.to] = d, it.n
-				heap.Push(q, vehicleItem{e.to, d})
-			}
-		}
-	}
+	dist, prev := g.spread(from, throughStands)
 	// The end of the segment b joins by, cheapest with the way on to b.
 	last, lastD := -1, math.Inf(1)
 	for _, n := range to.seg {
@@ -283,6 +260,178 @@ func (l *Layout) vehicleRouteJoin(a, b LatLon, aAtNode, bAtNode, throughStands b
 	}
 	return dedupeLatLon(append(out, to.at, b)), nil
 }
+
+// VehicleRouteNear is VehicleRouteJoin from a to b at its nearest node,
+// and where b has none within reach (no node within vehicleSnapM, or none
+// a reaches), the way to the node a reaches nearest b, any distance, then
+// straight on to b off the ways: a rescue truck to a standby point on the
+// grass beside a runway. ErrNoVehicleRoute when a joins nothing.
+func (l *Layout) VehicleRouteNear(a, b LatLon, aAtNode bool) ([]LatLon, error) {
+	if r, err := l.VehicleRouteJoin(a, b, aAtNode, true); err == nil {
+		return r, nil
+	}
+	g := l.vehicleGraph()
+	from, ok := g.join(a, aAtNode)
+	if !ok {
+		return nil, ErrNoVehicleRoute
+	}
+	dist, prev := g.spread(from, false)
+	last, lastD := -1, math.Inf(1)
+	for n := range g.pos {
+		if math.IsInf(dist[n], 1) || !g.joinable(n) {
+			continue
+		}
+		if d := distM(g.pos[n], b); d < lastD {
+			last, lastD = n, d
+		}
+	}
+	if last < 0 {
+		return nil, ErrNoVehicleRoute
+	}
+	var rev []LatLon
+	for n := last; n >= 0; n = prev[n] {
+		rev = append(rev, g.pos[n])
+	}
+	out := []LatLon{a, from.at}
+	for i := len(rev) - 1; i >= 0; i-- {
+		out = append(out, rev[i])
+	}
+	return dedupeLatLon(append(out, b)), nil
+}
+
+// spread is each node's cheapest way from e: its cost and the node
+// before it on that way (-1: e's own); on from another stand only with
+// throughStands (#1630).
+func (g *vehicleGraph) spread(e vehicleEnd, throughStands bool) (dist []float64, prev []int) {
+	dist, prev = make([]float64, len(g.pos)), make([]int, len(g.pos))
+	for i := range dist {
+		dist[i], prev[i] = math.Inf(1), -1
+	}
+	q := &vehicleQueue{}
+	for _, n := range e.seg {
+		if d := distM(e.at, g.pos[n]); d < dist[n] {
+			dist[n] = d
+			heap.Push(q, vehicleItem{n, d})
+		}
+	}
+	for q.Len() > 0 {
+		it := heap.Pop(q).(vehicleItem)
+		if it.d > dist[it.n] || !throughStands && g.stand(it.n) {
+			continue
+		}
+		for _, next := range g.adj[it.n] {
+			if d := it.d + next.cost; d < dist[next.to] {
+				dist[next.to], prev[next.to] = d, it.n
+				heap.Push(q, vehicleItem{next.to, d})
+			}
+		}
+	}
+	return dist, prev
+}
+
+// VehicleRouteBack is the way back to b (a depot) for a vehicle at a with
+// no node in VehicleRouteJoin's reach (#1656: one following an aircraft
+// down a runway). On a runway it drives along it to the node with the
+// cheapest way on to b, one not beyond any of past (an aircraft standing
+// on it) where there is such a node. Else it joins at the nearest point
+// of the paths leading to b, however far that is. Through another stand
+// only when no way goes round (#1630).
+func (l *Layout) VehicleRouteBack(a, b LatLon, past ...LatLon) ([]LatLon, error) {
+	r, err := l.vehicleRouteBack(a, b, false, past)
+	if errors.Is(err, ErrNoVehicleRoute) {
+		r, err = l.vehicleRouteBack(a, b, true, past)
+	}
+	return r, err
+}
+
+// vehicleRouteBack is VehicleRouteBack, through another stand only with
+// throughStands.
+func (l *Layout) vehicleRouteBack(a, b LatLon, throughStands bool, past []LatLon) ([]LatLon, error) {
+	g := l.vehicleGraph()
+	to, ok := g.end(b)
+	if !ok {
+		return nil, ErrNoVehicleRoute
+	}
+	dist, prev := g.spread(to, throughStands)
+	// on is the way from node n on to b, after head.
+	on := func(head []LatLon, n int) []LatLon {
+		for ; n >= 0; n = prev[n] {
+			head = append(head, g.pos[n])
+		}
+		return dedupeLatLon(append(head, to.at, b))
+	}
+	if r, onRunway := l.RunwayAt(a, vehicleRunwaySideM); onRunway {
+		p, s := r.Primary.Threshold, r.Secondary.Threshold
+		kx := 111320 * math.Cos(p.Lat*math.Pi/180)
+		rx, ry := (s.Lon-p.Lon)*kx, (s.Lat-p.Lat)*111320
+		length := math.Hypot(rx, ry)
+		axis := func(q LatLon) (along, cross float64) {
+			x, y := (q.Lon-p.Lon)*kx, (q.Lat-p.Lat)*111320
+			return (x*rx + y*ry) / length, math.Abs(x*ry-y*rx) / length
+		}
+		from, off := axis(a)
+		best, bestCost, bestAlong := -1, math.Inf(1), 0.0
+		for i, q := range g.pos[:g.np] {
+			if math.IsInf(dist[i], 1) {
+				continue
+			}
+			along, cross := axis(q)
+			if cross > r.Width/2 || along < 0 || along > length {
+				continue
+			}
+			cost := math.Abs(along-from)*vehicleOffRoad + dist[i]
+			for _, x := range past {
+				if at, c := axis(x); c <= r.Width && (at-from)*(along-from) > 0 && math.Abs(along-from) > math.Abs(at-from) {
+					cost += vehiclePastCost
+				}
+			}
+			if cost < bestCost {
+				best, bestCost, bestAlong = i, cost, along
+			}
+		}
+		if best >= 0 {
+			head := []LatLon{a}
+			if d := bestAlong - from; math.Abs(d) > 1 {
+				// Onto the centre line at a slant, and along it.
+				t := (from + math.Copysign(math.Min(math.Abs(d)/2, math.Max(vehicleRunwayLeadM, 3*off)), d)) / length
+				head = append(head, LatLon{Lat: p.Lat + t*(s.Lat-p.Lat), Lon: p.Lon + t*(s.Lon-p.Lon)})
+			}
+			return on(head, best), nil
+		}
+	}
+	var at LatLon
+	via, near := -1, math.Inf(1)
+	for i, edges := range g.adj {
+		if math.IsInf(dist[i], 1) || !g.joinable(i) {
+			continue
+		}
+		for _, e := range edges {
+			if e.to < i || !g.joinable(e.to) {
+				continue
+			}
+			q := closestOnSegment(a, g.pos[i], g.pos[e.to])
+			if d := distM(a, q); d < near {
+				at, via, near = q, i, d
+				if dist[e.to]+distM(q, g.pos[e.to]) < dist[i]+distM(q, g.pos[i]) {
+					via = e.to
+				}
+			}
+		}
+	}
+	if via < 0 {
+		return nil, ErrNoVehicleRoute
+	}
+	return on([]LatLon{a, at}, via), nil
+}
+
+// VehicleRouteBack figures: this far off a runway's edge it still drives
+// along it; it takes to the centre line over this far at least; what a
+// node beyond an aircraft standing on the runway costs more (metres).
+const (
+	vehicleRunwaySideM = 10.0
+	vehicleRunwayLeadM = 30.0
+	vehiclePastCost    = 100000.0
+)
 
 // dedupeLatLon drops points within half a meter of the one before.
 func dedupeLatLon(pts []LatLon) []LatLon {

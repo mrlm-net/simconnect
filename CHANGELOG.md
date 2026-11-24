@@ -7,6 +7,59 @@ This project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 ---
 
+## [0.194.0] - 2026-11-24
+
+### Added
+
+- `airport.(*Layout).VehicleRouteBack`: a vehicle's way back to a depot from out of the road network's reach (#1656).
+- `airport.(*Layout).VehicleRouteNear`: a vehicle's way to a point no way reaches. It follows the ways to the node nearest the point, then goes straight on to it, off the ways (#1656).
+- `traffic.(*SimObjectRescue).Attend`: the aircraft a rescue vehicle keeps off going home. Without it nothing changes (#1643).
+- `traffic.RescueOnWays`, `traffic.RescueBodyProfile`, `SimObjectRescue.Standing` and `SimObjectRescue.PlanMove`, for the backstop below (#1654).
+- `traffic.GroundPicture.ReportStanding`: something standing on the pavement that is not an aircraft (#1654).
+  - Injected aircraft taxiing stop short of it, and so do injected arrivals on their rollout.
+  - Found too near to stop the gap short of, it is braked for as traffic ahead is (#1640), and approached no nearer than that clearance.
+  - A pushback waits for one in its way.
+- `SimObjectRescue.Search` and `SimObjectRescue.PlanStandby` (#1670).
+  - `Search` runs the vehicle's route searches: its way out to standby, in to the aircraft, and home. Unset, they run at once as before. Set, they run as it says, and the first `Update` or `Follow` after one ends puts its way in place.
+  - `PlanStandby` is `Standby` in two parts: the search without the vehicle's lock, and the step that creates it.
+
+### Changed
+
+- **Rescue vehicles drive their ways at the rescue road speed (35 kt).** This covers the way out to standby, the way in and the roll-in. They were capped at a fuel truck's 12 kt (#1643).
+- **Rescue vehicles drive at 35 kt to an aircraft standing still** until they are near it, and still stop on the usual curve. Following a moving aircraft is unchanged. Before, they drove at 10 kt and could take more than 5 minutes over a long way along the runway (LROP) (#1643).
+- **Standby points beside a runway are ones the vehicles have a way to** (#1656). Where no runway exit or entry has a holding position to wait at, the point is the free one nearest its share of the runway length that the nearest depot reaches by roads and taxiways. Before, it could lie on grass that no way reaches (LROP 08L), and the vehicle appeared there.
+  - Only where no point beside the runway has a way does the vehicle drive the ways to where they pass nearest the point, then cross to it.
+  - It crosses at most 400 m. Farther than that, it appears at the point, as before.
+- **The ground picture measures a body ahead along the path at its true place** (#1654). Before, a body within a half-span of the end of a path segment counted as being at that end, up to about a half-span (plus the wing margin) nearer than it is. An arrival that found a vehicle late stopped dead from 6 m/s with 24 m still to go.
+  - Arrivals now brake at a normal rate for something they find late.
+  - Taxiing aircraft following another no longer stop up to about half a span short.
+
+### Fixed
+
+- **Rescue vehicles drive home from the runway** (#1656). One sent home with no node in reach drives along the runway to a node with a way to its depot, or joins the nearest path that has one. Before, it was removed where it stood.
+- **Rescue convoy speeds and stops** (#1643):
+  - Following changes speed at a rate.
+  - One sent in while driving brakes at what it can (rescueAccel) before it takes the way in. When that is too little to stop on, it takes the way in rolling from the end of its way.
+  - Rolling in too fast, it runs straight on past its way's end by its braking distance before it turns, and it reaches full braking within half a second.
+  - A way in that turns back within its first 60 m is entered by turning round first.
+  - The runway hold applies while entering.
+  - The ways in have their spikes cut and corners rounded.
+  - At the hand-over from its way in to following, it moves once in a frame, not twice.
+- **No turn-out into the aircraft** (#1643). Told where the aircraft is, a vehicle's way home keeps off its body.
+- **No stop at a hidden turn-back** (#1643). Cleaning up a vehicle way drops a point left on top of its neighbour. Before, the two points hid a turn back, and the vehicle stopped dead at the cusp (LKPR 06).
+- **A rescue vehicle moves off the arrival's way** (#1654). This covers one standing on the way its arrival vacates by, planned or planned again (#1640's way off) after the vehicle took its standby point.
+  - It drives to the nearest free point clear of that way that it has a way to, its corners rounded. When that point lies behind it, it turns out first.
+  - From the frame it stands on that way until it is off it, it is reported standing. With no point to go to, it stays reported until the crew has gone home and it is off the way.
+  - An injected arrival stops short of it on its rollout, vacating and taxiing.
+  - The search for a point runs off the connection's goroutine, so no frame waits for it. With no way off, it runs again when the plan changes, otherwise at most every 10 s.
+  - An arrival under a player's clearances (#1096) brakes for the vehicle as it does for traffic ahead. The backstop never changes its exit, route, stand or clearance.
+  - An arrival that MSFS AI flies, and the player's own aircraft, don't stop for it.
+- **Rescue route searches leave the connection's goroutine** (#1670). This goroutine places every injected aircraft's frames. The searches are the standby points (they built the airport's graph twice), each vehicle's way out to standby, and its ways in to the aircraft and home.
+  - They run on a goroutine of their own, and the step or frame after one ends sends the crew or puts the way in place.
+  - A vehicle sent home while driving goes on from where it is by then, with no step back.
+  - A crew still being searched for when the traffic stops is never sent.
+
+
 ## [0.193.1] - 2026-11-24
 
 ### Fixed

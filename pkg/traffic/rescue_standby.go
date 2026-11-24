@@ -84,20 +84,7 @@ func RescueStandbyClear(l *airport.Layout, runwayEnd string, n int, keepOff [][]
 	if half <= 0 {
 		half = DefaultHalfSpanMeters
 	}
-	clearM := half + VehicleClearMeters + vehicleHalfMeters
-	off := func(p airport.LatLon) bool {
-		for _, w := range keepOff {
-			if len(w) == 1 && localDist(p, w[0]) <= clearM {
-				return false
-			}
-			for i := 1; i < len(w); i++ {
-				if pointSegDist(p, w[i-1], w[i]) <= clearM {
-					return false
-				}
-			}
-		}
-		return true
-	}
+	off := func(p airport.LatLon) bool { return !RescueOnWays(p, keepOff, half) }
 	shares := []float64{1.0 / 3, 0.5, 2.0 / 3}[:min(n, 3)]
 	if n > 3 {
 		shares = shares[:0]
@@ -153,7 +140,6 @@ func RescueStandbyClear(l *airport.Layout, runwayEnd string, n int, keepOff [][]
 		at := func(along float64) airport.LatLon {
 			return offsetHeading(offsetHeading(end.Threshold, end.Heading, along), end.Heading+side, aside)
 		}
-		along := rwy.Length * share
 		// Off the arrival's ways and the others: along the runway, nearest
 		// first, a vehicle's spacing at a time.
 		free := func(a float64) bool {
@@ -167,12 +153,15 @@ func RescueStandbyClear(l *airport.Layout, runwayEnd string, n int, keepOff [][]
 			}
 			return true
 		}
-		for k := 1; !free(along) && k*int(RescueSpacingMeters) <= int(rwy.Length); k++ {
-			if a := rwy.Length*share + float64(k)*RescueSpacingMeters; free(a) {
-				along = a
-			} else if a := rwy.Length*share - float64(k)*RescueSpacingMeters; free(a) {
-				along = a
-			}
+		// One its vehicle reaches by the roads and taxiways first (LROP 08L:
+		// the point at half the runway lay 150 m from every node, no way
+		// there); without one, the nearest free (Standby drives the last
+		// leg off the ways).
+		along, found := rescueAlongFree(rwy.Length, share, func(a float64) bool {
+			return free(a) && rescueReached(l, at(a))
+		})
+		if !found {
+			along, _ = rescueAlongFree(rwy.Length, share, free)
 		}
 		chosen = append(chosen, rescueSpot{at(along), along, math.Mod(end.Heading-side+360, 360)})
 	}
@@ -185,6 +174,58 @@ func RescueStandbyClear(l *airport.Layout, runwayEnd string, n int, keepOff [][]
 		out = append(out, GroundPose{Position: s.at, Heading: s.facing})
 	}
 	return out
+}
+
+// rescueAlongFree is the distance along a runway length long nearest its
+// share where ok, a vehicle's spacing at a time either way; the share's
+// own and false when none is.
+func rescueAlongFree(length, share float64, ok func(float64) bool) (float64, bool) {
+	target := length * share
+	if ok(target) {
+		return target, true
+	}
+	for k := 1; k*int(RescueSpacingMeters) <= int(length); k++ {
+		if a := target + float64(k)*RescueSpacingMeters; ok(a) {
+			return a, true
+		}
+		if a := target - float64(k)*RescueSpacingMeters; ok(a) {
+			return a, true
+		}
+	}
+	return target, false
+}
+
+// rescueReached reports whether a vehicle from the depot nearest p has a
+// way there (RescueStandbyWay); true at an airport without depots, where
+// none drives out.
+func rescueReached(l *airport.Layout, p airport.LatLon) bool {
+	d, ok := nearestDepot(l, p)
+	if !ok {
+		return true
+	}
+	_, found := RescueStandbyWay(l, d, p)
+	return found
+}
+
+// RescueOnWays reports whether a vehicle at p stands on one of ways: within
+// half (0: DefaultHalfSpanMeters), VehicleClearMeters and its own half
+// width of it (RescueStandbyClear keeps its points off them).
+func RescueOnWays(p airport.LatLon, ways [][]airport.LatLon, half float64) bool {
+	if half <= 0 {
+		half = DefaultHalfSpanMeters
+	}
+	clearM := half + VehicleClearMeters + vehicleHalfMeters
+	for _, w := range ways {
+		if len(w) == 1 && localDist(p, w[0]) <= clearM {
+			return true
+		}
+		for i := 1; i < len(w); i++ {
+			if pointSegDist(p, w[i-1], w[i]) <= clearM {
+				return true
+			}
+		}
+	}
+	return false
 }
 
 // RescueVacateWays are the ways an arrival on plan may take off the
@@ -248,6 +289,49 @@ func RescueStandbyWay(l *airport.Layout, depot, at airport.LatLon) ([]airport.La
 	}
 	return append(route, at), true
 }
+
+// rescueStandbyOffWay is the way from depot to a standby point at with no
+// way there (RescueStandbyClear found no point beside the runway its
+// vehicles reach): by the roads and taxiways to where they pass nearest
+// it, then straight across to it, off the ways (#1656). Cut where the
+// ways pass nearest, it never drives on past and back. False when the
+// depot joins no way, or the ways pass no nearer than rescueOffWayMeters
+// (it appears at the point, as with no way).
+func rescueStandbyOffWay(l *airport.Layout, depot, at airport.LatLon) ([]airport.LatLon, bool) {
+	route, err := l.VehicleRouteNear(depot, at, false)
+	if err != nil || len(route) < 2 {
+		return nil, false
+	}
+	route = route[:len(route)-1]
+	cut, cutAt, best := 0, route[0], math.Inf(1)
+	for i := 1; i < len(route); i++ {
+		a, b := route[i-1], route[i]
+		ab := localDist(a, b)
+		f := 0.0
+		if ab > 0.01 {
+			rel := (localBearing(a, at) - localBearing(a, b)) * math.Pi / 180
+			f = math.Max(0, math.Min(1, localDist(a, at)*math.Cos(rel)/ab))
+		}
+		p := airport.LatLon{Lat: a.Lat + (b.Lat-a.Lat)*f, Lon: a.Lon + (b.Lon-a.Lon)*f}
+		if d := localDist(p, at); d < best-0.01 {
+			cut, cutAt, best = i, p, d
+		}
+	}
+	if best > rescueOffWayMeters {
+		return nil, false
+	}
+	out := append(route[:cut:cut], cutAt, at)
+	if cut == 0 {
+		out = []airport.LatLon{route[0], at}
+	}
+	return out, true
+}
+
+// rescueOffWayMeters bounds a standby point's leg off the ways: the grass
+// beside a runway (LKPR and LROP's points with no way lie 150 to 280 m
+// from one), not a field with no roads to its runway (1.5 km at a test
+// field's EDDF).
+const rescueOffWayMeters = 400.0
 
 // rescueOnWayMeters: a standby point this close to a way's segment lies on
 // it.
