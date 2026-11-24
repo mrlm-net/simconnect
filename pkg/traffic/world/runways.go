@@ -207,6 +207,7 @@ func (t *towers) tick(now time.Time) {
 		case it.dep != nil && (v.State == "holding short" || behindNext):
 			u.Phase, u.LineUpIn = traffic.RunwayHoldingShort, it.dep.LineUpLeft()
 			u.AlongM = alongRunway(l, v.Runway, v.Position) // its way in: an intersection's
+			u.Backtracks = it.dep.Backtracks()
 			// Cleared to line up (behind the one departing or landing too) and
 			// not moving yet: it goes first, nobody else is lined up past it
 			// (live, TVS1608 at A and RYR257 at Z; offline LKPR, CSA693 and
@@ -1041,6 +1042,114 @@ func (t *towers) landCleared(tail string) bool {
 	t.mu.Lock()
 	defer t.mu.Unlock()
 	return t.given[tail+" land"]
+}
+
+// runwayBusy is who other than tail is on the runway of icao's end rwy in
+// the way of a landing at the tower's last look
+// (traffic.RunwayUser.InWayOfLanding: not our departure on its roll); ""
+// nobody. A player's "cleared to land" waits for it (#1680).
+func (t *towers) runwayBusy(icao, rwy, tail string) string {
+	g, err := t.cc.graph(icao)
+	if err != nil {
+		return ""
+	}
+	r, ok := runwayOf(g.Layout, rwy)
+	if !ok {
+		return ""
+	}
+	t.mu.Lock()
+	defer t.mu.Unlock()
+	for _, u := range t.users[icao+" "+r.Name()] {
+		if u.Callsign != tail && u.InWayOfLanding() {
+			return u.Callsign
+		}
+	}
+	return ""
+}
+
+// lineUpArrivalNM: no line-up or take-off with an arrival cleared to land
+// this close to the threshold (#1688).
+const lineUpArrivalNM = 2.0
+
+// arrivalLanding is the arrival cleared to land on icao's runway of end
+// rwy within lineUpArrivalNM of its threshold at the tower's last look,
+// by the tower or the player; for a take-off, an arrival still on the
+// runway too. "" none (#1688).
+func (t *towers) arrivalLanding(icao, rwy, tail string, takeoff bool) string {
+	g, err := t.cc.graph(icao)
+	if err != nil {
+		return ""
+	}
+	r, ok := runwayOf(g.Layout, rwy)
+	if !ok {
+		return ""
+	}
+	t.mu.Lock()
+	list := t.users[icao+" "+r.Name()]
+	given := map[string]bool{}
+	for _, u := range list {
+		given[u.Callsign] = t.given[u.Callsign+" land"]
+	}
+	t.mu.Unlock()
+	// Entering to backtrack to its threshold, it is on the landing path the
+	// whole way: held with an arrival established within the tower's landing
+	// clearance window, cleared to land yet or not (#1680).
+	nm, back := lineUpArrivalNM, false
+	if it := t.cc.byTail(tail); it != nil && it.dep != nil && it.dep.Backtracks() {
+		it.mu.Lock()
+		st := it.view.State
+		it.mu.Unlock()
+		if st == traffic.TaxiHoldingShort.String() || st == traffic.TaxiTaxiing.String() {
+			nm, back = traffic.DefaultClearToLandNM, true
+		}
+	}
+	for _, u := range list {
+		if u.Callsign == tail {
+			continue
+		}
+		if takeoff && u.Arrival && u.OnRunway() {
+			return u.Callsign
+		}
+		if !u.Arrival || u.Phase != traffic.RunwayFinal || u.DistanceNM >= nm {
+			continue
+		}
+		if back && u.Established {
+			return u.Callsign
+		}
+		cleared := given[u.Callsign]
+		if it := t.cc.byTail(u.Callsign); !cleared && it != nil {
+			it.mu.Lock()
+			cleared = it.landCleared
+			it.mu.Unlock()
+		}
+		if cleared {
+			return u.Callsign
+		}
+	}
+	return ""
+}
+
+// departureHeld holds the player's line-up or take-off clearance (action)
+// of a departure, not given with an arrival cleared to land close in or
+// (a take-off) one still on its runway: "hold position" (#1688). The AI
+// never gives it for the player later (#1096). One rolling already, or
+// gone, is not held: the clearance changes nothing there.
+func (it *controlled) departureHeld(action string) bool {
+	busy := ""
+	it.mu.Lock()
+	rwy, state := it.view.Runway, it.view.State
+	it.mu.Unlock()
+	rolling := state == traffic.TaxiDeparting.String() || state == traffic.TaxiComplete.String()
+	if it.cc.arrivalLanding != nil && !rolling {
+		busy = it.cc.arrivalLanding(it.ICAO, rwy, it.Tail, action == "takeoff")
+	}
+	it.mu.Lock()
+	it.departHeld, it.view.DepartHeld = busy, busy
+	it.mu.Unlock()
+	if busy != "" {
+		it.cc.log.printf("%-6s %s: %s landing or on the runway, hold position", it.Tail, action, busy)
+	}
+	return busy != ""
 }
 
 // forgetLanding lets an arrival that went around be cleared to land on its

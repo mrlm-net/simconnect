@@ -183,9 +183,12 @@ type ArrivalEvent struct {
 	// (#1681); until it joins a final again. Its crew goes around unless
 	// the flight is a player's (the world decides). CrewGoAround: its crew
 	// went round already, the height left more than could fade before
-	// touchdown (not with SetLandsUnstable).
-	Unstable, CrewGoAround bool
-	Position               airport.LatLon
+	// touchdown (not with SetLandsUnstable). RunwayTaken: another aircraft
+	// on its runway at its crew's last look before touchdown (#1680), its
+	// crew round already (CrewGoAround; not with SetLandsOnOccupied); until
+	// it joins a final again.
+	Unstable, CrewGoAround, RunwayTaken bool
+	Position                            airport.LatLon
 	// Steps is how many steps Sequence has; a new one is told at once.
 	Steps       int
 	AGL         float64 // feet
@@ -308,6 +311,7 @@ type ArrivalController struct {
 	clearDist     float64 // injected path distance where the aircraft is clear of the runway
 	exitFastTo    float64 // injected path distance the exit speed is kept to (its tail clear too)
 	rollThrough   bool    // rolling clearance: slow at the vacate point, do not stop
+	headOnAt      time.Time
 	vacateDist    float64 // injected path distance of the vacate stop
 	standJoin     float64 // the stand's lead-in junction, meters before the path's end
 	rng           *rand.Rand
@@ -319,8 +323,9 @@ type ArrivalController struct {
 	flyingProc    bool
 	goArounds     int // go-arounds flown (GoAround)
 	// landsUnstable: lands from an approach not stable at the gate
-	// (SetLandsUnstable).
-	landsUnstable bool
+	// (SetLandsUnstable); landsOccupied: lands with another aircraft on
+	// its runway (SetLandsOnOccupied).
+	landsUnstable, landsOccupied bool
 	// goAroundFt: the level a go-around climbs to (MSL), until reached: a
 	// route re-planned on the way up keeps it (noClimb would hold it where
 	// it is; live, TVS354 levelled at 1400 ft at LKPR). 0 once reached.
@@ -1229,6 +1234,11 @@ var ErrExitTooClose = errors.New("traffic: the arrival cannot make that exit")
 func (c *ArrivalController) VacateAt(x airport.RunwayExit) error {
 	c.mu.Lock()
 	defer c.mu.Unlock()
+	return c.vacateAt(x)
+}
+
+// vacateAt is VacateAt with c.mu held.
+func (c *ArrivalController) vacateAt(x airport.RunwayExit) error {
 	if c.plan == nil || c.state > ArrivalRollout {
 		return ErrExitFixed
 	}

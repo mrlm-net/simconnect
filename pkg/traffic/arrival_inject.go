@@ -1,9 +1,11 @@
 package traffic
 
 import (
+	"cmp"
 	"errors"
 	"math"
 	"slices"
+	"strconv"
 	"time"
 
 	"github.com/mrlm-net/simconnect/pkg/airport"
@@ -347,6 +349,9 @@ func (c *ArrivalController) onInjectedFrame() {
 	// Off the runway the arrival follows the traffic ahead (#334).
 	c.followTraffic = c.state == ArrivalVacating || c.state == ArrivalTaxiing || c.state == ArrivalParking
 	c.stopFloor = 0
+	// On its landing roll it never rolls through one on the runway ahead
+	// (#1680).
+	c.runwayAhead, c.runwayTo = c.state == ArrivalRollout, c.clearDist
 	if c.backtracking && c.mover.Pose().Distance >= c.backFrom && (c.state == ArrivalRollout || c.state == ArrivalVacating) {
 		// Backtracking at taxi speed: brakes as a taxiing crew does, and
 		// sees what is ahead off the runway before it is off it, rather
@@ -359,6 +364,18 @@ func (c *ArrivalController) onInjectedFrame() {
 		}
 	}
 	pose := c.step()
+	if c.state == ArrivalRollout && c.runwayAhead && c.headOn && c.now().Sub(c.headOnAt) >= headOnRetry {
+		if c.vacateFirst(pose) {
+			return // planned again from here: the next frame goes on along it
+		}
+	}
+	// Backtracking with one facing it on the runway short of its way off:
+	// off at the nearest way it can reach (#1680).
+	if c.state == ArrivalRollout && c.backtracking && c.followTraffic && c.bodyFacing && c.bodyAt < c.clearDist && c.now().Sub(c.headOnAt) >= headOnRetry {
+		if c.turnOffNearest(pose) {
+			return
+		}
+	}
 	c.updateFollowMe(pose)
 	c.frameDetail(pose)
 	path := c.mover.Path()
@@ -587,10 +604,44 @@ func (c *ArrivalController) aimShift(startMeters, spread float64) float64 {
 	return math.Min(0, target-probe.touchX) + spread/10
 }
 
+// crewLookFt: from this height above the runway to the touchdown the crew
+// of an injected approach looks at its runway (#1680): another aircraft
+// on it takes it around, cleared to land or not, with no tower too. A
+// controller sends it round earlier, at its decision point.
+const crewLookFt = 100.0
+
+// crewGoesAround takes the injected approach around when another
+// aircraft is on its runway below crewLookFt, the crew's own go-around as
+// for an approach not stable (CrewGoAround, RunwayTaken); whether it did.
+// c.mu held.
+func (c *ArrivalController) crewGoesAround() bool {
+	if c.landsOccupied || c.picture == nil || c.approach == nil || c.plan == nil {
+		return false
+	}
+	if p := c.approach.Pose(); p.OnGround || p.HeightFt > crewLookFt {
+		return false
+	}
+	who := c.picture.OnRunway(c.objectID, c.plan.Runway, c.now())
+	if who == 0 {
+		return false
+	}
+	if err := c.goAroundLocked(); err != nil {
+		c.note("crew go-around refused", err)
+		return false
+	}
+	c.last.CrewGoAround, c.last.RunwayTaken = true, true
+	c.note("crew go-around: runway occupied by object "+strconv.FormatUint(uint64(who), 10), nil)
+	c.emit(nil, true)
+	return true
+}
+
 // onApproachFrame flies the injected approach one frame and hands over to
 // the injected rollout once the nose wheel is down.
 func (c *ArrivalController) onApproachFrame(m arrivalMonitor) {
 	now := c.now()
+	if c.crewGoesAround() {
+		return
+	}
 	dt := c.frameStep(now) // no step back with the clock (#105)
 	if !c.approachLightsSet {
 		c.approachLightsSet = true
@@ -865,6 +916,110 @@ const (
 	backtrackDecel  = 1.0
 	backtrackClearM = 1.0
 )
+
+// vacateFirst: nose to nose on the runway on its landing roll with one
+// coming the other way whose way off is behind it (groundDrive.headOn), it
+// vacates first, at the nearest exit ahead short of the other that fits
+// and that it can make; the other then goes on to its own way off (#1680:
+// each stood for the other, neither way off free). Looked for every
+// headOnRetry while they face each other (slower, it makes one it could
+// not before); none such: it stands. True when planned again. c.mu held.
+func (c *ArrivalController) vacateFirst(pose GroundPose) bool {
+	c.headOnAt = c.now()
+	if c.plan == nil || c.mover == nil || !c.mover.hasTraffic {
+		return false
+	}
+	exits, err := c.req.Graph.RunwayExits(c.plan.End.Name)
+	if err != nil {
+		c.note("vacate first", err)
+		return false
+	}
+	prof := c.profile()
+	end := c.plan.End
+	along := alongHeading(end.Threshold, end.Heading, NoseGear(pose.Position, pose.Heading, prof))
+	noseTip := (pushNoseFactor - 1) * prof.WheelbaseMeters
+	body := along + c.mover.trafficAt - pose.Distance + noseTip + TrafficGapMeters
+	before := body - headOnExitClearM
+	slices.SortFunc(exits, func(a, b airport.RunwayExit) int { return cmp.Compare(a.Along, b.Along) })
+	for _, x := range exits {
+		if x.Along <= along || x.Along > before || x.Node == c.plan.Exit.Node {
+			continue
+		}
+		if err := c.vacateAt(x); err == nil {
+			c.note("nose to nose on the runway: vacating first at "+x.Taxiway, nil)
+			c.emit(nil, true)
+			return true
+		}
+	}
+	c.note("nose to nose on the runway: no way off short of the other", nil)
+	return false
+}
+
+// turnOffNearest: backtracking, nose to nose on the runway with one whose
+// body is short of its way off (groundDrive.bodyFacing; the other one on
+// its landing roll that has no way off short of this one either, as
+// vacateFirst found), it turns off at the nearest way ahead short of the
+// other that it can reach, onto any route to its stand, one turning back
+// on itself too: off the runway, neither stands for the other for good
+// (#1680). Looked for every headOnRetry while it stands for the other;
+// none such: it holds where it stands. True when planned again. c.mu
+// held.
+func (c *ArrivalController) turnOffNearest(pose GroundPose) bool {
+	c.headOnAt = c.now()
+	if c.plan == nil || c.mover == nil {
+		return false
+	}
+	g, req := c.req.Graph, c.req
+	toward := oppositeEnd(c.plan.Runway, c.plan.End)
+	exits, err := g.RunwayExits(toward.Name)
+	if err != nil {
+		c.note("turn off sooner", err)
+		return false
+	}
+	prof := c.profile()
+	along := alongHeading(toward.Threshold, toward.Heading, NoseGear(pose.Position, pose.Heading, prof))
+	before := along + c.bodyAt - pose.Distance - headOnExitClearM
+	v, decel := pose.GroundSpeedKts*ktsToMS, c.rolloutProfile().BrakeDecel
+	slices.SortFunc(exits, func(a, b airport.RunwayExit) int { return cmp.Compare(a.Along, b.Along) })
+	for _, x := range exits {
+		vx := ExitSpeed(x) * ktsToMS
+		need := math.Max(0, (v*v-vx*vx)/(2*decel)) + prof.WheelbaseMeters
+		if x.Along < along+need || x.Along > before || x.Node == c.plan.Exit.Node {
+			continue
+		}
+		plan, err := PlanArrival(g, toward.Name, req.Parking, ArrivalOptions{
+			SpawnNm: c.plan.SpawnNm, Exit: &x, Route: req.Options, GroundAGL: req.GroundAGL, NoseOffset: req.NoseOffset, StandSide: req.StandSide,
+			TouchdownKts: approachProfileOf(req).TouchdownKts, BrakeDecel: req.Rollout.BrakeDecel,
+		})
+		if err != nil {
+			continue
+		}
+		plan.Spawn = c.plan.Spawn
+		oldPlan, oldTrack, oldExit, oldVacate := c.plan, c.track, c.exitAlong, c.vacateAlong
+		c.plan, c.track = plan, newRouteTracker(plan.Route)
+		c.exitAlong = c.track.cum[len(plan.Exit.Path)-1]
+		c.vacateAlong = c.track.cum[plan.VacateIndex] - plan.VacateBackMeters
+		m := arrivalMonitor{Latitude: pose.Position.Lat, Longitude: pose.Position.Lon, Heading: pose.Heading, GroundKts: pose.GroundSpeedKts}
+		if err := c.takeover(m, pose.Position, true); err != nil {
+			c.plan, c.track, c.exitAlong, c.vacateAlong = oldPlan, oldTrack, oldExit, oldVacate
+			continue
+		}
+		c.note("nose to nose on the runway: turning off sooner at "+x.Taxiway, nil)
+		c.emit(nil, true)
+		return true
+	}
+	c.note("nose to nose on the runway: no way off short of the other, holding", nil)
+	return false
+}
+
+// headOnRetry: nose to nose on the runway, how often a way off is looked
+// for again (vacateFirst, turnOffNearest; the last look at headOnAt).
+const headOnRetry = 2 * time.Second
+
+// headOnExitClearM: an exit taken to vacate first is at least this far
+// short of the body of the one it stood for (vacateFirst): the turn off,
+// its wings, clear of it.
+const headOnExitClearM = 40.0
 
 // reverseIdle takes the reverse thrust back to idle below ReverseIdleKts.
 func (c *ArrivalController) reverseIdle(kts float64) {

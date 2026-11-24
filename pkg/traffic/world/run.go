@@ -517,6 +517,8 @@ func (st *state) startWorld(cc *controlCenter) (stopWorld func()) {
 	cc.climbStopped = cw.isStopped
 	tw := newTowers(cc, sched)
 	cc.landCleared = tw.landCleared
+	cc.runwayBusy = tw.runwayBusy
+	cc.arrivalLanding = tw.arrivalLanding
 	cc.departureCleared, cc.departuresAhead = tw.departureCleared, tw.departuresAhead
 	// A go-around is sequenced again (#394), and cleared to land again on
 	// its next approach (#486).

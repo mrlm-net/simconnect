@@ -7,6 +7,7 @@ import (
 	"time"
 
 	"github.com/mrlm-net/simconnect/pkg/airport"
+	"github.com/mrlm-net/simconnect/pkg/calc"
 )
 
 // GroundPicture is what the injected aircraft on the ground know of each
@@ -462,6 +463,29 @@ func (p *GroundPicture) corridorBlocked(id uint32, corridor []airport.LatLon, ha
 // pushYieldMeters: a push not started yet waits for an aircraft stopped
 // taxiing whose way comes through its corridor this soon (corridorBlocked).
 const pushYieldMeters = 120.0
+
+// OnRunway is an aircraft other than id with any of its body on runway r's
+// surface, reported within TrafficStaleAfter and not parked; 0 none. What
+// a crew on short final looks for (#1680).
+func (p *GroundPicture) OnRunway(id uint32, r airport.Runway, now time.Time) uint32 {
+	a, b := r.Primary.Threshold, r.Secondary.Threshold
+	p.mu.Lock()
+	defer p.mu.Unlock()
+	for oid, e := range p.aircraft {
+		if oid == id || e.parked || now.Sub(e.at) > TrafficStaleAfter {
+			continue
+		}
+		for k := range e.axisPoints() {
+			q := offsetHeading(e.pos, e.hdg, e.axisAt(k))
+			along := calc.AlongTrackMeters(a.Lat, a.Lon, b.Lat, b.Lon, q.Lat, q.Lon)
+			off := math.Abs(calc.CrossTrackMeters(a.Lat, a.Lon, b.Lat, b.Lon, q.Lat, q.Lon))
+			if along > 0 && along < r.Length && off < r.Width/2 {
+				return oid
+			}
+		}
+	}
+	return 0
+}
 
 // Forget drops aircraft id (airborne, parked for good, removed).
 func (p *GroundPicture) Forget(id uint32) {

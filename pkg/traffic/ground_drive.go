@@ -55,6 +55,20 @@ type groundDrive struct {
 	// on the runway it backtracks, it brakes for what is ahead but never
 	// stands on the runway for it (#1640). 0 none.
 	stopFloor float64
+	// runwayAhead: on its landing roll, not following the traffic, it
+	// brakes for an aircraft on its way ahead, up to runwayTo along its path
+	// (clear of the runway there; 0 all of it) (brakeForRunwayAhead, #1680).
+	runwayAhead bool
+	runwayTo    float64
+	// headOn: on its landing roll it stands for one coming the other way
+	// on the runway whose way off is behind it (brakeForRunwayAhead,
+	// #1680): it vacates first where it can (ArrivalController).
+	headOn bool
+	// bodyFacing: following the traffic, the body it stops for faces it,
+	// at bodyAt along its path (followAhead): a backtrack's way off beyond
+	// it turns off sooner (ArrivalController.turnOffNearest, #1680).
+	bodyFacing bool
+	bodyAt     float64
 	// planned is the way it will taxi, reported while it waits for its taxi
 	// clearance (#452).
 	planned []airport.LatLon
@@ -425,6 +439,86 @@ func leadInAhead(g *airport.Graph, parking int, junction airport.LatLon) bool {
 	return alongHeading(p.Position, p.Heading, junction) > 0
 }
 
+// runwayClosingKts: how fast one coming the other way on the runway is
+// taken to close in (backtracking or taxiing), for how far a landing roll
+// looks ahead (brakeForRunwayAhead).
+const runwayClosingKts = 20.0
+
+// brakeForRunwayAhead stops a landing roll behind an aircraft standing or
+// moving on its way ahead, at the traffic gap from its body (#1680: at
+// TNCM a B738 rolled out at 43 kt through an A321 backtracking on the
+// runway, 0.9 m apart). Only a body ahead: on the runway it gives way to
+// nobody crossing. It looks as far as braking from its speed and the
+// other's closing speed takes, so it is never found too near to brake at
+// a rate.
+//
+// One past runwayTo, off the runway, it brakes for as a backtrack does
+// (stopFloor, #1640): never to stand on the runway for it, unless the body
+// leaves no room clear of it.
+//
+// One coming the other way along the runway to turn off it ahead of this
+// one: it holds short of that way off, at the junction, for the other to
+// turn off there (#775); were it past it already, the two would stand nose
+// to nose with neither way off free, and headOn asks for it to vacate first.
+func (d *groundDrive) brakeForRunwayAhead(now time.Time) {
+	if d.picture == nil || d.mover == nil || now.Sub(d.trafficAt) < TrafficCheckEvery {
+		return
+	}
+	d.trafficAt = now
+	half := d.prof.SpanMeters / 2
+	if half <= 0 {
+		half = DefaultHalfSpanMeters
+	}
+	m := d.mover
+	s0, path := m.Pose().Distance, m.Path()
+	noseTip := (pushNoseFactor - 1) * d.prof.WheelbaseMeters
+	vc := runwayClosingKts * ktsToMS
+	decel := math.Max(m.p.Decel, 0.1)
+	look := math.Max(TrafficLookMeters, m.v*m.v/(2*decel)+vc*m.v/decel+(m.v+vc)*SpeedResponseSeconds+noseTip+TrafficGapMeters)
+	body, who := d.picture.blocking(d.object, path, s0, look, half, now)
+	d.facing, d.headOn = false, false
+	stop := math.Inf(1)
+	clearTo := runOnLimit(noseTip, body, math.Inf(1), 0, false)
+	if !math.IsInf(body, 1) {
+		stop = body - noseTip - TrafficGapMeters
+		if d.runwayTo > 0 && body > d.runwayTo {
+			stop = math.Max(stop, math.Min(d.runwayTo+backtrackClearM, clearTo))
+		}
+		d.blockedBy = who.id
+		d.facing = math.Abs(headingDiff(who.hdg, localBearing(path.PointAt(math.Max(s0, body-5)), path.PointAt(body)))) >= oncomingDeg
+	} else {
+		d.blockedBy = 0
+	}
+	if path != d.onPath || now.Sub(d.onAt) >= OncomingCheckEvery {
+		d.onPath, d.onAt = path, now
+		d.onS, d.onOther, d.onHold = d.picture.oncoming(d.object, path, s0, half, now)
+		d.onNear = d.onS
+		if !math.IsInf(d.onS, 1) {
+			d.onNear = d.picture.nearWay(d.onOther, path, s0, d.onS, half)
+		}
+	}
+	held := false
+	// Held there, it stays held, its stop behind its nose by then; one
+	// found too near rolls on, braking, no further than the shared
+	// stretch.
+	if at := d.onS; !math.IsInf(at, 1) && at-s0 <= look && at > s0 && (d.runwayTo <= 0 || at <= d.runwayTo) {
+		hs := d.junctionStopTo(path, s0, d.onNear-noseTip-TrafficGapMeters, noseTip, half+DefaultHalfSpanMeters+GiveWayMarginMeters, at)
+		if hs < stop {
+			stop, d.blockedBy, d.facing, held = hs, d.onOther, true, true
+			clearTo = math.Min(clearTo, math.Max(hs+TrafficOverrunMeters, at-noseTip))
+		}
+	}
+	if math.IsInf(stop, 1) {
+		m.ClearTrafficStop()
+		return
+	}
+	// Nose to nose on the runway, its way off behind the other: neither
+	// goes on (#1680).
+	d.headOn = !held && d.facing && (d.runwayTo <= 0 || body <= d.runwayTo)
+	m.SetTrafficStop(stop)
+	m.runOnTo = math.Max(s0, math.Min(path.Length(), clearTo))
+}
+
 // followAhead stops the mover behind the traffic ahead on its path, at a
 // safe gap from its body, while taxiing (#334).
 func (d *groundDrive) followAhead(now time.Time) {
@@ -433,7 +527,7 @@ func (d *groundDrive) followAhead(now time.Time) {
 	}
 	if d.picture == nil || !d.followTraffic || d.mover == nil {
 		d.givingWay = 0
-		if d.mover != nil {
+		if d.mover != nil && !d.runwayAhead {
 			d.mover.ClearTrafficStop()
 		}
 		if d.picture != nil && d.object != 0 {
@@ -444,6 +538,9 @@ func (d *groundDrive) followAhead(now time.Time) {
 			} else {
 				d.picture.ReportPath(d.object, nil, 0)
 			}
+		}
+		if d.runwayAhead {
+			d.brakeForRunwayAhead(now)
 		}
 		return
 	}
@@ -458,7 +555,7 @@ func (d *groundDrive) followAhead(now time.Time) {
 	s0 := d.mover.Pose().Distance
 	path := d.mover.Path()
 	body, who := d.picture.blocking(d.object, path, s0, TrafficLookMeters, half, now)
-	d.blockedBy, d.facing = 0, false
+	d.blockedBy, d.facing, d.bodyFacing, d.bodyAt = 0, false, false, body
 	if !math.IsInf(body, 1) {
 		d.blockedBy = who.id
 	}
@@ -469,6 +566,7 @@ func (d *groundDrive) followAhead(now time.Time) {
 		// Facing an aircraft coming the other way, keep the last junction
 		// before it clear: it turns off there (#444).
 		if math.Abs(headingDiff(who.hdg, localBearing(path.PointAt(math.Max(s0, body-5)), path.PointAt(body)))) >= oncomingDeg {
+			d.bodyFacing = true
 			oh := who.half
 			if oh <= 0 {
 				oh = DefaultHalfSpanMeters
