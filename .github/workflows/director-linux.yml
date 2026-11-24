@@ -60,20 +60,49 @@ jobs:
           cat run/out.txt
           test -n "$ok"
 
+  worldtest:
+    name: Whole flights (shard ${{ matrix.shard }}/3)
+    runs-on: ubuntu-latest
+    timeout-minutes: 40
+    strategy:
+      fail-fast: false
+      matrix:
+        shard: [1, 2, 3]
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+
       - name: Director and actuator through whole flights
         # LKPR from the repository's own test data, older than simconnect-data
         # (private): the tests in SKIP need the newer data and fail the same on
         # Windows with this. A test of another airport skips. A pass means
         # flights were flown: fails on any failure, or if too few ran.
+        # Split in shards run side by side (#1701: one run took 38.5 of its
+        # 40 minutes): the eligible tests, sorted, dealt round-robin, the first
+        # to shard 1, the second to shard 2 and so on. The same split on every
+        # run, each test in one shard only.
         env:
           SKIP: '^TestMorningPeakHasArrivals$|^TestArrivalNoClearanceGoesAround$|^TestArrivalNoClearanceDiverts$|^TestNoClearanceDiversionFlies$|^TestDepartureRunwayHasSID$|^TestFaceOutStandPullsIn$|^TestLineUpTakeoffLandingWords$|^TestMainEntranceFirst$|^TestPlayerRescue$|^TestPlayerRescueSmooth$|^TestReadyForTaxiContact$|^TestSayingUntil$|^TestSceneLinesToTheTimetable$|^TestSceneMute$|^TestScheduleTuningLead$|^TestSpotsAnyAirport$|^TestStaffedAssist$|^TestStaffedDepartureLevelsOff$|^TestStaffedSafetyNet$|^TestTaxiClearanceNotRepeated$|^TestTowerCallsUnchanged$|^TestUptoByName$|^TestVacateSaidOnce$|^TestWakeCautionVFR$|^TestSayCustomCrewOnOwnFrequency$|^TestScenarioPushAlreadyCleared$|^TestRefusedPushNotSaidAgain$|^TestGameFlightsAreScheduled$|^TestSlowLeaderFastFollower$|^TestTaxiCrossesRunwayNotInUse$|^TestGoAroundRejoinKeepsSpacing$|^TestArrivalBacktracksTNCM$|^TestDepartureRunwayByClassLKTB$|^TestEnrouteToldStaffed$|^TestEnrouteToldUnstaffed$|^TestGameArrivalWithoutSTAR$|^TestScheduleEnrouteArrivalWithoutSTAR$|^TestScheduleEnrouteArrivalsFitStands$|^TestGameVFRField$'
+          SHARDS: 3
+          SHARD: ${{ matrix.shard }}
         run: |
           mkdir -p data/LKPR
           cp pkg/airport/testdata/LKPR.json data/LKPR/layout.json
           cp pkg/airport/testdata/LKPR-procedures.json data/LKPR/procedures.json
           export SIMCONNECT_DATA="$PWD/data"
+          go test ./pkg/traffic/world/worldtest/ -list '.*' | grep '^Test' | grep -vE "$SKIP" | sort > all.txt
+          awk -v n="$SHARDS" -v s="$SHARD" '(NR - 1) % n == s - 1' all.txt > eligible.txt
+          if [ ! -s eligible.txt ]; then
+            echo "::error::shard $SHARD/$SHARDS has no tests"
+            exit 1
+          fi
+          echo "shard $SHARD/$SHARDS: $(wc -l < eligible.txt) of $(wc -l < all.txt) tests"
+          only=$(paste -sd'|' eligible.txt)
           code=0
-          go test ./pkg/traffic/world/worldtest/ -v -count=1 -timeout 40m -skip "$SKIP" > full.txt 2>&1 || code=$?
+          go test ./pkg/traffic/world/worldtest/ -v -count=1 -timeout 30m -run "^($only)$" -skip "$SKIP" > full.txt 2>&1 || code=$?
           grep -aE '^(--- |ok|FAIL|panic)' full.txt | tee results.txt || true
           grep -aE '_test.go:[0-9]+:' full.txt || true
           # A timeout or a panic on a World goroutine names no failed test:
@@ -91,11 +120,11 @@ jobs:
             echo "::error::go test exited $code with no failed test named"
             exit 1
           fi
-          # Every test not in SKIP must have run: none vanished, and none
-          # skipped itself. With the LKPR data here and no -short nothing
+          # Every test of this shard (eligible.txt, above) must have run: none
+          # vanished, and none skipped itself. With the LKPR data here and no
+          # -short nothing
           # eligible has a reason to skip, so a skip counts as missing: a test
           # that starts skipping would otherwise pass unnoticed.
-          go test ./pkg/traffic/world/worldtest/ -list '.*' | grep '^Test' | grep -vE "$SKIP" | sort > eligible.txt
           grep -aE '^--- (PASS|FAIL)' results.txt | sed -E 's/^--- [A-Z]+: //; s/ .*//' | sort > ran.txt || true
           if grep -aq '^--- SKIP' results.txt; then
             echo "::error::skipped themselves (add to SKIP by name if meant): $(grep -a '^--- SKIP' results.txt | sed 's/--- SKIP: //; s/ .*//' | paste -sd' ' -)"
