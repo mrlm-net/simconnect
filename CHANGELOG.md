@@ -7,6 +7,15 @@ This project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 ---
 
+## [0.193.1] - 2026-11-24
+
+### Fixed
+
+- A World stopping (RunOn's context ended) logs everything of its own before RunOn returns: it waits, up to 5 s each on the wall clock, until its removed aircraft's last events ("→ cancelled") are logged and until the once-a-second work under way (agenda, schedule, towers) has ended. Both were logged after, and a World started next (worldtest: TestScheduleEnrouteArrivalsFitStands after TestStaffedTowerLandStands) found the previous World's LKPR flights cancelled in its own log (#1701).
+
+- CI: director-linux runs the worldtest whole flights as 3 parallel shards ("Whole flights (shard N/3)"). The eligible tests are sorted and dealt round-robin, each shard runs with its own -run regex and a 30 m timeout, and the SKIP list and the every-eligible-test-ran check apply per shard. One run had reached 38.5 of its 40 minutes (#1701).
+
+
 ## [0.193.0] - 2026-11-24
 
 ### Fixed

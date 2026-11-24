@@ -145,6 +145,9 @@ type controlled struct {
 	// doneAt when.
 	finished atomic.Bool
 	doneAt   time.Time
+	// eventsDone is closed once its controller's events are all taken and
+	// logged (spawn's loop ended); nil: no loop.
+	eventsDone chan struct{}
 	// observed: a real aircraft's sighting (#841), nil one of the schedule.
 	observed *traffic.Sighting
 	// deliver: a parked real aircraft's call to delivery, made when its
@@ -1639,7 +1642,10 @@ func (cc *controlCenter) spawn(g *airport.Graph, r SpawnRequest) (*controlled, e
 	if clash := alloc.ReserveRoute(r.Tail, it.view.Nodes); len(clash) > 0 {
 		cc.log.printf("%-6s %s: route overlaps the routes of %s", r.Tail, r.Kind, strings.Join(clash, ", "))
 	}
+	eventsDone := make(chan struct{})
+	it.eventsDone = eventsDone
 	go func() {
+		defer close(eventsDone)
 		for {
 			ev, ok := events()
 			if !ok {

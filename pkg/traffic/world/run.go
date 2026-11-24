@@ -548,7 +548,12 @@ func (st *state) startWorld(cc *controlCenter) (stopWorld func()) {
 	cc.namedAirport = sched.base.AirportName
 	cc.atisLetter = st.atisLetter
 	stop := make(chan struct{}) // this connection only
+	// tickDone: the second's work below has ended, waited for when the
+	// World stops (#1701: a tick under way logged into the World started
+	// next).
+	tickDone := make(chan struct{})
 	go func() {
+		defer close(tickDone)
 		t := traffic.NewTicker(time.Second)
 		defer t.Stop()
 		// The time stands still through its work on a manual clock (#1645).
@@ -559,6 +564,12 @@ func (st *state) startWorld(cc *controlCenter) (stopWorld func()) {
 			case <-stop:
 				return
 			case <-t.C:
+				select {
+				case <-stop: // stopped and the second come at once: stopped
+					worked()
+					return
+				default:
+				}
 				now := cc.clock.Now() // traffic time (#413)
 				// Each part on its own: a panic in one is logged and the rest
 				// go on, the next second too (E27: it ended the World).
@@ -602,6 +613,12 @@ func (st *state) startWorld(cc *controlCenter) (stopWorld func()) {
 	st.setLive(true)
 	return func() {
 		close(stop)
+		wait := time.NewTimer(removeLogWait)
+		select {
+		case <-tickDone:
+		case <-wait.C:
+		}
+		wait.Stop()
 		stopHeard()
 		st.mu.Lock()
 		st.control, st.schedule, st.sequences, st.separation, st.towers, st.conflicts, st.tcas = nil, nil, nil, nil, nil, nil, nil
@@ -1760,6 +1777,30 @@ var tickPanics = struct {
 	at map[string]time.Time
 }{at: map[string]time.Time{}}
 
+// removeLogWait: how long a World stopping waits, on the wall clock, for
+// its removed aircraft's last events to be logged, and again for the
+// second's work under way to end.
+const removeLogWait = 5 * time.Second
+
+// eventsTaken waits until each item's events are all taken and logged
+// (its "→ cancelled"), at most d in all: RunOn returned before them, and
+// a World started next got its predecessor's lines in its own log
+// (#1701).
+func eventsTaken(items []*controlled, d time.Duration) {
+	t := time.NewTimer(d)
+	defer t.Stop()
+	for _, it := range items {
+		if it.eventsDone == nil {
+			continue
+		}
+		select {
+		case <-it.eventsDone:
+		case <-t.C:
+			return
+		}
+	}
+}
+
 // removeOurs removes every aircraft (and with them their tugs and service
 // vehicles) and en route flight of ours from the simulator, on the
 // connection's own goroutine — the World stopped (RunOn's ctx ended) while
@@ -1780,6 +1821,7 @@ func removeOurs(cc *controlCenter, sched *scheduler) {
 		_ = it.act("remove", -1)
 		it.removeOnce.Do(func() { close(it.removed) })
 	}
+	eventsTaken(items, removeLogWait)
 	cc.removeRescue()
 	if sched == nil {
 		return
