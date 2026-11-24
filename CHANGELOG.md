@@ -7,6 +7,13 @@ This project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 ---
 
+## [0.191.1] - 2026-11-24
+
+### Fixed
+
+- An arrival too high at its join to make the stabilised-approach gate is no longer joined to the final only for its crew to go round at once (offline EDDF: DLH1691 cleared to land, then "going around, approach not stable"). It stays on its procedure and is given the track miles to come down first: out to the side, along a downwind as long as its descent needs at 318 ft/NM, and back onto the final at its join. After two of these it joins as it is, and its crew goes round if it is still not stable at the gate (#1681).
+- An arrival on its way in when traffic starts is no higher than a 3° path for the way it will actually fly: to its STAR point, then along the rest of the STAR and approach. Before, the height came from its flight plan's remaining distance, which can be far longer (DLH1691 at FL289 for 90 NM of plan, with 36 NM of arrival) (#1681).
+
 ## [0.191.0] - 2026-11-24
 
 ### Added

@@ -527,6 +527,15 @@ func (s *scheduler) spawnArrivalAlong(f traffic.ManagedFlight, pos airport.LatLo
 		f.Stage = ""
 		return s.spawnWith(f, nil, "")
 	}
+	// On its way in from the start: no higher than a 3° path for the way
+	// it will fly from here, to its join and along the rest of the STAR
+	// and approach. Its plan's way in may be far longer (#1681 follow-up:
+	// DLH1691 at FL289 for 90 NM of plan, 36 NM in from DF520, joined its
+	// final thousands of feet high).
+	if top := midwayTopFt(g.Layout.Altitude/0.3048, pos, pts); pick.ident != "" && alt > top {
+		cc.log.printf("%-6s schedule: on its way in from the start: %.0f ft, not %.0f, for its way in from %s", f.Callsign, top, alt, pts[0].Ident)
+		alt = top
+	}
 	a := s.airlines[f.Airline]
 	models := traffic.ModelsForFlight(cc.modelList(), f.Airline, a.Name, f.Type, f.Callsign, 6)
 	if len(models) == 0 {

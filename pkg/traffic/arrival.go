@@ -326,6 +326,9 @@ type ArrivalController struct {
 	// (SetLandsUnstable); landsOccupied: lands with another aircraft on
 	// its runway (SetLandsOnOccupied).
 	landsUnstable, landsOccupied bool
+	// heightExtends: the ways out and back it was given at its join, too
+	// high to make the gate (extendForHeight), since it last joined.
+	heightExtends int
 	// goAroundFt: the level a go-around climbs to (MSL), until reached: a
 	// route re-planned on the way up keeps it (noClimb would hold it where
 	// it is; live, TVS354 levelled at 1400 ft at LKPR). 0 once reached.
