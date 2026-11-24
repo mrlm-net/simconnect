@@ -351,7 +351,7 @@ func (it *controlled) climbTo(ft, throughFt float64, expedite bool) error {
 	if expedite && fast == 0 {
 		fast = ft
 	}
-	if err := it.cc.do(func() error { return it.dep.ClimbExpedited(pos, alt, ft, fast) }); err != nil {
+	if err := it.cc.do(unlessRA(&it.tcasRA, func() error { return it.dep.ClimbExpedited(pos, alt, ft, fast) })); err != nil {
 		return err
 	}
 	it.mu.Lock()
@@ -386,7 +386,7 @@ func (it *controlled) headingTo(magnetic float64) error {
 	}
 	mv := it.cc.magVar(it.ICAO)
 	var v traffic.Vector
-	if err := it.cc.do(func() (err error) { v, err = it.dep.FlyHeading(pos, alt, kts, hdg, magnetic-mv); return err }); err != nil {
+	if err := it.cc.do(unlessRA(&it.tcasRA, func() (err error) { v, err = it.dep.FlyHeading(pos, alt, kts, hdg, magnetic-mv); return err })); err != nil {
 		return err
 	}
 	said := traffic.Vectored(it.Tail, v, mv)
@@ -417,7 +417,7 @@ func (it *controlled) speedTo(kts float64) error {
 			pos, alt, now = a.Position, a.AltFt, a.GroundKts
 		}
 	}
-	if err := it.cc.do(func() error { return it.dep.AssignSpeed(pos, alt, kts) }); err != nil {
+	if err := it.cc.do(unlessRA(&it.tcasRA, func() error { return it.dep.AssignSpeed(pos, alt, kts) })); err != nil {
 		return err
 	}
 	said := traffic.SpeedAssigned(it.Tail, kts, now)
@@ -452,7 +452,7 @@ func (cc *controlCenter) crewAsksHigher(items []*controlled, now time.Time) {
 		it.mu.Lock()
 		on := it.atc == traffic.PosDeparture && it.view.State == traffic.TaxiComplete.String()
 		cleared, cruise, at, id, asked := it.clearedFt, it.cruiseFt, it.view.AltFt, it.objectID, it.higherAt
-		level := on && cleared > 0 && !it.levelSet
+		level := on && cleared > 0 && !it.levelSet && !it.tcasRA.Load()
 		if level {
 			it.levelSet = true
 		}
@@ -465,7 +465,13 @@ func (cc *controlCenter) crewAsksHigher(items []*controlled, now time.Time) {
 		if level {
 			// Handed to the simulator: it levels there, not on to its
 			// cruise as the simulator's own flight would.
-			go it.climbOnTo(cleared)
+			go func() {
+				if errors.Is(it.climbOnTo(cleared), errFlyingRA) {
+					it.mu.Lock()
+					it.levelSet = false // an RA began: once clear of conflict
+					it.mu.Unlock()
+				}
+			}()
 		}
 		if !on || cleared <= 0 || cruise <= cleared {
 			continue

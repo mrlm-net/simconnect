@@ -369,6 +369,9 @@ func (s *scheduler) dematerialise(e *enrouteAC, a traffic.TrackedAircraft, now t
 	}
 	id := e.objectID
 	e.objectID, e.vt, e.vtAt = 0, vt, now
+	// A virtual track flies no RA, and with no object the TCAS watch's
+	// clearing by it would miss this one: refused for good (#77, #1666).
+	e.tcasRA.Store(false)
 	if e.virtualID == 0 {
 		e.virtualID = s.newVirtualID()
 	}

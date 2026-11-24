@@ -1,8 +1,10 @@
 package world
 
 import (
+	"errors"
 	"net/http"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	"github.com/mrlm-net/simconnect/pkg/calc"
@@ -32,6 +34,37 @@ const (
 	// tcasEvents: how many advisories GET /api/tcas keeps.
 	tcasEvents = 200
 )
+
+// errFlyingRA: nothing contrary to an RA the crew flies (FAA JO 7110.65
+// 2-1-28); what an instruction to one is answered with.
+var errFlyingRA = errors.New("flying a TCAS RA: no instruction until clear of conflict")
+
+// unlessRA is f for controlCenter.do, refused where an RA is flown by then:
+// looked at on the connection's goroutine as it is sent, as a player's
+// instruction can wait there while an RA begins (#1669). fly sets ra before
+// it sends the RA's own route, so nothing after that is over it.
+func unlessRA(ra *atomic.Bool, f func() error) func() error {
+	return func() error {
+		if ra.Load() {
+			return errFlyingRA
+		}
+		return f()
+	}
+}
+
+// flyingRA reports whether a, one of ours, flies an RA: en route (being
+// handed over too) or controlled.
+func (s *scheduler) flyingRA(a traffic.TrackedAircraft) bool {
+	s.mu.Lock()
+	e := s.enroute[a.Tail]
+	en := e != nil && e.objectID == a.ObjectID
+	s.mu.Unlock()
+	if en {
+		return e.tcasRA.Load()
+	}
+	it := s.cc.byTail(a.Tail)
+	return it != nil && it.object() == a.ObjectID && it.tcasRA.Load()
+}
 
 // tcasState is one of ours' TCAS: its advisory and RA.
 type tcasState struct {
@@ -120,6 +153,7 @@ func (w *tcasWatch) tick(now time.Time, air []traffic.TrackedAircraft) {
 	w.mu.Unlock()
 	for _, id := range ended {
 		w.s.cc.clearTCAS(id)
+		w.s.clearEnrouteRA(id)
 	}
 }
 
@@ -206,8 +240,12 @@ func (w *tcasWatch) fly(a traffic.TrackedAircraft, ra traffic.RA, altFt float64)
 	e := w.s.enroute[a.Tail]
 	w.s.mu.Unlock()
 	it := cc.byTail(a.Tail)
+	if it != nil {
+		it.tcasRA.Store(true) // before its route, as below
+	}
 	switch {
 	case e != nil && e.objectID == a.ObjectID && len(e.route) > 1:
+		e.tcasRA.Store(true) // before its route: nothing else's over it
 		r := traffic.Resolution{Callsign: a.Tail, ObjectID: a.ObjectID, Kind: traffic.ResolveLevel, AltFt: target}
 		route := traffic.ResolvedRoute(e.route, a, r, conflictLookAhead)
 		var wps []types.SIMCONNECT_DATA_WAYPOINT
@@ -219,7 +257,6 @@ func (w *tcasWatch) fly(a traffic.TrackedAircraft, ra traffic.RA, altFt float64)
 		route := traffic.ResolvedRoute(it.dep.ClimbPlan(a.Position), a, r, conflictLookAhead)
 		err = cc.do(func() error { return it.dep.Reroute(route) })
 	case it != nil && it.arr != nil:
-		it.tcasRA.Store(true)
 		if ra.Sense > 0 || ra.Kind == traffic.RALevelOff {
 			err = cc.do(func() error { return it.arr.StopDescent(target, tcasRAForNM) })
 			if err != nil && ra.Sense > 0 {
@@ -227,9 +264,6 @@ func (w *tcasWatch) fly(a traffic.TrackedAircraft, ra traffic.RA, altFt float64)
 				err = cc.do(func() error { return it.act("goaround", 0) })
 			}
 		}
-	}
-	if it != nil {
-		it.tcasRA.Store(true)
 	}
 	if err != nil {
 		cc.log.printf("%-6s TCAS RA: not flown: %v", a.Tail, err)
@@ -241,6 +275,7 @@ func (w *tcasWatch) fly(a traffic.TrackedAircraft, ra traffic.RA, altFt float64)
 // itself).
 func (w *tcasWatch) release(a traffic.TrackedAircraft) {
 	cc := w.s.cc
+	w.s.clearEnrouteRA(a.ObjectID) // en route it has no item (#1666)
 	it := cc.byTail(a.Tail)
 	if it == nil {
 		return
@@ -318,6 +353,17 @@ func registerTCAS(mux *http.ServeMux, st *state) {
 		t.mu.Unlock()
 		writeJSON(w, out)
 	})
+}
+
+// clearEnrouteRA ends the RA of ours en route that is objectID.
+func (s *scheduler) clearEnrouteRA(objectID uint32) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	for _, e := range s.enroute {
+		if e.objectID == objectID {
+			e.tcasRA.Store(false)
+		}
+	}
 }
 
 // clearTCAS ends the RA of the controlled aircraft that was objectID.

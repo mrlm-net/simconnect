@@ -107,6 +107,11 @@ func (r *remoteDep) AbortTakeoff() error {
 	return err
 }
 
+func (r *remoteDep) CancelTakeoffClearance() error {
+	err := r.c.call(r.t, "CancelTakeoffClearance", []any{})
+	return err
+}
+
 func (r *remoteDep) ChangeEntry(entry string) error {
 	err := r.c.call(r.t, "ChangeEntry", []any{entry})
 	return err

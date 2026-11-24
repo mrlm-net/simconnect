@@ -266,7 +266,7 @@ func (it *controlled) climbWhenClear() {
 		it.cc.pending.later(it.cc.clock.Now().Add(climbRecheckEvery), it.climbWhenClear)
 		return
 	}
-	if who := it.climbMeets(ft); who != "" {
+	if it.tcasRA.Load() || it.climbMeets(ft) != "" { // nor over an RA (#1669)
 		p := it.cc.pending
 		p.later(it.cc.clock.Now().Add(climbRecheckEvery), it.climbWhenClear)
 		return

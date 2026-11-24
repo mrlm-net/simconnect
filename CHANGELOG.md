@@ -7,6 +7,19 @@ This project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 ---
 
+## [0.192.0] - 2026-11-24
+
+### Added
+
+- `traffic.(*TaxiController).CancelTakeoffClearance`: cancels a take-off clearance while lining up or lined up (it holds until cleared again); on a roll under way it returns `ErrTooLate` and the take-off goes on (#1685)
+
+### Fixed
+
+- **En route, nothing against a TCAS RA** (#1666): while the crew of one of ours en route flies an RA, the conflict watch and its safety net don't steer it, clear it on or give it its old route again, and a player's instruction (centre, or approach before the STAR) is refused as approach's is for its arrivals: "flying a TCAS RA: no instruction until clear of conflict" (409 on `POST /api/enroute/instruct`).
+- **Nothing over a TCAS RA** (#1669, on #1666): until clear of conflict an en route arrival isn't paced, told to resume own navigation or handed to approach (it is handed over once clear); a departure gets no climb on, crossing restriction or direct, and the player's climb, heading or speed is refused ("flying a TCAS RA: no instruction until clear of conflict"); an instruction still on its way to the simulator as the crew begins to fly the RA is refused instead of sent over it; assist suggests nothing to an aircraft flying an RA
+- Traffic: a rejected take-off stopped with no exit ahead (a backtrack field, or near the far end) turns round on the runway and backtracks to the first exit behind, then taxis back to the holding point. Before, the departure failed on the runway (#1685)
+- Traffic: the tower's take-off clearance cancel for traffic on the runway never rejects a roll that began after it looked; rolling, the clearance stands and no cancel is said. Before, the cancel raced the roll's start and rejected it (#1685)
+
 ## [0.191.1] - 2026-11-24
 
 ### Fixed

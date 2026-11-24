@@ -892,11 +892,18 @@ func (t *towers) apply(icao, rwy string, c traffic.RunwayClearances, ours map[st
 		if !cleared || state != "lining up" && state != "lined up" {
 			continue
 		}
+		// Never a reject (#1685): the view said lining up or lined up, but
+		// the roll may have begun since. Rolling, the clearance stands and
+		// nothing is said.
+		if err := t.cc.do(func() error { return it.dep.CancelTakeoffClearance() }); err != nil {
+			t.mu.Lock()
+			t.given[cs+" takeoff"] = true
+			t.mu.Unlock()
+			t.cc.log.printf("%-6s cancel take-off not made: %v", cs, err)
+			continue
+		}
 		it.say(traffic.CancelTakeoff(cs))
 		t.cc.log.printf("%-6s take-off clearance cancelled — %s", cs, why)
-		if err := t.cc.do(func() error { return it.dep.AbortTakeoff() }); err != nil {
-			t.cc.log.printf("%-6s cancel take-off refused: %v", cs, err)
-		}
 	}
 	// The next arrival, the runway free: cleared to land (#462); on the
 	// landing roll it is told to call ground when vacated.

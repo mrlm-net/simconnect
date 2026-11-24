@@ -493,13 +493,13 @@ func (it *controlled) climbOn() {
 	if ft <= 0 {
 		ft = departureClimbFt
 	}
-	it.climbOnTo(ft)
+	_ = it.climbOnTo(ft) // logged there
 }
 
 // climbOnTo has a departure handed to MSFS AI climb on to ft and level
 // there: climbOn's level, or on a staffed departure the level of its
 // clearance until the player clears it higher (#1096).
-func (it *controlled) climbOnTo(ft float64) {
+func (it *controlled) climbOnTo(ft float64) error {
 	it.mu.Lock()
 	pos, alt, id := it.view.Position, it.heightFt, it.objectID
 	it.mu.Unlock()
@@ -511,7 +511,9 @@ func (it *controlled) climbOnTo(ft float64) {
 			pos, alt = a.Position, a.AltFt
 		}
 	}
-	if err := it.cc.do(func() error { return it.dep.ClimbTo(pos, alt, ft) }); err != nil {
+	err := it.cc.do(unlessRA(&it.tcasRA, func() error { return it.dep.ClimbTo(pos, alt, ft) }))
+	if err != nil {
 		it.cc.log.printf("%-6s climb to %.0f ft not applied: %v", it.Tail, ft, err)
 	}
+	return err
 }

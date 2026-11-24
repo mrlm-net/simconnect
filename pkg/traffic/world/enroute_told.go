@@ -127,6 +127,9 @@ func (q *sequences) enrouteAction(icao, callsign, action string, kts, ft float64
 	if handing {
 		return true, errors.New("being handed to approach: again in a moment")
 	}
+	if e.tcasRA.Load() {
+		return true, errFlyingRA
+	}
 	if !seen || len(route) < 2 {
 		return true, errors.New("not seen yet")
 	}
@@ -225,7 +228,7 @@ func (q *sequences) enrouteAction(icao, callsign, action string, kts, ft float64
 	if err != nil {
 		return true, err
 	}
-	if err := q.cc.do(func() error { return q.cc.sim.SetRoute(e.objectID, wps) }); err != nil {
+	if err := q.cc.do(unlessRA(&e.tcasRA, func() error { return q.cc.sim.SetRoute(e.objectID, wps) })); err != nil {
 		return true, err
 	}
 	s.mu.Lock()
@@ -322,7 +325,8 @@ func (s *scheduler) enrouteResumes() {
 	var list []due
 	s.mu.Lock()
 	for _, e := range s.enroute {
-		if e.told != nil && e.told.resumeFix != "" && !e.handing {
+		// Flying an RA: said once clear of conflict (#1669).
+		if e.told != nil && e.told.resumeFix != "" && !e.handing && !e.tcasRA.Load() {
 			list = append(list, due{e, *e.told})
 		}
 	}

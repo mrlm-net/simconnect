@@ -397,6 +397,9 @@ func (s *scheduler) instruct(in EnrouteInstruction) (traffic.Transmission, error
 	if by := strings.ToLower(strings.TrimSpace(in.By)); !ok || by != "" && staffed.By != by {
 		return traffic.Transmission{}, ErrNotStaffed
 	}
+	if e.tcasRA.Load() {
+		return traffic.Transmission{}, errFlyingRA
+	}
 	r := traffic.Resolution{Callsign: cs, ObjectID: e.objectID}
 	look := instructRestOf
 	switch {
@@ -449,7 +452,7 @@ func (s *scheduler) instruct(in EnrouteInstruction) (traffic.Transmission, error
 		}
 		s.mu.Unlock()
 	} else {
-		if err := s.cc.do(func() error { return s.cc.sim.SetRoute(e.objectID, wps) }); err != nil {
+		if err := s.cc.do(unlessRA(&e.tcasRA, func() error { return s.cc.sim.SetRoute(e.objectID, wps) })); err != nil {
 			return traffic.Transmission{}, fmt.Errorf("world: %s: %w", cs, err)
 		}
 		s.mu.Lock()

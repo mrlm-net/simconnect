@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"math"
 	"strings"
+	"sync/atomic"
 	"time"
 
 	"github.com/mrlm-net/simconnect/pkg/airport"
@@ -88,6 +89,12 @@ type enrouteAC struct {
 	// they gave it a speed (the safety net's change ends on those: #1662).
 	clearedFt    float64
 	speedCleared bool
+	// tcasRA: its crew flies a TCAS RA, as controlled's (#1666): the
+	// conflict watch and the player give it nothing until clear of conflict.
+	tcasRA atomic.Bool
+	// raWait: its handover waits for clear of conflict (#1669), then due
+	// wherever it is by then.
+	raWait bool
 	// corridor: one of the traffic along the user's route (#740), not the
 	// schedule's.
 	corridor   traffic.CorridorKind
@@ -469,7 +476,12 @@ func (s *scheduler) handovers(now time.Time) {
 			lateAt = e.f.STA.Add(handoverAfter) // a real aircraft: STA is its time at the entry (#841)
 		}
 		late := now.After(lateAt) && (!seen || far < handoverLateNM || now.After(e.f.STA))
-		if far < handoverNM || late {
+		if far < handoverNM || late || e.raWait {
+			// Not during an RA: adopted, it would fly its STAR over it.
+			if e.tcasRA.Load() {
+				e.raWait = true
+				continue
+			}
 			// Not onto other traffic at the entry: the handover waits.
 			if who := s.cc.nearAirborne(entry, 0, e.f.Callsign, now); who != "" || s.handingAt(entry) {
 				continue
@@ -495,12 +507,8 @@ func (s *scheduler) handovers(now time.Time) {
 				}
 				return
 			}
-			// The aircraft flies on: the arrival controller adopts it, no
-			// new one at the entry (#643: a jump of 15 km and 11,000 ft).
-			s.handEnroute(e)
 			f := e.f
 			f.Stage = ""
-			s.cc.log.printf("%-6s schedule: at %s, handed to the arrival controller", f.Callsign, e.arrive.route[0].Ident)
 			arrive := *e.arrive
 			// The runway in use changed since it was planned (#776: EZY1205
 			// on 24 after the change to 06): its STAR and approach again,
@@ -515,6 +523,13 @@ func (s *scheduler) handovers(now time.Time) {
 					}
 				}
 			}
+			// The aircraft flies on: the arrival controller adopts it, no
+			// new one at the entry (#643: a jump of 15 km and 11,000 ft). Off
+			// the list only now, planned again: TCAS finds it there till then.
+			if !s.handEnroute(e) {
+				return
+			}
+			s.cc.log.printf("%-6s schedule: at %s, handed to the arrival controller", f.Callsign, e.arrive.route[0].Ident)
 			arrive.adopt = e.objectID
 			if err := s.spawnWith(f, &arrive, e.model); err != nil {
 				s.cc.do(func() error { return s.cc.sim.RemoveObject(e.objectID, reqRemoveEnroute) })
@@ -632,13 +647,25 @@ func (s *scheduler) nearJustCreated(p airport.LatLon, altFt float64) string {
 }
 
 // handEnroute takes an enroute aircraft off the scheduler's list without
-// removing it from the simulator: the arrival controller adopts it.
-func (s *scheduler) handEnroute(e *enrouteAC) {
+// removing it from the simulator: the arrival controller adopts it. False,
+// and nothing done, when it has been taken off the list meanwhile, or flies
+// an RA: it is handed over once clear of conflict (#1669).
+func (s *scheduler) handEnroute(e *enrouteAC) bool {
 	s.mu.Lock()
+	if s.enroute[e.f.Callsign] != e {
+		s.mu.Unlock()
+		return false
+	}
+	if e.tcasRA.Load() {
+		e.handing, e.raWait = false, true
+		s.mu.Unlock()
+		return false
+	}
 	delete(s.enroute, e.f.Callsign)
 	s.mu.Unlock()
 	s.cc.dropOwn(e.objectID)
 	s.cc.world.ForgetOwn(e.objectID)
+	return true
 }
 
 // greatCircleCrossing is an overflight's way across the area on the great

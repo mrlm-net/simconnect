@@ -124,8 +124,7 @@ func (q *sequences) approachDo(icao, callsign, action string, at *airport.LatLon
 		return errors.New("not one of our arrivals")
 	}
 	if it.tcasRA.Load() {
-		// Nothing contrary to an RA the crew flies (FAA JO 7110.65 2-1-28).
-		return errors.New("flying a TCAS RA: no instruction until clear of conflict")
+		return errFlyingRA
 	}
 	// Going around with the tower, not handed back: approach has nothing to
 	// say to it yet (live, CSA1958 told "number 4, reduce speed to 210
@@ -136,6 +135,8 @@ func (q *sequences) approachDo(icao, callsign, action string, at *airport.LatLon
 	if withTower && it.circuit == nil && action != "goaround" && len(it.arr.ProcedureRoute()) > 0 {
 		return errors.New("going around with the tower: approach takes it once handed over")
 	}
+	// send is cc.do, refused if an RA has begun by then (#1669).
+	send := func(f func() error) error { return q.cc.do(unlessRA(&it.tcasRA, f)) }
 	// What it was told, for its card and the map (#443).
 	told, toldAt := "", at
 	defer func() {
@@ -156,7 +157,7 @@ func (q *sequences) approachDo(icao, callsign, action string, at *airport.LatLon
 			}
 		}
 		var set float64
-		if err := q.cc.do(func() (err error) { set, err = it.arr.AssignSpeed(kts); return err }); err != nil {
+		if err := send(func() (err error) { set, err = it.arr.AssignSpeed(kts); return err }); err != nil {
 			return err
 		}
 		if kts > 0 {
@@ -175,7 +176,7 @@ func (q *sequences) approachDo(icao, callsign, action string, at *airport.LatLon
 		if _, _, holding := it.arr.Holding(); holding {
 			return traffic.ErrHolding
 		}
-		if err := q.enterHold(q.cc.clock.Now(), icao, it, e, max(e.Delay, 2*time.Minute)); err != nil {
+		if err := q.enterHold(q.cc.clock.Now(), icao, it, e, max(e.Delay, 2*time.Minute), send); err != nil {
 			return err
 		}
 	case "release":
@@ -184,9 +185,17 @@ func (q *sequences) approachDo(icao, callsign, action string, at *airport.LatLon
 			return traffic.ErrNotHolding
 		}
 		q.mu.Lock()
+		held, was := q.conflictHeld[callsign]
 		delete(q.conflictHeld, callsign) // a controller's hold (holdat) too
 		q.mu.Unlock()
-		q.leaveHold(icao, it, h, e)
+		if err := q.leaveHold(icao, it, h, e, send); errors.Is(err, errFlyingRA) {
+			if was {
+				q.mu.Lock()
+				q.conflictHeld[callsign] = held
+				q.mu.Unlock()
+			}
+			return err
+		}
 		told = "left the hold"
 	case "joinfinal":
 		// Join the final where a point picked on the map lies along it.
@@ -195,7 +204,7 @@ func (q *sequences) approachDo(icao, callsign, action string, at *airport.LatLon
 		}
 		var nm float64
 		var v traffic.Vector
-		if err := q.cc.do(func() (err error) { nm, v, err = it.arr.JoinFinal(*at); return err }); err != nil {
+		if err := send(func() (err error) { nm, v, err = it.arr.JoinFinal(*at); return err }); err != nil {
 			return err
 		}
 		it.say(traffic.Vectored(callsign, v, q.cc.magVar(icao)))
@@ -221,7 +230,7 @@ func (q *sequences) approachDo(icao, callsign, action string, at *airport.LatLon
 		h := traffic.Hold{Ident: name, Fix: fix, InboundTrue: calc.BearingDegrees(pos.Lat, pos.Lon, fix.Lat, fix.Lon)}
 		altFt := math.Max(holdBaseFt, math.Floor(alt/1000)*1000) // its level, not up
 		var entry traffic.HoldEntry
-		if err := q.cc.do(func() (err error) { entry, err = it.arr.EnterHold(h, altFt); return err }); err != nil {
+		if err := send(func() (err error) { entry, err = it.arr.EnterHold(h, altFt); return err }); err != nil {
 			return err
 		}
 		q.mu.Lock()
@@ -232,7 +241,7 @@ func (q *sequences) approachDo(icao, callsign, action string, at *airport.LatLon
 		q.cc.log.printf("%-6s approach: hold at %s, %.0f ft (on the map)", callsign, name, altFt)
 	case "slow":
 		var a traffic.Absorption
-		if err := q.cc.do(func() (err error) {
+		if err := send(func() (err error) {
 			if sp.withinNM > 0 {
 				a, err = it.arr.AbsorbWithin(sp.delay, sp.withinNM)
 				return err
@@ -264,7 +273,7 @@ func (q *sequences) approachDo(icao, callsign, action string, at *airport.LatLon
 			// To a point picked on the map: a fix near it, else a vector.
 			var fix string
 			var v traffic.Vector
-			if err := q.cc.do(func() (err error) { fix, v, err = it.arr.DirectTo(*at); return err }); err != nil {
+			if err := send(func() (err error) { fix, v, err = it.arr.DirectTo(*at); return err }); err != nil {
 				return err
 			}
 			if fix != "" {
@@ -277,7 +286,7 @@ func (q *sequences) approachDo(icao, callsign, action string, at *airport.LatLon
 			q.cc.log.printf("%-6s approach: direct %s (on the map)", callsign, map[bool]string{true: fix, false: "a point, on a vector"}[fix != ""])
 			break
 		}
-		if err := q.cc.do(it.arr.DirectToJoin); err != nil {
+		if err := send(it.arr.DirectToJoin); err != nil {
 			return err
 		}
 		it.say(traffic.DirectToFinal(callsign, q.numberToSay(q.cc.clock.Now(), callsign, e.Number)))
@@ -288,7 +297,7 @@ func (q *sequences) approachDo(icao, callsign, action string, at *airport.LatLon
 		}
 		mv := q.cc.magVar(icao)
 		var v traffic.Vector
-		if err := q.cc.do(func() (err error) { v, err = it.arr.FlyHeading(sp.heading - mv); return err }); err != nil {
+		if err := send(func() (err error) { v, err = it.arr.FlyHeading(sp.heading - mv); return err }); err != nil {
 			return err
 		}
 		it.say(traffic.Vectored(callsign, v, mv))
@@ -315,7 +324,7 @@ func (q *sequences) approachDo(icao, callsign, action string, at *airport.LatLon
 		if sp.expedite && fast == 0 {
 			fast = ft
 		}
-		if err := q.cc.do(func() error { return it.arr.DescendExpedited(alt, ft, fast, gs) }); err != nil {
+		if err := send(func() error { return it.arr.DescendExpedited(alt, ft, fast, gs) }); err != nil {
 			return err
 		}
 		ta := q.cc.taOf(icao)
@@ -329,7 +338,7 @@ func (q *sequences) approachDo(icao, callsign, action string, at *airport.LatLon
 		q.cc.log.printf("%-6s approach: %s (on the map)", callsign, told)
 	case "goaround":
 		// On the connection's goroutine, as every SimConnect call.
-		if err := q.cc.do(func() error { return it.act("goaround", 0) }); err != nil {
+		if err := send(func() error { return it.act("goaround", 0) }); err != nil {
 			return err
 		}
 		it.say(it.goAround(""))

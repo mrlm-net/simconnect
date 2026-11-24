@@ -36,7 +36,8 @@ func (s *scheduler) paceEnroute(now time.Time) {
 	s.mu.Lock()
 	var list []*enrouteAC
 	for _, e := range s.enroute {
-		if e.arrive != nil && !e.handing && e.corridor == "" && len(e.route) > 1 && e.told == nil {
+		// Not over an RA: paced once clear of conflict (#1669).
+		if e.arrive != nil && !e.handing && e.corridor == "" && len(e.route) > 1 && e.told == nil && !e.tcasRA.Load() {
 			list = append(list, e)
 		}
 	}
