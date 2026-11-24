@@ -428,7 +428,10 @@ func (it *controlled) avoidOccupied(occ []airport.Occupied) bool {
 // planAvoidOccupied is avoidOccupied's search (the controller's
 // PlanAvoidOccupied): nil none, else the step putting it in place.
 // A controller over the wire (an actuator's) has no such step: its
-// search runs as before, put in place at once.
+// search runs as before, put in place at once, here, off the director's
+// loop; the step only reports it. Asked on the loop, a call over the link
+// would hold everything else the loop runs while the link is busy.
+// Called off the loop only (reroute, the taxi request).
 func (it *controlled) planAvoidOccupied(occ []airport.Occupied) func() bool {
 	type planner interface {
 		PlanAvoidOccupied([]airport.Occupied) func() bool
@@ -440,7 +443,8 @@ func (it *controlled) planAvoidOccupied(occ []airport.Occupied) func() bool {
 	if p, ok := c.(planner); ok {
 		return p.PlanAvoidOccupied(occ)
 	}
-	return func() bool { return it.avoidOccupied(occ) }
+	ok := it.avoidOccupied(occ)
+	return func() bool { return ok }
 }
 
 // rerouteSaid is ground's new taxi instruction for the route from where the

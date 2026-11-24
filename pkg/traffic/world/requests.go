@@ -291,8 +291,11 @@ func (it *controlled) answer(req string) {
 		// Round the places other aircraft take now, so the clearance names
 		// the route it will taxi.
 		if occ := it.cc.occupiedFor(it); len(occ) > 0 {
+			// The search here, off the director's loop; only putting it in
+			// place on it.
+			apply := it.planAvoidOccupied(occ)
 			it.cc.do(func() error {
-				if it.avoidOccupied(occ) {
+				if apply != nil && apply() {
 					it.mu.Lock()
 					it.setRoute()
 					it.mu.Unlock()
