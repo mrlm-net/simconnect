@@ -5,6 +5,8 @@ import (
 	"fmt"
 	"math"
 
+	"github.com/mrlm-net/simconnect/pkg/airport"
+	"github.com/mrlm-net/simconnect/pkg/calc"
 	"github.com/mrlm-net/simconnect/pkg/nav"
 	"github.com/mrlm-net/simconnect/pkg/traffic"
 )
@@ -50,6 +52,22 @@ func midwayAlong(fp *nav.FlightPlan, leftNM float64) (float64, bool) {
 		iaf = math.Max(entry, fp.DistanceNM-midwayFinalNM)
 	}
 	return math.Min(iaf, math.Max(entry, fp.DistanceNM-leftNM)), true
+}
+
+// midwayTopFt is the highest an arrival at pos joining its STAR and
+// approach pts appears (field: the airport's elevation, feet): a 3° path
+// (midwayFtPerNM) for its way in from there, to the first point and
+// along the rest, the way the arrival controller flies it.
+func midwayTopFt(field float64, pos airport.LatLon, pts []airport.NavPoint) float64 {
+	nm, at := 0.0, pos
+	for _, p := range pts {
+		if p.Position == (airport.LatLon{}) {
+			continue // a leg with no fix of its own
+		}
+		nm += calc.HaversineNM(at.Lat, at.Lon, p.Position.Lat, p.Position.Lon)
+		at = p.Position
+	}
+	return field + nm*midwayFtPerNM
 }
 
 // spawnMidway puts arrival f on its STAR where it would be by now: the

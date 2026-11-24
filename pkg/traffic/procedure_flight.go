@@ -491,31 +491,33 @@ func (c *ArrivalController) onProcedureFrame(m arrivalMonitor) {
 		c.emit(nil, c.last.MissedJoin != "" && c.joinMinM < 0)
 		return
 	}
-	c.last.MissedJoin, c.joinMinM, c.last.Unstable, c.last.CrewGoAround, c.last.RunwayTaken = "", 0, false, false, false
-	c.flyingProc, c.circuit = false, false
 	start := math.Max(c.proc.minJoin(), math.Min(along, c.proc.JoinMeters+JoinCaptureMeters))
+	above := c.aboveRunwayFt(m)
+	// Too high to make the gate: not joined to go round from it, but given
+	// the track miles to come down first (joinHighFt, extendForHeight).
+	if c.heightExtends < maxHeightExtends {
+		if high := c.joinHighFt(start, above); high > 0 {
+			err := c.extendForHeight(m, along, above, high)
+			if err == nil {
+				c.emit(nil, true)
+				return
+			}
+			c.note("extending for height", err)
+		}
+	}
+	c.last.MissedJoin, c.joinMinM, c.last.Unstable, c.last.CrewGoAround, c.last.RunwayTaken = "", 0, false, false, false
+	c.flyingProc, c.circuit, c.heightExtends = false, false, 0
 	if err := c.startInjectedApproach(start); err != nil {
 		c.fail(err)
 		return
 	}
 	p := c.approach.Pose()
-	// Heights above the runway on both sides: MSL (ground under it plus its
-	// height above it) less the runway's elevation.
-	// (From its MSL altitude: the ground the injector last saw under it may
-	// be from elsewhere while MSFS AI flew it — live, a 341 ft step at the
-	// takeover.)
-	above := m.AGL
-	if m.AltFt != 0 {
-		above = m.AltFt - c.plan.Runway.Altitude/0.3048
-	} else if g, ok := c.inj.GroundFt(c.objectID); ok {
-		above = g + m.AGL - c.plan.Runway.Altitude/0.3048
-	}
 	c.blend = joinBlend{dLat: pos.Lat - p.Position.Lat, dLon: pos.Lon - p.Position.Lon, dFt: above - p.HeightFt,
 		dHdg: headingDiff(p.Heading, m.Heading), left: JoinBlendSeconds,
 		attitudeFresh: true}
 	// The height at an airliner's rate at most (#1681): over JoinBlendSeconds
 	// for every arrival MSFS AI brings in near its path.
-	path := math.Max(math.Abs(p.VerticalFpm), ProcedureDescentFtPerNm*p.GroundSpeedKts/60)
+	path := joinPathFpm(p)
 	c.blend.ftFor = joinBlendFtSeconds(c.blend.dFt, path)
 	// One that lands from it anyway (SetLandsUnstable) fades it by
 	// unstableTouchdownFt from here: one fade over the whole final, not a

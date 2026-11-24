@@ -98,6 +98,9 @@ func joinFlightAt(t *testing.T, aboveFt, joinNM float64, lands bool) joinRun {
 		t.Fatal(err)
 	}
 	ctl.SetLandsUnstable(lands)
+	// Its track miles given already (extendForHeight): one too high joins
+	// as it is, judged at the gate.
+	ctl.heightExtends = maxHeightExtends
 	go func() {
 		for range ctl.Events() {
 		}
