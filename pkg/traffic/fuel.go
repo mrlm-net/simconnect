@@ -265,6 +265,11 @@ func (f *SimObjectFuelTruck) Update(pose GroundPose, leave bool, dt float64) err
 			if route, err := homeWay(f.Layout, ahead, axis, f.depot, pose, f.prof); err == nil {
 				pts, f.homing = append(pts[:len(pts)-1:len(pts)-1], route...), true
 			}
+			// Or round at the wing and out past the other end, where its
+			// way home runs from there: the shorter, turns included (#1630).
+			if turned, clear, ok := f.leaveTurned(pose, p, h, axis); ok && (!f.homing || wayCost(turned, noHeading) < wayCost(pts, noHeading)) {
+				pts, f.clearDist, f.homing = turned, clear, true
+			}
 		}
 		if !f.homing {
 			pts = append(pts, offsetHeading(ahead, axis+FuelDriveOffTurnDeg, FuelDriveOffMeters))
@@ -323,12 +328,47 @@ func (f *SimObjectFuelTruck) turnBack(pose GroundPose) error {
 // (beyond its half span) is in the way until it is round.
 const fuelNearMeters = 60.0
 
+// leaveTurned is the way home from the wing, p ahead of the truck facing
+// h along axis, round in a loop away from the aircraft at pose and on
+// along the fuselage past its other end (#1630); clear is how far it drives
+// to be past that end. False where the loop is not clear of the aircraft
+// and the other stands, or no way home runs from there.
+func (f *SimObjectFuelTruck) leaveTurned(pose GroundPose, p airport.LatLon, h, axis float64) ([]airport.LatLon, float64, bool) {
+	frame := aircraftFrame{nose: NoseGear(pose.Position, pose.Heading, f.prof), hdg: pose.Heading, prof: f.prof}
+	a := offsetHeading(p, h, FuelTurnMeters)
+	side := h + 90
+	if localDist(offsetHeading(a, h-90, FuelTurnWidthMeters), pose.Position) > localDist(offsetHeading(a, side, FuelTurnWidthMeters), pose.Position) {
+		side = h - 90
+	}
+	b := offsetHeading(a, side, FuelTurnWidthMeters)
+	c := offsetHeading(b, h+180, FuelTurnMeters)
+	back := normDeg(axis + 180)
+	clear := f.clearAlong(pose, c, back)
+	end := offsetHeading(c, back, clear)
+	pts := []airport.LatLon{p, a, b, c, end}
+	for i := 1; i < len(pts); i++ {
+		if frame.inside(pts[i]) || !frame.clear(pts[i-1], pts[i]) || f.Layout.VehicleAcrossStand(pose.Position, pts[i-1], pts[i], 0) {
+			return nil, 0, false
+		}
+	}
+	route, err := homeWay(f.Layout, end, back, f.depot, pose, f.prof)
+	if err != nil {
+		return nil, 0, false
+	}
+	return append(pts[:len(pts)-1:len(pts)-1], route...), 2*FuelTurnMeters + FuelTurnWidthMeters + clear, true
+}
+
 // clearOf is how far a truck at p, facing its heading along the aircraft
 // at pose, drives on to be FuelLeaveAheadMeters past the aircraft's nose or
 // tail.
 func (f *SimObjectFuelTruck) clearOf(pose GroundPose, p airport.LatLon) float64 {
+	return f.clearAlong(pose, p, f.pose.Heading)
+}
+
+// clearAlong is clearOf for a truck at p facing h.
+func (f *SimObjectFuelTruck) clearAlong(pose GroundPose, p airport.LatLon, h float64) float64 {
 	along := localDist(pose.Position, p) * math.Cos((localBearing(pose.Position, p)-pose.Heading)*math.Pi/180)
-	if math.Abs(headingDiff(f.pose.Heading, pose.Heading)) < 90 {
+	if math.Abs(headingDiff(h, pose.Heading)) < 90 {
 		nose := f.prof.WheelbaseMeters - f.prof.RefAheadMeters + fuelNoseMeters
 		return math.Max(FuelLeaveAheadMeters, nose-along+FuelLeaveAheadMeters)
 	}

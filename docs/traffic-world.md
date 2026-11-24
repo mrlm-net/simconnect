@@ -149,7 +149,10 @@ Until clear of conflict also:
 - an en route arrival isn't paced behind its leader, told to resume own navigation or handed to approach (handed over once clear);
 - a departure gets no climb, restriction or direct from departure radar (the climb comes once clear, a crew's request for a direct is "unable"), and the player's climb, heading or speed is refused the same way;
 - assist suggests nothing to it;
-- an instruction given just before the RA is refused if it hasn't reached the simulator when the RA is flown.
+- an instruction given just before the RA is refused if it hasn't reached the simulator when the RA is flown;
+- an arrival isn't levelled for a conflict, nor sped, slowed, vectored, held, shortcut or diverted by its sequence, and one below it in a hold leaves only once it can step down;
+- a call decided before the crew reported the RA is said once clear;
+- an arrival handed from the en-route list to its arrival controller stays ours for TCAS in between, its RA flown once the controller has it.
 
 On the map and over the API:
 - `ControlView.tcas` holds the advisory (`TA`/`RA`), the intruder, the aural (Table 4, Version 7.1) and the sense. The map shows a TA in amber and an RA in red with ↑ or ↓.

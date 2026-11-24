@@ -9,8 +9,9 @@ import (
 
 // midExitGraph is the builder sample's field (#1631): runway 09/27 of
 // 2500 m, a right-angle exit C at mid-length, B and D at the ends leaving
-// back by back metres over their 75 m (10: about 98°, no exit for an
-// aircraft landing towards them), a parallel taxiway A, two stands.
+// back by back metres over their 75 m (35: about 115°, a turnoff at taxi
+// speed for an aircraft landing towards them, #1674; 100: about 143°,
+// sharper than MaxEntryAngle, none), a parallel taxiway A, two stands.
 func midExitGraph(t *testing.T, back float32) *airport.Graph {
 	t.Helper()
 	var pts []airport.RawTaxiPoint
@@ -86,7 +87,7 @@ func TestEndTurnPlannedUpFront(t *testing.T) {
 		o := ArrivalOptions{TouchdownKts: ap.Approach.TouchdownKts, BrakeDecel: ro.BrakeDecel}
 		reach := exitReach{o.TouchdownKts, o.BrakeDecel}
 
-		g := midExitGraph(t, 10)
+		g := midExitGraph(t, 100)
 		p, err := PlanArrival(g, "27", 0, o)
 		if err != nil {
 			t.Fatalf("%s: %v", model, err)

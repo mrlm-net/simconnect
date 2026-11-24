@@ -88,6 +88,33 @@ func endTurnMeters(rwy airport.Runway, fromFar float64) float64 {
 	return 2*math.Max(0, fromFar-(a0+2*r)) + (math.Pi+0.5)*r
 }
 
+// endTurnoffInReach replans the arrival, its nose gear at nose rolling at
+// kts too fast for its exit, onto a turnoff leading back in the runway's
+// last endTurnoffM that it slows to at its ExitSpeed (endTurnoff, #1674)
+// and whose way on reaches the stand without a U-turn, one the aircraft
+// fits, bending back up to MaxEntryAngle (exitTightTurning). False none,
+// the plan as it was. c.mu held.
+func (c *ArrivalController) endTurnoffInReach(kts float64, nose airport.LatLon) bool {
+	g := c.req.Graph
+	turnoffs, err := g.RunwayTurnoffs(c.plan.End.Name, airport.MaxEntryAngle)
+	if err != nil {
+		return false
+	}
+	length := c.plan.Runway.Length
+	plan, track, exitAlong, vacateAlong := c.plan, c.track, c.exitAlong, c.vacateAlong
+	for _, x := range turnoffs {
+		if !leadsBack(x) || x.Along < length-endTurnoffM || c.exitTightTurning(x, airport.MaxEntryAngle) != "" {
+			continue
+		}
+		if c.planExit(x, false, false) == nil && !g.TurnsBack(c.plan.Route) && c.exitTurnReach(nose) >= kts*ktsToMS {
+			c.seq.add(c.now(), "too fast for "+plan.Exit.Taxiway+": rolling on to "+x.Taxiway+" at the end", 0, kts)
+			return true
+		}
+		c.plan, c.track, c.exitAlong, c.vacateAlong = plan, track, exitAlong, vacateAlong
+	}
+	return false
+}
+
 // endTurn replans the arrival, its nose gear at nose rolling at kts, to
 // turn round at the far end when its exit is out of reach (above); it
 // returns the turn's points, from where it leaves the centreline to where
@@ -122,6 +149,11 @@ func (c *ArrivalController) endTurn(kts float64, nose airport.LatLon) []airport.
 		return nil
 	}
 	req := c.req
+	// A turnoff at the far end it still slows to at taxi speed, as planned
+	// up front (#1674); not in place of an exit named for it (#1096).
+	if !c.exitNamed && req.Exit == nil && c.endTurnoffInReach(kts, nose) {
+		return nil
+	}
 	for _, x := range endTurnExits(g, rwy, land) {
 		plan, err := PlanArrival(g, opposite.Name, req.Parking, ArrivalOptions{
 			SpawnNm: c.plan.SpawnNm, Exit: &x, Route: req.Options, GroundAGL: req.GroundAGL, NoseOffset: req.NoseOffset, StandSide: req.StandSide,

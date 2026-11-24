@@ -2,6 +2,7 @@ package airport
 
 import (
 	"container/heap"
+	"errors"
 	"math"
 )
 
@@ -32,6 +33,16 @@ const (
 // It joins the graph where the way, turns included, is shortest: never
 // turning round on the spot where a road ahead will do.
 func (l *Layout) VehicleRoutePose(a LatLon, aHdg float64, b LatLon, bHdg float64) ([]LatLon, error) {
+	r, err := l.vehicleRoutePose(a, aHdg, b, bHdg, false)
+	if errors.Is(err, ErrNoVehicleRoute) {
+		r, err = l.vehicleRoutePose(a, aHdg, b, bHdg, true)
+	}
+	return r, err
+}
+
+// vehicleRoutePose is VehicleRoutePose, through another stand (in by one
+// lead-in, out by another) only with throughStands (#1630).
+func (l *Layout) vehicleRoutePose(a LatLon, aHdg float64, b LatLon, bHdg float64, throughStands bool) ([]LatLon, error) {
 	g := l.vehicleGraph()
 	from, to := g.joins(a), g.joins(b)
 	if len(from) == 0 || len(to) == 0 {
@@ -81,7 +92,7 @@ func (l *Layout) VehicleRoutePose(a LatLon, aHdg float64, b LatLon, bHdg float64
 	}
 	for q.Len() > 0 {
 		it := heap.Pop(q).(vehicleItem)
-		if it.d > dist[it.n] {
+		if it.d > dist[it.n] || !throughStands && g.stand(it.n) {
 			continue
 		}
 		for _, e := range g.adj[it.n] {

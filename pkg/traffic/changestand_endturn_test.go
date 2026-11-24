@@ -16,7 +16,7 @@ func endTurnArrival(t *testing.T, model string) (*ArrivalController, *eventClien
 	ec := &eventClient{}
 	inj := NewInjector(ec)
 	ctl := NewArrivalController(NewFleet(ec), ArrivalWithInjector(inj))
-	if err := ctl.Start(ArrivalRequest{Graph: midExitGraph(t, 10), Runway: "27", Parking: 0, Model: model, Tail: "TEX1",
+	if err := ctl.Start(ArrivalRequest{Graph: midExitGraph(t, 100), Runway: "27", Parking: 0, Model: model, Tail: "TEX1",
 		InjectApproach: true, RollThroughChance: -1, AfterLandingDwell: time.Second}); err != nil {
 		t.Fatal(err)
 	}

@@ -296,6 +296,7 @@ type ArrivalController struct {
 	lastVS         float64           // vertical speed at the last airborne report
 	warned         bool
 	vacateAlong    float64 // route distance of the vacate stop
+	exitNamed      bool    // the exit named (VacateAt): no turnoff at the end in its place (#1674)
 	vacateStopSent bool
 	clearAt        time.Time
 	cleared        bool
@@ -1271,11 +1272,12 @@ func (c *ArrivalController) vacateAt(x airport.RunwayExit) error {
 	}
 	// Another one it doesn't make before the end: to the end and back to it
 	// (#1658). On the roll canMakeExit has found it made.
-	endTurn := !rolling && c.plan.EndTurn &&
+	endTurn := !rolling && (c.plan.EndTurn || c.plan.EndTurnoff) &&
 		!exitReach{approachProfileOf(req).TouchdownKts, req.Rollout.BrakeDecel}.makes(g, c.plan.End.Name, x)
 	if err := c.planExit(x, true, endTurn); err != nil {
 		return err
 	}
+	c.exitNamed = true
 	if rolling && c.mover != nil {
 		pose := c.mover.Pose()
 		return c.takeover(arrivalMonitor{Latitude: pose.Position.Lat, Longitude: pose.Position.Lon, Heading: pose.Heading, GroundKts: pose.GroundSpeedKts}, pose.Position, true)
@@ -1290,12 +1292,19 @@ func (c *ArrivalController) vacateAt(x airport.RunwayExit) error {
 // fits: a stand reached tight from every exit (a narrow apron) is tight
 // whichever exit is named, so it refuses none of them.
 func (c *ArrivalController) exitTight(x airport.RunwayExit) string {
+	return c.exitTightTurning(x, airport.MaxExitAngle+airport.ExitAngleTolerance)
+}
+
+// exitTightTurning is exitTight with x bending back up to maxTurn degrees
+// (airport.Graph.ExitTightTurning): a turnoff at the far end, taken at taxi
+// speed (#1674). c.mu held.
+func (c *ArrivalController) exitTightTurning(x airport.RunwayExit, maxTurn float64) string {
 	g, req := c.req.Graph, c.req
 	opts := req.Options
 	if half := c.profile().SpanMeters / 2; half > opts.HalfSpan {
 		opts.HalfSpan = half
 	}
-	why := g.ExitTight(x, c.plan.End.Heading, opts)
+	why := g.ExitTightTurning(x, c.plan.End.Heading, maxTurn, opts)
 	if why == "" && x.Node != c.plan.Exit.Node {
 		if r, err := g.RouteFromRunway(x, req.Parking, opts); err == nil && r.Tight {
 			if cur, err := g.RouteFromRunway(c.plan.Exit, req.Parking, opts); err != nil || !cur.Tight {
@@ -1353,6 +1362,10 @@ func (c *ArrivalController) exitTurnReach(nose airport.LatLon) float64 {
 	exitKts := ro.ExitKts
 	if c.plan.Exit.HighSpeed {
 		exitKts = ro.HighSpeedExitKts
+	}
+	if c.plan.EndTurnoff {
+		// A turnoff leading back at the far end: at taxi speed (#1674).
+		exitKts = math.Min(exitKts, ExitSpeed(c.plan.Exit))
 	}
 	path.limitTurnOff(c.plan.End.Heading, 0, path.Length(), ro.ExitKts)
 	// The exit speed by the exit, braking at BrakeDecel to it from here

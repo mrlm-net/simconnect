@@ -121,8 +121,12 @@ func (x exitReach) runwayCostPerM() float64 {
 }
 
 // ExitSpeed is the speed to reach a runway exit at: ExitHighSpeedKts for a
-// high-speed exit, ExitSpeedKts otherwise.
+// high-speed exit, ExitSpeedKts otherwise; SharpTurnSpeedKts for a turnoff
+// leading back at the far end (endTurnoff, leadsBack).
 func ExitSpeed(e airport.RunwayExit) float64 {
+	if leadsBack(e) {
+		return SharpTurnSpeedKts
+	}
 	if e.HighSpeed {
 		return ExitHighSpeedKts
 	}
@@ -530,6 +534,10 @@ type ArrivalPlan struct {
 	// is its way on the runway past Exit and back.
 	EndTurn       bool
 	EndTurnMeters float64
+	// EndTurnoff: no exit ahead is in reach of the touchdown either, so it
+	// rolls to the far end at taxi speed and leaves by Exit, a turnoff
+	// there leading back (endTurnoff, #1674), with no backtrack.
+	EndTurnoff bool
 }
 
 // ClearAt is the Route point where the aircraft is off the landing
@@ -600,6 +608,8 @@ func PlanArrival(g *airport.Graph, runwayEnd string, parking int, o ArrivalOptio
 		route *airport.Route
 		err   error
 		turnM = -1.0 // the end turn's runway meters (endTurnPlan); -1 none
+		// turnoff: by a turnoff leading back at the far end (endTurnoff).
+		turnoff bool
 	)
 	if exit != nil {
 		x = *exit
@@ -617,6 +627,8 @@ func PlanArrival(g *airport.Graph, runwayEnd string, parking int, o ArrivalOptio
 				}
 			}
 		}
+		// Planned again onto a turnoff leading back at the end: still so.
+		turnoff = turnM < 0 && leadsBack(x)
 	} else {
 		// Never an exit the type only makes too fast (#1631: the last one
 		// ahead, mid-length, taken at 100 kt): out of its reach, the roll
@@ -624,7 +636,12 @@ func PlanArrival(g *airport.Graph, runwayEnd string, parking int, o ArrivalOptio
 		reach := exitReach{o.TouchdownKts, o.BrakeDecel}
 		x, route, err = bestExit(g, runwayEnd, parking, opts, reach)
 		if err != nil || !reach.makes(g, runwayEnd, x) {
-			if tx, tr, m, ok := endTurnPlan(g, runwayEnd, parking, o, reach); ok {
+			// A crew rolling out to the end at taxi speed takes the taxiway
+			// there, whatever its angle (#1674); round on the runway and back
+			// only when none reaches the stand.
+			if tx, tr, ok := endTurnoff(g, runwayEnd, parking, opts, reach); ok {
+				x, route, err, turnoff = tx, tr, nil, true
+			} else if tx, tr, m, ok := endTurnPlan(g, runwayEnd, parking, o, reach); ok {
 				x, route, err, turnM = tx, tr, nil, m
 				x.Along = rwy.Length - tx.Along
 			}
@@ -638,7 +655,7 @@ func PlanArrival(g *airport.Graph, runwayEnd string, parking int, o ArrivalOptio
 	t := end.LandingThreshold()
 	back := math.Mod(end.Heading+180, 360)
 
-	p := &ArrivalPlan{Runway: rwy, End: end, Exit: x, Route: route, SpawnNm: spawnNm}
+	p := &ArrivalPlan{Runway: rwy, End: end, Exit: x, Route: route, SpawnNm: spawnNm, EndTurnoff: turnoff}
 	sLat, sLon := calc.DisplaceByHeading(t.Lat, t.Lon, back, spawnNm*1852)
 	p.Spawn = types.SIMCONNECT_DATA_INITPOSITION{
 		Latitude: sLat, Longitude: sLon, Altitude: elev + GlidePathFtPerNm*spawnNm,
@@ -710,6 +727,52 @@ func PlanArrival(g *airport.Graph, runwayEnd string, parking int, o ArrivalOptio
 
 // knot is one knot in meters per second.
 const knot = 1852.0 / 3600
+
+// endTurnoffM: a turnoff this far at most before the runway's far end is
+// one an arrival rolling out to the end at taxi speed takes, whatever its
+// angle up to MaxEntryAngle (#1674).
+const endTurnoffM = 400.0
+
+// leadsBack: x bends back sharper than MaxExitAngle, beyond the mapping
+// noise of a right-angle stub (airport.ExitAngleTolerance, #1686: one at
+// 92° is the 90° exit it is, taken as one).
+func leadsBack(x airport.RunwayExit) bool {
+	return x.Angle > airport.MaxExitAngle+airport.ExitAngleTolerance
+}
+
+// endTurnoff is PlanArrival's plan for an arrival on runwayEnd with no exit
+// ahead in its reach (#1674): the cheapest turnoff in the last endTurnoffM
+// that leads back sharper than MaxExitAngle (the exits up to it were
+// bestExit's), reached braking firmly at its ExitSpeed, whose way on
+// reaches the stand without a U-turn. False none.
+func endTurnoff(g *airport.Graph, runwayEnd string, parking int, opts airport.RouteOptions, reach exitReach) (airport.RunwayExit, *airport.Route, bool) {
+	rwy, _, ok := g.Layout.RunwayEnd(runwayEnd)
+	if !ok {
+		return airport.RunwayExit{}, nil, false
+	}
+	turnoffs, err := g.RunwayTurnoffs(runwayEnd, airport.MaxEntryAngle)
+	if err != nil {
+		return airport.RunwayExit{}, nil, false
+	}
+	var (
+		best      airport.RunwayExit
+		bestRoute *airport.Route
+		bestCost  = math.Inf(1)
+	)
+	for _, x := range turnoffs {
+		if !leadsBack(x) || x.Along < rwy.Length-endTurnoffM || !reach.makes(g, runwayEnd, x) {
+			continue
+		}
+		r, err := g.RouteFromRunway(x, parking, opts)
+		if err != nil || g.TurnsBack(r) {
+			continue
+		}
+		if c := exitCost(x, r, reach.runwayCostPerM()); c < bestCost {
+			best, bestRoute, bestCost = x, r, c
+		}
+	}
+	return best, bestRoute, bestRoute != nil
+}
 
 // Stopping clear of the runway short of a junction, not on it (live: an
 // arrival stopped where its exit met the parallel, blocking both).

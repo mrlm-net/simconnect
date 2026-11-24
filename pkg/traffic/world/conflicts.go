@@ -704,6 +704,9 @@ func (w *conflictWatch) resolveArrivals(now time.Time, c traffic.Conflict) {
 	if trailer == nil || !w.mayAct(trailer.it) {
 		return // the player's (#1096): theirs to space, unless the safety net's due
 	}
+	if trailer.it.tcasRA.Load() {
+		return // flying a TCAS RA: nothing until clear of conflict (#1672)
+	}
 	cs, oth := trailer.it.Tail, other(c, trailer.it.Tail)
 	w.mu.Lock()
 	// Levelled for this pair: one for an earlier conflict does not count

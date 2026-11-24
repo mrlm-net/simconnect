@@ -7,6 +7,17 @@ This project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 ---
 
+## [0.193.0] - 2026-11-24
+
+### Fixed
+
+- Traffic: a fuel truck leaving the wing takes the end of the aircraft its way home runs from: round in a loop off the aircraft and back past the tail when the road lies behind, instead of on past the nose and back along the whole fuselage (#1630).
+- Airport: a vehicle way no longer runs through another stand (in by one lead-in, out by another) while any other way exists, however much longer; only where there is none does it still go through, as before (#1630).
+- An arrival flying a TCAS RA is no longer levelled by the conflict watch, nor slowed, vectored, held, shortcut, released or diverted by its sequence; one below it in a hold waits to leave until it can step down (#1672).
+- A controller's call decided before the crew reported an RA waits until clear of conflict instead of being said over it (#1672).
+- An arrival handed from the en-route list to its arrival controller stays ours for TCAS in between; an RA that sounds then is flown once the controller has it (#1672).
+- Traffic: an arrival with no exit ahead in its reach takes a taxiway at the runway's far end that leads back, at taxi speed (up to the 135° a departure enters by), instead of turning round on the runway and backtracking to an exit behind it (#1674). The same goes on the roll: an arrival too fast for its exit goes on to such a taxiway when it can slow to taxi speed for it, before turning round at the end. It turns round and backtracks only when no such taxiway reaches its stand. An exit the player names instead is kept, by the roll to the end and back where it can't be made (#1096).
+
 ## [0.192.0] - 2026-11-24
 
 ### Added

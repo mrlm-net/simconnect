@@ -33,7 +33,7 @@ func (c *splitClient) ClearDataDefinition(uint32) error { return nil }
 // midExitField is traffic's midExitGraph (#1631): a 2500 m 09/27, landing
 // 27 nothing in reach but the roll to the end and back, to C at mid-length
 // or to D at the far end, which leans the way it comes back so that it is
-// one.
+// one, sharper than a turnoff an arrival rolling to the end takes (#1674).
 func midExitField(t *testing.T) *airport.Graph {
 	t.Helper()
 	var pts []airport.RawTaxiPoint
@@ -59,7 +59,7 @@ func midExitField(t *testing.T) *airport.Graph {
 		}
 		var hx float32
 		if x != 0 {
-			hx = x - float32(math.Copysign(10, float64(x)))
+			hx = x - float32(math.Copysign(100, float64(x)))
 		}
 		if x == 1250 {
 			hx = x + 10

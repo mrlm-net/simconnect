@@ -93,6 +93,13 @@ func (g *Graph) RunwayExits(runwayEnd string) ([]RunwayExit, error) {
 	return g.turnoffs(runwayEnd, MaxExitAngle+ExitAngleTolerance)
 }
 
+// RunwayTurnoffs are RunwayExits turning up to maxAngle: with more than
+// MaxExitAngle, the ways off a crew takes only at taxi speed, as a
+// departure enters by them (#1674: an end taxiway leading back).
+func (g *Graph) RunwayTurnoffs(runwayEnd string, maxAngle float64) ([]RunwayExit, error) {
+	return g.turnoffs(runwayEnd, maxAngle)
+}
+
 // turnoffs are the ways off the runway for aircraft rolling along
 // runwayEnd, turning at most maxAngle.
 func (g *Graph) turnoffs(runwayEnd string, maxAngle float64) ([]RunwayExit, error) {
@@ -238,6 +245,13 @@ func (g *Graph) RouteFromRunway(exit RunwayExit, parking int, opts RouteOptions)
 // sharper than MaxExitAngle and its ExitAngleTolerance (Angle is measured to
 // its far end, which hides a hook on the way there).
 func (g *Graph) ExitTight(x RunwayExit, runwayHeading float64, opts RouteOptions) string {
+	return g.ExitTightTurning(x, runwayHeading, MaxExitAngle+ExitAngleTolerance, opts)
+}
+
+// ExitTightTurning is ExitTight with the exit bending back up to maxTurn
+// degrees: a turnoff at the runway's far end, taken at taxi speed, may
+// lead back up to MaxEntryAngle (#1674).
+func (g *Graph) ExitTightTurning(x RunwayExit, runwayHeading, maxTurn float64, opts RouteOptions) string {
 	if opts.TaxiwayMaxSpan == nil {
 		opts.TaxiwayMaxSpan = KnownTaxiwayMaxSpan[g.Layout.ICAO]
 	}
@@ -255,7 +269,7 @@ func (g *Graph) ExitTight(x RunwayExit, runwayHeading float64, opts RouteOptions
 			continue
 		}
 		brg := math.Atan2(bx-ax, bz-az) * 180 / math.Pi
-		if turn := math.Abs(math.Mod(brg-hdg+540, 360) - 180); turn > MaxExitAngle+ExitAngleTolerance {
+		if turn := math.Abs(math.Mod(brg-hdg+540, 360) - 180); turn > maxTurn {
 			return "the turn is too sharp"
 		}
 		hdg = brg

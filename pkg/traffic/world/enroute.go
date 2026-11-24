@@ -532,6 +532,7 @@ func (s *scheduler) handovers(now time.Time) {
 			s.cc.log.printf("%-6s schedule: at %s, handed to the arrival controller", f.Callsign, e.arrive.route[0].Ident)
 			arrive.adopt = e.objectID
 			if err := s.spawnWith(f, &arrive, e.model); err != nil {
+				s.cc.world.ForgetOwn(e.objectID)
 				s.cc.do(func() error { return s.cc.sim.RemoveObject(e.objectID, reqRemoveEnroute) })
 				s.cc.log.printf("%-6s schedule: handover failed: %v", f.Callsign, err)
 				s.mgr.Failed(f.Callsign, err, s.cc.clock.Now())
@@ -664,7 +665,9 @@ func (s *scheduler) handEnroute(e *enrouteAC) bool {
 	delete(s.enroute, e.f.Callsign)
 	s.mu.Unlock()
 	s.cc.dropOwn(e.objectID)
-	s.cc.world.ForgetOwn(e.objectID)
+	// Still ours in the picture until its arrival controller has it: TCAS
+	// keeps watching it meanwhile (#1672).
+	s.cc.world.SetOwn(e.objectID, traffic.PhaseArriving, e.f.Airport)
 	return true
 }
 
