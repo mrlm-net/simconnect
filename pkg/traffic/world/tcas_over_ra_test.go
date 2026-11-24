@@ -104,22 +104,36 @@ func depBed(t *testing.T) (*meetingBed, *raDep, *controlled) {
 
 // raBegins has the TCAS watch give KLM221 an RA; respond has the crew fly it.
 func raBegins(b *meetingBed) (tw *tcasWatch, respond func()) {
+	return raBeginsAt(b, b.now)
+}
+
+// raBeginsAt is raBegins with the RA begun at at.
+func raBeginsAt(b *meetingBed, at time.Time) (tw *tcasWatch, respond func()) {
 	tw = newTCASWatch(b.s)
 	me, near := b.air[0], b.air[1]
 	lat, lon := calc.DisplaceByHeading(me.Position.Lat, me.Position.Lon, me.Heading, 3*1852)
 	near.Position.Lat, near.Position.Lon, near.Ours = lat, lon, false
 	air := []traffic.TrackedAircraft{me, near}
-	tw.tick(b.now, air)
+	tw.tick(at, air)
 	return tw, func() {
-		tw.tick(b.now.Add(time.Duration(traffic.TCASResponseDelaySec*float64(time.Second))), air)
+		tw.tick(at.Add(raResponseDelay), air)
 	}
 }
+
+// raResponseDelay is how long the crew takes to fly an RA.
+const raResponseDelay = time.Duration(traffic.TCASResponseDelaySec * float64(time.Second))
 
 // depRA is depBed with the RA flown.
 func depRA(t *testing.T) (*meetingBed, *raDep, *controlled, *tcasWatch) {
 	t.Helper()
+	return depRAFrom(t, 0)
+}
+
+// depRAFrom is depRA with the RA begun back before the bed's now.
+func depRAFrom(t *testing.T, back time.Duration) (*meetingBed, *raDep, *controlled, *tcasWatch) {
+	t.Helper()
 	b, d, it := depBed(t)
-	tw, respond := raBegins(b)
+	tw, respond := raBeginsAt(b, b.now.Add(-back))
 	respond()
 	if got := d.list(); !it.tcasRA.Load() || !slices.Equal(got, []string{"route"}) {
 		t.Fatalf("given %v: the bed has no RA flown", got)
@@ -214,9 +228,12 @@ func TestOverRADepartureRestriction(t *testing.T) {
 	}
 }
 
-// 2. Departure radar identifies it, and clears the climb once clear.
+// 2. Departure radar identifies it, and clears the climb once clear. The
+// RA is flown before the hand-over, as the World's clock reads: a call
+// decided before the RA is flown waits until clear of conflict (#1672),
+// and the bed's RA times run ahead of that clock.
 func TestOverRADepartureIdentified(t *testing.T) {
-	b, d, it, tw := depRA(t)
+	b, d, it, tw := depRAFrom(t, raResponseDelay)
 	it.atc, it.identified = traffic.PosTower, false
 	it.view.ATC = string(traffic.PosTower)
 	it.mu.Lock() // as update calls it

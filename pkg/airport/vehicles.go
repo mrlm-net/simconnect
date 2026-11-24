@@ -31,8 +31,9 @@ const (
 	// by the taxiway the nearest node may be on.
 	VehicleRoadReachM = 150.0
 	// vehicleParkingCost: a stand's lead-in (PARKING) costs this many
-	// times an apron's: a last resort, down to where an aircraft may stand
-	// (#1630).
+	// times an apron's, down to where an aircraft may stand. A way runs
+	// through another stand (in by one lead-in, out by another) only when
+	// there is no other way, as it joins at none (#1630).
 	vehicleParkingCost = 4.0
 )
 
@@ -160,6 +161,12 @@ func (g *vehicleGraph) joinable(i int) bool {
 	return i < g.np || g.depot[i-g.np]
 }
 
+// stand reports whether node i is a stand's parking spot (where an
+// aircraft may stand), not a vehicle depot.
+func (g *vehicleGraph) stand(i int) bool {
+	return !g.joinable(i)
+}
+
 // join is end, or with atNode the nearest node.
 func (g *vehicleGraph) join(p LatLon, atNode bool) (vehicleEnd, bool) {
 	if !atNode {
@@ -212,6 +219,16 @@ func (l *Layout) VehicleRoute(a, b LatLon) ([]LatLon, error) {
 // exit): it joins the graph at its nearest node, not straight across to
 // the nearest road, which may be across the grass (#1597).
 func (l *Layout) VehicleRouteJoin(a, b LatLon, aAtNode, bAtNode bool) ([]LatLon, error) {
+	r, err := l.vehicleRouteJoin(a, b, aAtNode, bAtNode, false)
+	if errors.Is(err, ErrNoVehicleRoute) {
+		r, err = l.vehicleRouteJoin(a, b, aAtNode, bAtNode, true)
+	}
+	return r, err
+}
+
+// vehicleRouteJoin is VehicleRouteJoin, through another stand only with
+// throughStands: without, no way goes on from a stand (#1630).
+func (l *Layout) vehicleRouteJoin(a, b LatLon, aAtNode, bAtNode, throughStands bool) ([]LatLon, error) {
 	g := l.vehicleGraph()
 	from, ok1 := g.join(a, aAtNode)
 	to, ok2 := g.join(b, bAtNode)
@@ -236,7 +253,7 @@ func (l *Layout) VehicleRouteJoin(a, b LatLon, aAtNode, bAtNode bool) ([]LatLon,
 	}
 	for q.Len() > 0 {
 		it := heap.Pop(q).(vehicleItem)
-		if it.d > dist[it.n] {
+		if it.d > dist[it.n] || !throughStands && g.stand(it.n) {
 			continue
 		}
 		for _, e := range g.adj[it.n] {

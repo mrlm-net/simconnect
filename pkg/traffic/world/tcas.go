@@ -77,6 +77,8 @@ type tcasState struct {
 	reported bool      // "TCAS RA" said
 	noneAt   time.Time // no RA since
 	altFt    float64   // where it was when the RA began
+	tail     string    // its call sign
+	flownAt  time.Time // the response flown (and reported)
 }
 
 // TCASEvent is an advisory as it happened.
@@ -107,7 +109,24 @@ type tcasWatch struct {
 }
 
 func newTCASWatch(s *scheduler) *tcasWatch {
-	return &tcasWatch{s: s, st: map[uint32]*tcasState{}}
+	w := &tcasWatch{s: s, st: map[uint32]*tcasState{}}
+	if s != nil && s.cc != nil && s.cc.agenda != nil {
+		s.cc.agenda.waitRA = w.flownSince
+	}
+	return w
+}
+
+// flownSince reports that tail's crew flies an RA, flown after since: what
+// a controller decided before it is not said over it (#1672).
+func (w *tcasWatch) flownSince(tail string, since time.Time) bool {
+	w.mu.Lock()
+	defer w.mu.Unlock()
+	for _, st := range w.st {
+		if st.tail == tail && st.adv == traffic.AdvisoryRA && st.flown && since.Before(st.flownAt) {
+			return true
+		}
+	}
+	return false
 }
 
 func tcasTrack(a traffic.TrackedAircraft) traffic.TCASTrack {
@@ -209,12 +228,19 @@ func (w *tcasWatch) update(now time.Time, a traffic.TrackedAircraft, adv traffic
 	respond := st.adv == traffic.AdvisoryRA && !st.flown && now.Sub(st.since) >= time.Duration(traffic.TCASResponseDelaySec*float64(time.Second))
 	ra, alt := st.ra, st.altFt
 	if respond {
-		st.flown = true
+		st.flown, st.flownAt, st.tail = true, now, a.Tail
 		st.reported = ra.Kind != traffic.RAMonitor // a preventive RA changes nothing: nothing to report
 	}
 	w.mu.Unlock()
 	if respond && ra.Kind != traffic.RAMonitor {
-		w.fly(a, ra, alt)
+		if !w.fly(a, ra, alt) {
+			// Nobody of ours to fly it yet (adopted by its arrival controller
+			// a moment on, #1672): flown and reported once it is.
+			w.mu.Lock()
+			st.flown, st.reported = false, false
+			w.mu.Unlock()
+			return
+		}
 		w.report(a, true)
 	}
 }
@@ -228,8 +254,8 @@ func (w *tcasWatch) event(e TCASEvent) {
 
 // fly has a of ours fly the RA: a level to hold (level off), or one
 // tcasRAFt up or down from where it began; on its injected final a climb
-// RA is a go-around.
-func (w *tcasWatch) fly(a traffic.TrackedAircraft, ra traffic.RA, altFt float64) {
+// RA is a go-around. False when no one of ours has it yet.
+func (w *tcasWatch) fly(a traffic.TrackedAircraft, ra traffic.RA, altFt float64) bool {
 	cc := w.s.cc
 	target := a.AltFt
 	if ra.Kind != traffic.RALevelOff {
@@ -240,11 +266,15 @@ func (w *tcasWatch) fly(a traffic.TrackedAircraft, ra traffic.RA, altFt float64)
 	e := w.s.enroute[a.Tail]
 	w.s.mu.Unlock()
 	it := cc.byTail(a.Tail)
+	enroute := e != nil && e.objectID == a.ObjectID && len(e.route) > 1
+	if it == nil && e == nil {
+		return false // between its en-route list and its arrival controller
+	}
 	if it != nil {
 		it.tcasRA.Store(true) // before its route, as below
 	}
 	switch {
-	case e != nil && e.objectID == a.ObjectID && len(e.route) > 1:
+	case enroute:
 		e.tcasRA.Store(true) // before its route: nothing else's over it
 		r := traffic.Resolution{Callsign: a.Tail, ObjectID: a.ObjectID, Kind: traffic.ResolveLevel, AltFt: target}
 		route := traffic.ResolvedRoute(e.route, a, r, conflictLookAhead)
@@ -268,6 +298,7 @@ func (w *tcasWatch) fly(a traffic.TrackedAircraft, ra traffic.RA, altFt float64)
 	if err != nil {
 		cc.log.printf("%-6s TCAS RA: not flown: %v", a.Tail, err)
 	}
+	return true
 }
 
 // release ends an RA: approach works the aircraft again; the route

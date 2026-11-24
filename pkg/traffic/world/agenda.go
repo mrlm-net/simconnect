@@ -78,6 +78,10 @@ type agenda struct {
 	// log, when set, reports calls said agendaSlowAfter or more after they
 	// were decided, with why they waited.
 	log func(format string, args ...any)
+	// waitRA, when set, reports that tail's crew flies a TCAS RA it
+	// reported after since: a call decided before waits until clear of
+	// conflict (#1672). Set before the calls run.
+	waitRA func(tail string, since time.Time) bool
 }
 
 func (a *agenda) add(c call) {
@@ -110,6 +114,9 @@ func (a *agenda) next(now time.Time) (run, drop []call) {
 			keep = append(keep, c)
 		case c.still != nil && !c.still():
 			drop = append(drop, c)
+		case a.waitRA != nil && a.waitRA(c.tail, c.since):
+			c.why = "flying a TCAS RA"
+			keep = append(keep, c)
 		case a.radio != nil && now.Before(a.radio(c.icao, c.freq).Add(c.prio.pause())):
 			c.why = "the frequency busy until " + a.radio(c.icao, c.freq).Format("15:04:05")
 			busy[key] = c.why

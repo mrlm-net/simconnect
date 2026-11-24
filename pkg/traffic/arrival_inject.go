@@ -201,6 +201,10 @@ func (c *ArrivalController) takeover(m arrivalMonitor, pos airport.LatLon, onRun
 		if c.rush {
 			exitKts += RushExitKts // expedite vacating
 		}
+		if c.plan.EndTurnoff {
+			// A turnoff leading back at the far end: at taxi speed (#1674).
+			exitKts = math.Min(exitKts, ExitSpeed(c.plan.Exit))
+		}
 		v0, ve := m.GroundKts*ktsToMS, exitKts*ktsToMS
 		even := (v0*v0 - ve*ve) / (2 * math.Max(onRwy-rolloutExitLeadM, 1))
 		// The exit speed kept until its tail is clear of the runway as the

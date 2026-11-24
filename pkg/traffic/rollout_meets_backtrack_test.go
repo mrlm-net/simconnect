@@ -21,7 +21,9 @@ func TestCrewGoesAroundForBacktrack(t *testing.T) {
 	around := 0
 	for _, after := range []float64{0, 15, 30, 45, 60} {
 		t.Run(fmt.Sprintf("%.0fs", after), func(t *testing.T) {
-			if r := rolloutMeetsBacktrackRun(t, midExitGraph(t, 10), after); r.around {
+			// B leaning back sharper than a turnoff (#1674): the roll to the
+			// end and back.
+			if r := rolloutMeetsBacktrackRun(t, midExitGraph(t, 100), after); r.around {
 				around++
 			}
 		})
@@ -79,9 +81,10 @@ func headOnField(t *testing.T) *airport.Graph {
 			link(rwy[xs[i-1]], rwy[x], 2, 0, 45, 9)
 		}
 	}
-	// D: the west end, leaning back for 27, onto A.
-	a0 := pt(-1240, 180, 1)
-	hd := pt(-1240, 75, 2)
+	// D: the west end, leaning back for 27 sharper than a turnoff (#1674:
+	// one an arrival rolling to the end takes), onto A.
+	a0 := pt(-1150, 180, 1)
+	hd := pt(-1150, 75, 2)
 	link(rwy[-1250], hd, 1, nD, 23, 0)
 	link(hd, a0, 1, nD, 23, 0)
 	// C: a right angle at x 1000 onto A, the apron and the stand.

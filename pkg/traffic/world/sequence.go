@@ -249,6 +249,11 @@ func (q *sequences) absorb(now time.Time, icao string, seq []traffic.SequenceEnt
 		if it == nil {
 			continue
 		}
+		// Flying a TCAS RA: no speed, vector, hold, shortcut or diversion
+		// until clear of conflict; it keeps its place (#1672).
+		if it.tcasRA.Load() {
+			continue
+		}
 		// A crew diverting (#1411) flies it on a staffed station too: the
 		// crew's decision, not a controller's. It stays the staffed tower's
 		// after its go-around until the player hands it over, and skipped
@@ -849,6 +854,16 @@ func (q *sequences) enterHold(now time.Time, icao string, it *controlled, e traf
 }
 
 func (q *sequences) leaveHold(icao string, it *controlled, h traffic.Hold, e traffic.SequenceEntry, send func(func() error) error) error {
+	// One above flying a TCAS RA can't step down: this one waits in the
+	// hold until clear of conflict, the stack kept as flown (#1672).
+	mine := false
+	for _, l := range q.stack(icao, h).Aircraft() {
+		if l.Callsign == e.Callsign {
+			mine = true
+		} else if above := q.cc.byTail(l.Callsign); mine && above != nil && above.tcasRA.Load() {
+			return errFlyingRA
+		}
+	}
 	if err := send(it.arr.LeaveHold); err != nil {
 		q.cc.log.printf("%-6s sequence: leaving the hold failed: %v", e.Callsign, err)
 		return err
