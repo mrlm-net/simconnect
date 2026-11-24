@@ -52,6 +52,9 @@ type groundEntry struct {
 	// parked: on its stand, not yet pushing (ReportParked): taxiing
 	// traffic passes behind it, as the stand is laid out.
 	parked bool
+	// standing: no aircraft but something standing on the pavement
+	// (ReportStanding): an arrival stops for it on its rollout too.
+	standing bool
 }
 
 // NewGroundPicture creates an empty picture.
@@ -77,6 +80,19 @@ func (e groundEntry) axisAt(k int) float64 {
 // Report records aircraft id at its reference point pos, heading hdg (true
 // degrees), with the airframe of prof.
 func (p *GroundPicture) Report(id uint32, pos airport.LatLon, hdg float64, prof MotionProfile, now time.Time) {
+	p.report(id, pos, hdg, prof, false, now)
+}
+
+// ReportStanding records that object id, no aircraft (a vehicle of prof's
+// size: a fire truck, #1632), stands at pos facing hdg where aircraft
+// drive. Aircraft stop short of it as behind traffic, arrivals also on
+// their rollout, where they follow none.
+// Report it again within TrafficStaleAfter; Forget it once it is gone.
+func (p *GroundPicture) ReportStanding(id uint32, pos airport.LatLon, hdg float64, prof MotionProfile, now time.Time) {
+	p.report(id, pos, hdg, prof, true, now)
+}
+
+func (p *GroundPicture) report(id uint32, pos airport.LatLon, hdg float64, prof MotionProfile, standing bool, now time.Time) {
 	if prof == (MotionProfile{}) {
 		prof = DefaultMotionProfile()
 	}
@@ -92,6 +108,24 @@ func (p *GroundPicture) Report(id uint32, pos airport.LatLon, hdg float64, prof 
 		nose: prof.WheelbaseMeters*pushNoseFactor - prof.RefAheadMeters,
 		tail: tail + prof.RefAheadMeters,
 	}
+	if standing {
+		// Its own width, not the wings of the aircraft coming (blocking).
+		e := p.aircraft[id]
+		e.standing, e.half = true, prof.SpanMeters/2
+		p.aircraft[id] = e
+	}
+}
+
+// anyStanding reports whether anything is reported standing (ReportStanding).
+func (p *GroundPicture) anyStanding(now time.Time) bool {
+	p.mu.Lock()
+	defer p.mu.Unlock()
+	for _, e := range p.aircraft {
+		if e.standing && now.Sub(e.at) <= TrafficStaleAfter {
+			return true
+		}
+	}
+	return false
 }
 
 // ReportPath records where aircraft id will drive next: its path ahead up
@@ -569,10 +603,15 @@ func (p *GroundPicture) Following(id uint32) uint32 {
 // aircraft to stop behind, returned too. +Inf when the way is free. Reports
 // older than TrafficStaleAfter are ignored.
 func (p *GroundPicture) blocking(id uint32, path *GroundPath, from, look, half float64, now time.Time) (float64, groundEntry) {
+	return p.blockingOf(id, path, from, look, half, false, now)
+}
+
+// blockingOf is blocking, of what stands (ReportStanding) only if standing.
+func (p *GroundPicture) blockingOf(id uint32, path *GroundPath, from, look, half float64, standing bool, now time.Time) (float64, groundEntry) {
 	p.mu.Lock()
 	others := make([]groundEntry, 0, len(p.aircraft))
 	for oid, e := range p.aircraft {
-		if oid != id && now.Sub(e.at) <= TrafficStaleAfter && !e.parked {
+		if oid != id && now.Sub(e.at) <= TrafficStaleAfter && !e.parked && (e.standing || !standing) {
 			e.id = oid
 			others = append(others, e)
 		}
@@ -675,7 +714,20 @@ func (p *GroundPicture) blocking(id uint32, path *GroundPath, from, look, half f
 			}
 			for _, i := range near {
 				sg := segs[i-lo]
-				along := math.Max(0, math.Min(sg.l, (qx-sg.ax)*sg.ux+(qy-sg.ay)*sg.uy))
+				raw := (qx-sg.ax)*sg.ux + (qy-sg.ay)*sg.uy
+				// Past this segment's end where the next one takes it on:
+				// measured there, at its own place along the path. Taken
+				// at this end, a body within half of it straight ahead
+				// was found up to half (and the wing margin) nearer than
+				// it is (#1654: a vehicle 24 m ahead of the nose read 6 m,
+				// the arrival stood dead from 6 m/s).
+				if raw > sg.l && i+1 < hi {
+					nx := segs[i+1-lo]
+					if (qx-nx.ax)*nx.ux+(qy-nx.ay)*nx.uy >= 0 {
+						continue
+					}
+				}
+				along := math.Max(0, math.Min(sg.l, raw))
 				s := cum[i] + along
 				if s < from || s >= best {
 					continue

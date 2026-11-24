@@ -103,6 +103,7 @@ func rescueLandingOn(t *testing.T, icao string, l *airport.Layout, goAround bool
 	handled := 0
 	const dt = 0.1
 	prev := map[int]airport.LatLon{}
+	speed := map[int]float64{}
 	entered := map[int]bool{}
 	touched, lifted, slowAt, withSeen := false, false, time.Time{}, false
 	var downAt time.Time
@@ -180,6 +181,10 @@ func rescueLandingOn(t *testing.T, icao string, l *airport.Layout, goAround bool
 			if q, seen := prev[i]; seen && calc.HaversineMeters(p.Position.Lat, p.Position.Lon, q.Lat, q.Lon) > traffic.RescueFollowKts*0.5144*dt+0.5 {
 				t.Fatalf("%s: vehicle %d jumped %.1f m", icao, i, calc.HaversineMeters(p.Position.Lat, p.Position.Lon, q.Lat, q.Lon))
 			}
+			if v, seen := speed[i]; seen && math.Abs(p.GroundSpeedKts-v)*0.5144 > 0.5 {
+				t.Fatalf("%s: vehicle %d went from %.1f to %.1f kt in a step (state %d, #1643)", icao, i, v, p.GroundSpeedKts, crew.state)
+			}
+			speed[i] = p.GroundSpeedKts
 			prev[i] = p.Position
 			for _, o := range pts {
 				if d := calc.HaversineMeters(p.Position.Lat, p.Position.Lon, o.Lat, o.Lon); d < 10 {
