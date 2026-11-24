@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"net/http"
@@ -515,10 +516,23 @@ func (w *World) AddFlights(flights []traffic.Flight) error {
 
 // Clear gives one of ours (ControlView.ID) a clearance from its Actions:
 // pushback, startup, taxi, lineup, takeoff, land, goaround, remove, …
+// One held, the runway not free, is ErrClearanceHeld.
 func (w *World) Clear(id int, action string) error {
-	_, err := w.Do(http.MethodPost, fmt.Sprintf("/api/control/%d/%s", id, action), nil)
-	return err
+	b, err := w.Do(http.MethodPost, fmt.Sprintf("/api/control/%d/%s", id, action), nil)
+	if err != nil || len(b) == 0 {
+		return err
+	}
+	// Held, not given (#1680, #1688): the runway not free.
+	var h HeldReply
+	if json.Unmarshal(b, &h) == nil && h.Held != "" {
+		return fmt.Errorf("%w: %s for %s, %s", ErrClearanceHeld, h.Held, h.For, h.Said)
+	}
+	return nil
 }
+
+// ErrClearanceHeld: a clearance taken but not given, the runway not free
+// (HeldReply, #1680, #1688). Given again once it is.
+var ErrClearanceHeld = errors.New("clearance held")
 
 // ClearanceAmend changes a departure clearance before delivery gives it
 // (#1164): another runway (with the SID off it from the same fix, or SID),

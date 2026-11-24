@@ -7,6 +7,17 @@ This project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 ---
 
+## [0.191.0] - 2026-11-24
+
+### Added
+
+- `ArrivalEvent.RunwayTaken`, `ArrivalController.SetLandsOnOccupied`; the World API answers a held landing, line-up or take-off clearance with `202 Accepted` and a `HeldReply`, shows `landHeld`/`departHeld` in the aircraft view, and `World.Clear` returns `ErrClearanceHeld` (#1680, #1688)
+
+### Fixed
+
+- A landing aircraft no longer meets one backtracking on its runway, the plan made up front: a departure that backtracks to its threshold is not told to line up (and a player's line-up for it is answered "hold position") while an arrival is within the landing clearance's 6 NM, and never lines up behind a landing one; a crew on an injected final that still sees another aircraft on its runway from 100 ft goes around on its own, with no tower too, and is sequenced back as after a tower's go-around; a crew's own go-around, for an approach not stable at the gate too (#1681), no longer keeps its old landing clearance (`ArrivalEvent.CrewGoAround` with the new `RunwayTaken`; `ArrivalController.SetLandsOnOccupied`, beside `SetLandsUnstable`, turns it off, as World does for the user's own aircraft). A landing clearance is no longer given onto an occupied runway: a player's "cleared to land" while another aircraft is in the way is answered "continue approach" and given again once the runway is free; the API answers a held clearance with 202 and a body naming it, shows it as `landHeld` in the aircraft's view, and `World.Clear` returns `ErrClearanceHeld`; an arrival still facing an aircraft in its way at its decision point goes around ("runway occupied"), a staffed station's included, never the user's own. As a safety net only, an arrival on its landing roll brakes at a rate for an aircraft on the runway ahead, keeping the traffic clearance, holds short of the way off of one backtracking towards it, and vacates first where the two would meet nose to nose, or else the backtracking one turns off at the nearest way it can reach (#1680)
+- A player's line-up or take-off clearance is no longer given with an arrival cleared to land within 2 NM, or for a take-off with an arrival still on the runway: it is answered "hold position", answered by the API with 202 and a body naming it, shown as `departHeld` in the aircraft's view, and the player clears it again once the runway is free; the tower never clears it on the player's behalf, and one already rolling is not held (#1688)
+
 ## [0.190.0] - 2026-11-23
 
 ### Changed

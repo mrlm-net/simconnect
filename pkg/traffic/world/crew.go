@@ -57,6 +57,17 @@ const crewUnstableLimit = crewNoClearanceLimit
 // reset it: the flight has still used the fuel.
 const crewNoClearanceLimit = 3
 
+// landingBlocker is who other than cs is on the runway in the way of a
+// landing in list (traffic.RunwayUser.InWayOfLanding), "" nobody.
+func landingBlocker(list []traffic.RunwayUser, cs string) string {
+	for _, u := range list {
+		if u.Callsign != cs && u.InWayOfLanding() {
+			return u.Callsign
+		}
+	}
+	return ""
+}
+
 // crewDecides lets the crews of icao's arrivals in list decide.
 func (t *towers) crewDecides(icao string, list []traffic.RunwayUser, ours map[string]*controlled) {
 	for _, u := range list {
@@ -77,8 +88,13 @@ func (t *towers) crewDecides(icao string, list []traffic.RunwayUser, ours map[st
 		staffed, landCleared := it.gates.Load() && !it.manualSet, it.landCleared
 		it.mu.Unlock()
 		if it.gates.Load() && !staffed {
-			continue
+			continue // the user's own, flown by the user: never sent round
 		}
+		// One on the runway in its way at its decision point: around,
+		// cleared or not, a staffed station's too (#1680: at TNCM AAL432
+		// landed through DAL1979 backtracking on the runway). The tower
+		// sends ours around before.
+		blocker := landingBlocker(list, u.Callsign)
 		cs := u.Callsign
 		if t.cc.crewDiverting != nil && t.cc.crewDiverting(cs) {
 			continue // on its way to its alternate
@@ -95,6 +111,8 @@ func (t *towers) crewDecides(icao string, list []traffic.RunwayUser, ours map[st
 		_, nobody := t.cc.uncontrolled(icao)
 		why := ""
 		switch {
+		case blocker != "":
+			why = "runway occupied"
 		case !cleared && nobody:
 			why = "runway not clear"
 		case !cleared:
@@ -108,7 +126,7 @@ func (t *towers) crewDecides(icao string, list []traffic.RunwayUser, ours map[st
 		t.mu.Lock()
 		t.given[cs+" goaround"] = true
 		diverts := false
-		if !cleared {
+		if !cleared && blocker == "" {
 			if t.noClearance == nil {
 				t.noClearance = map[string]int{}
 			}
@@ -125,7 +143,7 @@ func (t *towers) crewDecides(icao string, list []traffic.RunwayUser, ours map[st
 		}
 		t.cc.log.printf("%-6s crew: going around — %s", cs, why)
 		it.say(traffic.GoingAroundFor(cs, why))
-		if !cleared && !nobody {
+		if !cleared && !nobody && blocker == "" {
 			t.cc.scoreNoLandingClearance(icao, cs)
 		}
 		go func() {
@@ -196,13 +214,53 @@ func (cc *controlCenter) crewUnstable(it *controlled, crewRound bool) {
 	cc.log.printf("%-6s crew: going around — %s", cs, why)
 	it.say(traffic.GoingAroundFor(cs, why))
 	if crewRound {
-		_ = cc.do(func() error { cc.planRejoin(it); return nil })
+		cc.crewRoundBack(it)
 	} else if err := cc.do(func() error { return it.act("goaround", 0) }); err != nil {
 		cc.log.printf("%-6s crew go-around: %v", cs, err)
 		return
 	}
 	if !staffed {
 		it.call(traffic.PosTower, prioUrgent, func() { it.say(it.goAroundAck()) })
+	}
+}
+
+// crewRunwayTaken: its crew went round on its own, another aircraft on its
+// runway at its last look before touchdown (#1680), as crewUnstable's
+// crewRound: the tower does not send it round again; said, the AI's tower
+// acknowledging, and its way back planned and cleared again as after a
+// go-around ours gave.
+func (cc *controlCenter) crewRunwayTaken(it *controlled) {
+	cs := it.Tail
+	if cc.crewGoAround != nil {
+		cc.crewGoAround(cs)
+	}
+	cc.log.printf("%-6s crew: going around — runway occupied", cs)
+	it.say(traffic.GoingAroundFor(cs, "runway occupied"))
+	if !it.gates.Load() {
+		it.call(traffic.PosTower, prioUrgent, func() { it.say(it.goAroundAck()) })
+	}
+	cc.crewRoundBack(it)
+}
+
+// crewRoundBack: its crew round already on its own (crewUnstable's
+// crewRound, crewRunwayTaken): its way back planned, and nothing of the
+// approach before kept, as after a go-around ours gave (act "goaround"):
+// never its old landing clearance (#1680).
+func (cc *controlCenter) crewRoundBack(it *controlled) {
+	err := cc.do(func() error {
+		cc.planRejoin(it)
+		it.mu.Lock()
+		it.landCleared = false
+		it.vectoringSaid.Store(false)
+		it.landHeld, it.landHeldSaid, it.view.LandHeld = "", "", ""
+		it.mu.Unlock()
+		if cc.rejoin != nil {
+			cc.rejoin(it.ICAO, it.Tail)
+		}
+		return nil
+	})
+	if err != nil {
+		cc.log.printf("%-6s crew go-around: %v", it.Tail, err)
 	}
 }
 

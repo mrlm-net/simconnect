@@ -330,6 +330,16 @@ func (c *ArrivalController) SetLandsUnstable(on bool) {
 	c.mu.Unlock()
 }
 
+// SetLandsOnOccupied has the arrival land with another aircraft on its
+// runway at its crew's last look, its crew not going round (#1680): the
+// user's own with held gates (#1096). Off, the default, its crew goes
+// round (RunwayTaken).
+func (c *ArrivalController) SetLandsOnOccupied(on bool) {
+	c.mu.Lock()
+	c.landsOccupied = on
+	c.mu.Unlock()
+}
+
 // heightLeft is the hand-over's height offset still shown (after apply).
 func (b *joinBlend) heightLeft() float64 {
 	if b.ftLeft <= 0 || b.ftFor <= 0 {
@@ -481,7 +491,7 @@ func (c *ArrivalController) onProcedureFrame(m arrivalMonitor) {
 		c.emit(nil, c.last.MissedJoin != "" && c.joinMinM < 0)
 		return
 	}
-	c.last.MissedJoin, c.joinMinM, c.last.Unstable, c.last.CrewGoAround = "", 0, false, false
+	c.last.MissedJoin, c.joinMinM, c.last.Unstable, c.last.CrewGoAround, c.last.RunwayTaken = "", 0, false, false, false
 	c.flyingProc, c.circuit = false, false
 	start := math.Max(c.proc.minJoin(), math.Min(along, c.proc.JoinMeters+JoinCaptureMeters))
 	if err := c.startInjectedApproach(start); err != nil {

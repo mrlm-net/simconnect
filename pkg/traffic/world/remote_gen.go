@@ -174,6 +174,12 @@ func (r *remoteDep) LineUpLeft() time.Duration {
 	return o0
 }
 
+func (r *remoteDep) Backtracks() bool {
+	var o0 bool
+	r.c.dropped(r.c.call(r.t, "Backtracks", []any{}, &o0))
+	return o0
+}
+
 func (r *remoteDep) LimitClimb(ft float64) bool {
 	var o0 bool
 	r.c.dropped(r.c.call(r.t, "LimitClimb", []any{ft}, &o0))

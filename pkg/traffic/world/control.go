@@ -197,6 +197,13 @@ type controlled struct {
 	// playerAt: when the player last gave it an instruction (unix ns), the
 	// safety net's deadline counted from it (#1096).
 	playerAt atomic.Int64
+	// landHeld: the player's "cleared to land" was not given, the runway
+	// occupied by this one (#1680); landHeldSaid: the one "continue
+	// approach" was last said for. it.mu.
+	landHeld, landHeldSaid string
+	// departHeld: the player's line-up or take-off clearance was not
+	// given, this arrival landing (#1688). it.mu.
+	departHeld string
 	// approach: an arrival's STAR and approach points (the sequencer, #390).
 	approach []airport.LatLon
 	// atc is the position working it now (#416); atisSaid: its pilot has
@@ -218,10 +225,13 @@ type controlled struct {
 	// unstableSeen: its arrival not stable at the gate, acted on (#1681);
 	// unstableRounds: the go-arounds its crew made for it (crewUnstable);
 	// landsAnyway: past them with nowhere else to go, it lands from one;
-	// landsSet: what its arrival was told (SetLandsUnstable).
-	unstableSeen          bool
-	unstableRounds        int
-	landsAnyway, landsSet bool
+	// landsSet: what its arrival was told (SetLandsUnstable). takenSeen:
+	// its crew round for its runway taken, acted on (#1680); occupiedSet:
+	// what its arrival was told (SetLandsOnOccupied).
+	unstableSeen, takenSeen bool
+	unstableRounds          int
+	landsAnyway, landsSet   bool
+	occupiedSet             bool
 	// streamsAt: the others' streams given its arrival last (streamsAhead).
 	streamsAt time.Time
 	stepsRead int
@@ -450,6 +460,11 @@ type ControlView struct {
 	// called for yet, or before its IFR clearance (#1308). They are taken, as
 	// a controller can expedite; a host decides what they mean.
 	ClearedEarly []string `json:"clearedEarly,omitempty"`
+	// LandHeld, DepartHeld: the player's landing, or line-up or take-off,
+	// clearance taken but not given, the runway not free: the aircraft it
+	// waits for (#1680, #1688). The player gives it again; "" none.
+	LandHeld   string `json:"landHeld,omitempty"`
+	DepartHeld string `json:"departHeld,omitempty"`
 	// ActionParams names, of Actions, those that cannot be given on their own
 	// and the query parameter they need: "upto" → "node", "climb" → "level"
 	// (#1308).
@@ -601,6 +616,13 @@ type controlCenter struct {
 	climbStopped func(cs string) bool
 	// landCleared reports an arrival cleared to land (the tower); nil none.
 	landCleared func(cs string) bool
+	// runwayBusy reports who other than cs is on icao's runway end rwy (the
+	// tower), "" nobody; nil none.
+	runwayBusy func(icao, rwy, cs string) string
+	// arrivalLanding reports an arrival cleared to land on icao's runway
+	// end rwy within lineUpArrivalNM, or (takeoff) anyone else on it (the
+	// tower), "" none; nil none.
+	arrivalLanding func(icao, rwy, cs string, takeoff bool) string
 	// departureCleared reports a departure cleared to line up or take off,
 	// departuresAhead the departures to go before one (the tower); nil none.
 	departureCleared func(cs string) bool
@@ -1678,6 +1700,12 @@ func (it *controlled) update(ev TaxiOrArrival) {
 			go it.cc.crewUnstable(it, ev.arr.CrewGoAround)
 		}
 		it.unstableSeen = ev.arr.Unstable
+		// Round on its crew's own last look at its runway, another aircraft
+		// on it (#1680): its way back, once.
+		if ev.arr.RunwayTaken && !it.takenSeen && it.cc != nil {
+			go it.cc.crewRunwayTaken(it)
+		}
+		it.takenSeen = ev.arr.RunwayTaken
 		it.streamsAhead(ev.arr)
 		// The user's own with held gates is never sent round by its crew
 		// (#1096): it lands from an approach not stable, as one past
@@ -1686,6 +1714,13 @@ func (it *controlled) update(ev TaxiOrArrival) {
 			it.landsSet = lands
 			if a, ok := it.arr.(interface{ SetLandsUnstable(bool) }); ok {
 				go a.SetLandsUnstable(lands)
+			}
+		}
+		// Nor round for its runway taken (#1680): the user is the tower there.
+		if occ := it.gates.Load() && it.manualSet; occ != it.occupiedSet {
+			it.occupiedSet = occ
+			if a, ok := it.arr.(interface{ SetLandsOnOccupied(bool) }); ok {
+				go a.SetLandsOnOccupied(occ)
 			}
 		}
 		it.stepMoments(ev.arr.Steps, it.arr.Sequence)
@@ -2297,6 +2332,9 @@ func (it *controlled) act(action string, node airport.NodeID) error {
 	case d != nil && action == "cross":
 		d.ClearToCross()
 	case d != nil && action == "lineup":
+		if it.departureHeld(action) {
+			return nil
+		}
 		d.ClearToLineUp()
 	case d != nil && action == "lineupbehind":
 		if it.cc.lineUpBehind == nil {
@@ -2304,6 +2342,9 @@ func (it *controlled) act(action string, node airport.NodeID) error {
 		}
 		return it.cc.lineUpBehind(it)
 	case d != nil && action == "takeoff":
+		if it.departureHeld(action) {
+			return nil
+		}
 		return d.ClearForTakeoff()
 	case d != nil && action == "remove":
 		return d.Cancel()
@@ -2333,9 +2374,32 @@ func (it *controlled) act(action string, node airport.NodeID) error {
 		}
 		return nil
 	case it.arr != nil && action == "land":
+		// Not onto an occupied runway (#1680: at TNCM AAL432, cleared while
+		// DAL1979 backtracked on the runway, rolled through it at 43 kt):
+		// "continue approach", and the player clears it again once the runway
+		// is free: the AI never clears for the player (#1096). One given
+		// already stands (#1540): on short final the crew still goes around
+		// from one in its way (crewDecides).
 		it.mu.Lock()
-		it.landCleared = true // said: it lands unless sent around
+		rwy, had := it.view.Runway, it.landCleared
 		it.mu.Unlock()
+		if p := it.arr.Plan(); rwy == "" && p != nil {
+			rwy = p.End.Name
+		}
+		busy := ""
+		if s := it.arr.State(); !had && it.cc.runwayBusy != nil && (s == traffic.ArrivalApproaching || s == traffic.ArrivalLanding) {
+			// Its runway not known yet: nothing to clear it onto.
+			if rwy == "" {
+				return errors.New("land: no runway known yet")
+			}
+			busy = it.cc.runwayBusy(it.ICAO, rwy, it.Tail)
+		}
+		it.mu.Lock()
+		it.landCleared, it.landHeld, it.view.LandHeld = busy == "", busy, busy // said: it lands unless sent around
+		it.mu.Unlock()
+		if busy != "" {
+			it.cc.log.printf("%-6s land: %s on the runway, continue approach", it.Tail, busy)
+		}
 		return nil
 	case it.arr != nil && action == "hold":
 		return it.arr.HoldPosition()
@@ -2346,6 +2410,7 @@ func (it *controlled) act(action string, node airport.NodeID) error {
 		it.mu.Lock()
 		it.landCleared = false        // the next approach is cleared again
 		it.vectoringSaid.Store(false) // its first vector after: "vectoring for ILS approach runway 06, …"
+		it.landHeld, it.landHeldSaid, it.view.LandHeld = "", "", ""
 		it.mu.Unlock()
 		if it.cc.rejoin != nil {
 			it.cc.rejoin(it.ICAO, it.Tail)
@@ -3142,9 +3207,23 @@ func registerControl(mux *http.ServeMux, st *state) {
 		// arrive before cc.do returns, and would log it a second time.
 		it.mu.Lock()
 		wasSpoken, hadSpoken := it.spoken[action]
+		// As they were, for a clearance held (#1680, #1688): not given, so
+		// not said.
+		before := map[string]*bool{}
+		for _, k := range append([]string{action}, impliedBy(action)...) {
+			if v, ok := it.spoken[k]; ok {
+				before[k] = &v
+			} else {
+				before[k] = nil
+			}
+		}
 		it.spoken[action] = action != "remove"
 		for _, k := range impliedBy(action) {
 			it.spoken[k] = true
+		}
+		// Any other clearance than the one held: that hold is over.
+		if action != "lineup" && action != "takeoff" {
+			it.departHeld, it.view.DepartHeld = "", ""
 		}
 		var m *traffic.TrafficManager
 		if action == "remove" {
@@ -3187,7 +3266,29 @@ func registerControl(mux *http.ServeMux, st *state) {
 			http.Error(w, err.Error(), http.StatusUnprocessableEntity)
 			return
 		}
-		if early {
+		// Held, not given (#1680, #1688): who it waits for.
+		it.mu.Lock()
+		heldBy := ""
+		switch action {
+		case "land":
+			heldBy = it.landHeld
+		case "lineup", "takeoff":
+			heldBy = it.departHeld
+		}
+		if heldBy != "" {
+			for k, v := range before {
+				if v == nil {
+					delete(it.spoken, k)
+				} else {
+					it.spoken[k] = *v
+				}
+			}
+		}
+		it.mu.Unlock()
+		if heldBy != "" {
+			tlog.printf("%-6s %s: clearance %s held: %s", it.Tail, it.Kind, clr, heldBy)
+		}
+		if early && heldBy == "" {
 			it.mu.Lock()
 			it.view.ClearedEarly = append(slices.Clone(it.view.ClearedEarly), action)
 			it.mu.Unlock()
@@ -3204,6 +3305,28 @@ func registerControl(mux *http.ServeMux, st *state) {
 		case "clearance", "handoff":
 			// Said by the exchange they start (live in the test: "Airfrans
 			// 1288, clearance" before the clearance itself).
+		case "lineup", "takeoff":
+			// Not given, an arrival landing: "hold position" (#1688).
+			if heldBy != "" {
+				said := traffic.HoldPosition(it.Tail)
+				said.Position = traffic.PosTower
+				it.say(said)
+			} else {
+				it.say(it.qualified(action, it.phrase(action, node), r))
+			}
+		case "land":
+			// Not given, the runway occupied: "continue approach", once for
+			// each aircraft it waits for (#1680).
+			it.mu.Lock()
+			said := it.landHeldSaid
+			it.landHeldSaid = heldBy
+			it.mu.Unlock()
+			switch {
+			case heldBy == "":
+				it.say(it.qualified(action, it.phrase(action, node), r))
+			case said != heldBy:
+				it.say(traffic.CircuitInstruction(it.Tail, traffic.InstrContinue))
+			}
 		default:
 			it.say(it.qualified(action, it.phrase(action, node), r))
 		}
@@ -3214,6 +3337,17 @@ func registerControl(mux *http.ServeMux, st *state) {
 			if m != nil {
 				m.Remove(it.Tail, cc.clock.Now()) // off the schedule too
 			}
+		}
+		if heldBy != "" {
+			// Taken, not given: what was said instead and why (#1680, #1688).
+			said := traffic.InstrContinue
+			if action != "land" {
+				said = "hold position"
+			}
+			w.Header().Set("Content-Type", "application/json")
+			w.WriteHeader(http.StatusAccepted)
+			_ = json.NewEncoder(w).Encode(HeldReply{Held: action, For: heldBy, Said: said})
+			return
 		}
 		w.WriteHeader(http.StatusNoContent)
 	})
@@ -3226,6 +3360,16 @@ type DeferredReply struct {
 	Deferred bool   `json:"deferred"`
 	Tail     string `json:"tail"`
 	Reason   string `json:"reason"`
+}
+
+// HeldReply is the body of a clearance held, not given (202 Accepted,
+// #1680, #1688): Held the clearance, For the aircraft it waits for, Said
+// what the player's controller said instead ("continue approach", "hold
+// position"). The player gives it again once the runway is free.
+type HeldReply struct {
+	Held string `json:"held"`
+	For  string `json:"for"`
+	Said string `json:"said"`
 }
 
 // defaultSchedule is the built-in schedule data: telephony and airport
