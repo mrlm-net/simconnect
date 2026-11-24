@@ -151,6 +151,7 @@ func (w *conflictWatch) keepNetHold(cs string, h netHold) {
 // heldFlight is an aircraft with a hold as tendNetHolds works it.
 type heldFlight struct {
 	who   enrouteStaff
+	inRA  bool // its crew flies a TCAS RA: no route set
 	route []traffic.RoutePoint
 	set   func([]traffic.RoutePoint) error
 	fixAt func(airport.LatLon) string // the name of a point of its route
@@ -158,7 +159,7 @@ type heldFlight struct {
 
 // heldEnroute is e, an en route aircraft of ours, as a heldFlight.
 func (w *conflictWatch) heldEnroute(e *enrouteAC, a traffic.TrackedAircraft) heldFlight {
-	f := heldFlight{who: w.s.enrouteStaffed(e, a.Position), fixAt: func(p airport.LatLon) string { return enroutePointName(e, p, false) }}
+	f := heldFlight{who: w.s.enrouteStaffed(e, a.Position), inRA: e.tcasRA.Load(), fixAt: func(p airport.LatLon) string { return enroutePointName(e, p, false) }}
 	w.s.mu.Lock()
 	f.route = e.route
 	w.s.mu.Unlock()
@@ -213,6 +214,9 @@ func (w *conflictWatch) tendNetHolds(now time.Time, aircraft []traffic.TrackedAi
 		} else if told {
 			drop() // their clearance stands
 			continue
+		}
+		if f.inRA {
+			continue // nothing over the RA: once clear of conflict (#1666)
 		}
 		if f.who.mode != "" {
 			if !heading || calc.HaversineNM(a.Position.Lat, a.Position.Lon, h.leg.Lat, h.leg.Lon) > a.GroundKts*conflictLookAhead.Hours() {

@@ -300,7 +300,7 @@ func (q *sequences) absorb(now time.Time, icao string, seq []traffic.SequenceEnt
 		// In a hold: released once its delay is down to holdRelease.
 		if h, _, holding := it.arr.Holding(); holding {
 			if e.Delay <= holdRelease && !q.keepHolding(now, e.Callsign) {
-				q.leaveHold(icao, it, h, e)
+				_ = q.leaveHold(icao, it, h, e, q.cc.do) // logged there
 			}
 			continue
 		}
@@ -822,7 +822,8 @@ func (q *sequences) stack(icao string, h traffic.Hold) *traffic.HoldStack {
 
 // enterHold sends it into the hold, its error when it did not go (#78:
 // only logged, the map and the conflict watch took it as held).
-func (q *sequences) enterHold(now time.Time, icao string, it *controlled, e traffic.SequenceEntry, left time.Duration) error {
+// send gives the hold to the aircraft (controlCenter.do, or the player's).
+func (q *sequences) enterHold(now time.Time, icao string, it *controlled, e traffic.SequenceEntry, left time.Duration, send func(func() error) error) error {
 	h, ok := it.arr.HoldFix(holdFixNM)
 	if !ok {
 		q.cc.log.printf("%-6s sequence: %s to lose, no fix to hold at", e.Callsign, left.Round(time.Second))
@@ -832,7 +833,7 @@ func (q *sequences) enterHold(now time.Time, icao string, it *controlled, e traf
 	h = st.Hold // the stack's: the same racetrack for all
 	alt := st.Assign(e.Callsign)
 	var entry traffic.HoldEntry
-	if err := q.cc.do(func() (err error) { entry, err = it.arr.EnterHold(h, alt); return err }); err != nil {
+	if err := send(func() (err error) { entry, err = it.arr.EnterHold(h, alt); return err }); err != nil {
 		st.Release(e.Callsign)
 		q.cc.log.printf("%-6s sequence: hold failed: %v", e.Callsign, err)
 		return err
@@ -847,10 +848,10 @@ func (q *sequences) enterHold(now time.Time, icao string, it *controlled, e traf
 	return nil
 }
 
-func (q *sequences) leaveHold(icao string, it *controlled, h traffic.Hold, e traffic.SequenceEntry) {
-	if err := q.cc.do(it.arr.LeaveHold); err != nil {
+func (q *sequences) leaveHold(icao string, it *controlled, h traffic.Hold, e traffic.SequenceEntry, send func(func() error) error) error {
+	if err := send(it.arr.LeaveHold); err != nil {
 		q.cc.log.printf("%-6s sequence: leaving the hold failed: %v", e.Callsign, err)
-		return
+		return err
 	}
 	tx := traffic.LeaveHoldAt(e.Callsign, fixName(h), q.numberToSay(q.cc.clock.Now(), e.Callsign, e.Number))
 	it.call(traffic.PosApproach, prioApproach, func() { it.say(tx) })
@@ -868,6 +869,7 @@ func (q *sequences) leaveHold(icao string, it *controlled, h traffic.Hold, e tra
 			}
 		}
 	}
+	return nil
 }
 
 // fixName is a hold's name: the STAR fix ident when it has one.

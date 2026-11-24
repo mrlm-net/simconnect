@@ -369,7 +369,7 @@ func (q *sequences) closedAirport(now time.Time, icao string, it *controlled, e 
 	q.mu.Lock()
 	q.closedHolds[e.Callsign] = &closedHold{icao: icao, since: now}
 	q.mu.Unlock()
-	return q.enterHold(now, icao, it, e, divertAfter) == nil
+	return q.enterHold(now, icao, it, e, divertAfter, q.cc.do) == nil
 }
 
 // openAgain forgets the closure holds at icao (a runway open again): the

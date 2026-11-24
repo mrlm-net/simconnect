@@ -428,7 +428,10 @@ func (it *controlled) avoidOccupied(occ []airport.Occupied) bool {
 // planAvoidOccupied is avoidOccupied's search (the controller's
 // PlanAvoidOccupied): nil none, else the step putting it in place.
 // A controller over the wire (an actuator's) has no such step: its
-// search runs as before, put in place at once.
+// search runs as before, put in place at once, here, off the director's
+// loop; the step only reports it. Asked on the loop, a call over the link
+// would hold everything else the loop runs while the link is busy.
+// Called off the loop only (reroute, the taxi request).
 func (it *controlled) planAvoidOccupied(occ []airport.Occupied) func() bool {
 	type planner interface {
 		PlanAvoidOccupied([]airport.Occupied) func() bool
@@ -440,7 +443,8 @@ func (it *controlled) planAvoidOccupied(occ []airport.Occupied) func() bool {
 	if p, ok := c.(planner); ok {
 		return p.PlanAvoidOccupied(occ)
 	}
-	return func() bool { return it.avoidOccupied(occ) }
+	ok := it.avoidOccupied(occ)
+	return func() bool { return ok }
 }
 
 // rerouteSaid is ground's new taxi instruction for the route from where the
@@ -493,13 +497,13 @@ func (it *controlled) climbOn() {
 	if ft <= 0 {
 		ft = departureClimbFt
 	}
-	it.climbOnTo(ft)
+	_ = it.climbOnTo(ft) // logged there
 }
 
 // climbOnTo has a departure handed to MSFS AI climb on to ft and level
 // there: climbOn's level, or on a staffed departure the level of its
 // clearance until the player clears it higher (#1096).
-func (it *controlled) climbOnTo(ft float64) {
+func (it *controlled) climbOnTo(ft float64) error {
 	it.mu.Lock()
 	pos, alt, id := it.view.Position, it.heightFt, it.objectID
 	it.mu.Unlock()
@@ -511,7 +515,9 @@ func (it *controlled) climbOnTo(ft float64) {
 			pos, alt = a.Position, a.AltFt
 		}
 	}
-	if err := it.cc.do(func() error { return it.dep.ClimbTo(pos, alt, ft) }); err != nil {
+	err := it.cc.do(unlessRA(&it.tcasRA, func() error { return it.dep.ClimbTo(pos, alt, ft) }))
+	if err != nil {
 		it.cc.log.printf("%-6s climb to %.0f ft not applied: %v", it.Tail, ft, err)
 	}
+	return err
 }

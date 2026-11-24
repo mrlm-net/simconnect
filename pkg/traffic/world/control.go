@@ -5409,6 +5409,9 @@ func (it *controlled) handoff(ev TaxiOrArrival) {
 			}
 			// Above the arrivals only clear of them (release_plan.go).
 			holdClimb := false
+			if level != "" && it.tcasRA.Load() { // the climb once clear of conflict (#1669)
+				level, holdClimb = "", true
+			}
 			var restrict traffic.Transmission // a level restriction with the climb
 			if level != "" {
 				it.mu.Lock()

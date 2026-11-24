@@ -327,8 +327,8 @@ func (w *conflictWatch) crewRequests(now time.Time, aircraft []traffic.TrackedAi
 			continue
 		}
 		it := w.s.cc.byTail(a.Tail)
-		if it == nil || it.dep == nil || it.gates.Load() {
-			continue
+		if it == nil || it.dep == nil || it.gates.Load() || it.tcasRA.Load() {
+			continue // flying an RA, it asks once clear of conflict
 		}
 		it.mu.Lock()
 		radar, id, fixes := it.atc == traffic.PosDeparture, it.objectID, it.fixes
@@ -360,6 +360,10 @@ func (w *conflictWatch) crewRequests(now time.Time, aircraft []traffic.TrackedAi
 		w.s.cc.log.printf("%-6s crew: request direct %s", cs, f.Ident)
 		it.say(traffic.RequestDirect(traffic.PosDeparture, cs, f.Ident))
 		answer := func() (traffic.Transmission, bool) {
+			if it.tcasRA.Load() { // an RA begun since it asked (#1669)
+				w.s.cc.log.printf("%-6s direct %s: unable, flying an RA", cs, f.Ident)
+				return traffic.UnableDirect(traffic.PosDeparture, cs), true
+			}
 			w.mu.Lock()
 			busy := now.Before(w.busy[cs])
 			w.mu.Unlock()

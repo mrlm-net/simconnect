@@ -116,8 +116,9 @@ func (c *ArrivalController) HoldPosition() error {
 }
 
 // AbortTakeoff rejects the take-off: before V1 the aircraft brakes to a
-// stop on the runway, vacates at the next exit ahead and taxis back to the
-// holding point, where it waits for a new line-up and take-off clearance.
+// stop on the runway, vacates at the next exit ahead (with none, turns
+// round and backtracks to one behind) and taxis back to the holding point,
+// where it waits for a new line-up and take-off clearance.
 // Past V1 it returns ErrTooLate and the take-off continues.
 func (c *TaxiController) AbortTakeoff() error {
 	c.mu.Lock()
@@ -142,8 +143,32 @@ func (c *TaxiController) AbortTakeoff() error {
 	return nil
 }
 
+// CancelTakeoffClearance cancels the take-off clearance of a departure
+// not rolling yet (Doc 4444 12.3.4.11 c): lining up or lined up, it holds
+// there until the next ClearForTakeoff, as AbortTakeoff does then. A roll
+// already under way is never rejected by it (#1685: the tower's cancel
+// raced the roll's start): ErrTooLate, and the take-off goes on.
+func (c *TaxiController) CancelTakeoffClearance() error {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	if c.inj == nil {
+		return ErrNotInjected
+	}
+	switch c.state {
+	case TaxiLiningUp, TaxiLinedUp:
+		c.takeoffCleared, c.takeoffHeld = false, true
+		return nil
+	case TaxiDeparting:
+		return ErrTooLate
+	}
+	return ErrNotApplicable
+}
+
 // vacateAfterReject taxis a rejected take-off, stopped on the runway at
-// pose, off at the next exit ahead and back to the holding point.
+// pose, off at the next exit ahead and back to the holding point. With no
+// exit ahead (#1685: a backtrack field, or stopped near the far end) it
+// turns round on the runway and backtracks to the first exit behind, as
+// an arrival rolling to the end does.
 func (c *TaxiController) vacateAfterReject(pose TakeoffPose) error {
 	g, prof := c.req.Graph, c.profile()
 	exits, err := g.RunwayExits(c.end.Name)
@@ -161,8 +186,20 @@ func (c *TaxiController) vacateAfterReject(pose TakeoffPose) error {
 			ex = e
 		}
 	}
+	nose := NoseGear(pose.Position, pose.Heading, prof)
+	pts := []airport.LatLon{nose}
+	from, fromHdg := nose, pose.Heading
+	turnFrom, turnTo := -1, -1
 	if ex == nil {
-		return fmt.Errorf("%w: no runway exit ahead", ErrNotApplicable)
+		x, turn, ok := c.rejectTurnRound(nose)
+		if !ok {
+			return fmt.Errorf("%w: no runway exit ahead, and none behind to turn round for", ErrNotApplicable)
+		}
+		ex = &x
+		turnFrom = len(pts)
+		pts = append(pts, turn...)
+		turnTo = len(pts) - 1
+		from, fromHdg = pts[len(pts)-1], oppositeEnd(c.runway, c.end).Heading
 	}
 	opts := c.req.Options
 	opts.Via, opts.Taxiways = nil, nil
@@ -170,10 +207,9 @@ func (c *TaxiController) vacateAfterReject(pose TakeoffPose) error {
 	if err != nil {
 		return err
 	}
-	nose := NoseGear(pose.Position, pose.Heading, prof)
-	pts := []airport.LatLon{nose}
+	onRunway := len(pts)
 	for _, n := range ex.Path {
-		if q := g.Nodes[n].Position; alongHeading(nose, pose.Heading, q) > 1 || len(pts) > 1 {
+		if q := g.Nodes[n].Position; alongHeading(from, fromHdg, q) > 1 || len(pts) > onRunway {
 			pts = append(pts, q)
 		}
 	}
@@ -182,6 +218,12 @@ func (c *TaxiController) vacateAfterReject(pose TakeoffPose) error {
 	path, err := NewGroundPath(pts, prof)
 	if err != nil {
 		return err
+	}
+	if turnFrom >= 0 {
+		// Round at a walk, back down the runway at backtrack speed.
+		cum := func(i int) float64 { return pathLen(pts[:i+1]) }
+		path.LimitRange(cum(turnFrom), cum(turnTo), TurnSpeedKts, prof.Decel)
+		path.LimitRange(cum(turnTo), cum(min(onRunway, len(pts)-1)), BacktrackKts, prof.Decel)
 	}
 	c.takeoff = nil
 	c.mover = NewGroundMoverFrom(path, moverGear(prof, c.req.Model), pose.Heading, 0)
@@ -202,10 +244,64 @@ func (c *TaxiController) vacateAfterReject(pose TakeoffPose) error {
 	c.holdNextCrossing()
 	c.lastStep = c.now()
 	c.setInjectedLights(LightsTaxi, "lights taxi (vacating after the rejected take-off)")
-	c.note(fmt.Sprintf("vacating via %s", ex.Taxiway), nil)
+	if turnFrom >= 0 {
+		c.note(fmt.Sprintf("no exit ahead: turning round, vacating via %s behind", ex.Taxiway), nil)
+	} else {
+		c.note(fmt.Sprintf("vacating via %s", ex.Taxiway), nil)
+	}
 	c.setState(TaxiTaxiing, nil)
 	return nil
 }
+
+// rejectTurnRound is the way round for a rejected take-off stopped with
+// its nose gear at nose and no exit ahead (#1685): the teardrop of a
+// backtrack (backtrack.go, an arrival's end turn) within the runway's
+// width, just ahead of it or as near the far end as it fits, and back
+// along the centreline, with the first exit of the opposite direction
+// that leaves from past the turn. false when there is no room ahead to
+// turn or no such exit.
+func (c *TaxiController) rejectTurnRound(nose airport.LatLon) (airport.RunwayExit, []airport.LatLon, bool) {
+	g := c.req.Graph
+	opposite := oppositeEnd(c.runway, c.end)
+	r, a0 := endTurnRadius(c.runway)
+	thr, hdg := opposite.Threshold, opposite.Heading
+	at := func(x, y float64) airport.LatLon { return offsetHeading(offsetHeading(thr, hdg, x), hdg+90, y) }
+	// Its distance from the far end; the turn centred a so that it starts
+	// (a+2r) a little ahead of it, never nearer the end than a0.
+	d := alongHeading(thr, hdg, nose)
+	a := d - 2*r - rejectTurnAheadM
+	if a < a0 {
+		return airport.RunwayExit{}, nil, false
+	}
+	exits, err := g.RunwayExits(opposite.Name)
+	if err != nil {
+		return airport.RunwayExit{}, nil, false
+	}
+	var best *airport.RunwayExit
+	for i := range exits {
+		e := &exits[i]
+		if e.Angle > 120 || len(e.Path) < 2 || e.Along < a+2.5*r+endTurnLeadM {
+			continue
+		}
+		if best == nil || e.Along < best.Along {
+			best = e
+		}
+	}
+	if best == nil {
+		return airport.RunwayExit{}, nil, false
+	}
+	pts := []airport.LatLon{at(a+2*r, 0)}
+	for deg := 90.0; deg <= 270; deg += 15 {
+		phi := deg * math.Pi / 180
+		pts = append(pts, at(a+r*math.Cos(phi), r*math.Sin(phi)))
+	}
+	pts = append(pts, at(a+2.5*r, 0), at(a+2.5*r+15, 0))
+	return *best, pts, true
+}
+
+// rejectTurnAheadM: a rejected take-off turning round starts its turn this
+// far ahead of where it stopped.
+const rejectTurnAheadM = 5.0
 
 // Go-around circuit: the missed approach climbs straight ahead to
 // GoAroundClimbNm past the threshold, turns crosswind and flies a

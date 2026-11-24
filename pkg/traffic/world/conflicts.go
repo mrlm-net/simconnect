@@ -182,7 +182,7 @@ func (w *conflictWatch) tick(now time.Time, aircraft []traffic.TrackedAircraft) 
 			return false
 		}
 		if e != nil {
-			return true
+			return !e.tcasRA.Load() // the same for those en route (#1666)
 		}
 		return departed(a) != nil && kind != traffic.ResolveSpeed
 	}
@@ -259,6 +259,15 @@ func (w *conflictWatch) tick(now time.Time, aircraft []traffic.TrackedAircraft) 
 		}
 		return nil
 	}
+	// inRA: ours flying an RA: en route, being handed over too, or
+	// controlled (#1669). The TCAS watch sets it, on this goroutine after
+	// this look.
+	inRA := map[string]bool{}
+	for _, a := range aircraft {
+		if a.Ours && w.s.flyingRA(a) {
+			inRA[a.Tail] = true
+		}
+	}
 	cs := traffic.PredictConflicts(aircraft, opts)
 	// suggest is what the AI would say to cs, one of the player's, for the
 	// conflict c (assist, #1096): its change as for one of its own.
@@ -274,8 +283,8 @@ func (w *conflictWatch) tick(now time.Time, aircraft []traffic.TrackedAircraft) 
 	}
 	suggest := func(cs string) string {
 		st, ours := who(cs)
-		if !ours {
-			return ""
+		if !ours || inRA[cs] {
+			return "" // flying an RA: nothing to tell it (#1669)
 		}
 		only := func(a traffic.TrackedAircraft, kind traffic.ResolutionKind) bool {
 			return a.Tail == cs && a.Ours && (enroute(a) != nil || departed(a) != nil && kind != traffic.ResolveSpeed)
@@ -528,6 +537,7 @@ func (w *conflictWatch) tick(now time.Time, aircraft []traffic.TrackedAircraft) 
 		switch {
 		case !airborne[cs]:
 			delete(w.stopped, cs)
+		case inRA[cs]: // cleared on once clear of conflict (#1666)
 		case !involved[cs] && !theirs[cs] && (apart || !now.Before(w.busy[cs]) && clear):
 			cleared = append(cleared, cs)
 		}
@@ -1002,6 +1012,9 @@ func (w *conflictWatch) crossInstead(now time.Time, c traffic.Conflict, aircraft
 		}
 		it := departed(a)
 		if it == nil || !w.mayAct(it) { // the player's (#1096), unless the safety net's due
+			continue
+		}
+		if it.tcasRA.Load() { // nothing over an RA (#1669)
 			continue
 		}
 		w.mu.Lock()

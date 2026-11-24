@@ -28,6 +28,7 @@ type departureCtl interface {
 	Cancel() error
 	HoldPosition() error
 	AbortTakeoff() error
+	CancelTakeoffClearance() error
 	ChangeEntry(entry string) error
 	TaxiVia(via []airport.NodeID) error
 	ChangeRunway(runway, entry string, departure []airport.NavPoint) error
