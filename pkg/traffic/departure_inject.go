@@ -1749,6 +1749,10 @@ func (c *TaxiController) startLineUp() {
 	if len(entry) == 0 {
 		pts = append(pts, offsetHeading(thr, hdg, along)) // abeam, straight across
 	}
+	// Lined up no nearer the pavement end than where the take-off starts
+	// (#1660: a declared start offset), shift further along the centreline.
+	shift := math.Max(0, c.end.TakeoffStartM-along)
+	along += shift
 	align := offsetHeading(thr, hdg, along+LineUpAlignMeters)
 	far := offsetHeading(thr, hdg, math.Max(along+LineUpAlignMeters+50, c.runwayLength))
 	pts = append(pts, align, far)
@@ -1759,7 +1763,7 @@ func (c *TaxiController) startLineUp() {
 	}
 	// Taxi speed through the entry, LineUpSpeedKts over the alignment; a
 	// rolling take-off (cleared already) aligns briskly and rolls on.
-	c.alignDist = pathLen(pts[:len(pts)-2]) + LineUpAlignMeters // on the runway, then aligned
+	c.alignDist = pathLen(pts[:len(pts)-2]) + shift + LineUpAlignMeters // on the runway, then aligned
 	// Aligned where the path is: its rounded turn onto the centreline can
 	// run past the waypoint, and the take-off starts on the runway heading
 	// (live at EDDM: lined up 3.5° off, the heading snapped as the roll
@@ -2200,6 +2204,7 @@ func (c *TaxiController) LineUpLeft() time.Duration {
 		pose := c.mover.Pose()
 		pts := append([]airport.LatLon{NoseGear(pose.Position, pose.Heading, c.profile())}, c.entryPath()...)
 		along := math.Max(0, alongHeading(c.end.Threshold, c.end.Heading, pts[len(pts)-1]))
+		along = math.Max(along, c.end.TakeoffStartM) // where the take-off starts (#1660)
 		pts = append(pts, offsetHeading(c.end.Threshold, c.end.Heading, along+LineUpAlignMeters))
 		m = pathLen(pts) + lineUpStartIn.Seconds()*LineUpSpeedKts*knot
 	default:

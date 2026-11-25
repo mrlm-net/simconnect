@@ -29,10 +29,11 @@ var wireSentinels = []error{
 	traffic.ErrStandTaken, traffic.ErrStandardStale, traffic.ErrTaxiStuck,
 	traffic.ErrTooLate,
 
-	airport.ErrAmbiguousParking, airport.ErrNoData, airport.ErrNoExit,
-	airport.ErrNoHoldShort, airport.ErrNoProcedure, airport.ErrNoRoute,
-	airport.ErrNoRunways, airport.ErrNoTaxiNetwork, airport.ErrNoTransition,
-	airport.ErrNoVehicleRoute, airport.ErrTaxiwaysNotFollowed, airport.ErrTimeout,
+	airport.ErrAmbiguousParking, airport.ErrBadDeclared, airport.ErrNoData,
+	airport.ErrNoExit, airport.ErrNoHoldShort, airport.ErrNoProcedure,
+	airport.ErrNoRoute, airport.ErrNoRunways, airport.ErrNoTaxiNetwork,
+	airport.ErrNoTransition, airport.ErrNoVehicleRoute, airport.ErrRunwayEndUse,
+	airport.ErrTaxiwaysNotFollowed, airport.ErrTimeout,
 	airport.ErrTooNarrow, airport.ErrUnknownEntry, airport.ErrUnknownParking,
 	airport.ErrUnknownRunway, airport.ErrUnknownTaxiway, airport.ErrViaUnreachable,
 

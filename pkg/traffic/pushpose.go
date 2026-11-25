@@ -913,8 +913,37 @@ func PlanStandardPushes(g *airport.Graph, model string, stands []int) {
 	}
 }
 
+// standardPushEnds are the ends of g's two longest runways, whose pushes
+// vote for a stand's standard push (planStandardPush).
+func standardPushEnds(g *airport.Graph) []airport.RunwayEnd {
+	rwys := slices.Clone(g.Layout.Runways)
+	slices.SortStableFunc(rwys, func(a, b airport.Runway) int { return cmp.Compare(b.Length, a.Length) })
+	var out []airport.RunwayEnd
+	for _, r := range rwys[:min(2, len(rwys))] {
+		out = append(out, r.Primary, r.Secondary)
+	}
+	return out
+}
+
+// endPush is the push a departure from base's stand to runway end takes
+// planned on its own, no standard push; nil none.
+func endPush(base TaxiRequest, end string) *pushPose {
+	req := base
+	req.Runway, req.Entry = end, ""
+	route, err := req.Graph.RouteToRunwayEntry(req.Parking, end, "", req.Options)
+	if err != nil || len(route.Nodes) < 3 {
+		return nil
+	}
+	t := &TaxiController{req: req, route: route, origRoute: route, pushJunction: 1, noStandard: true}
+	if t.standFacesOut() || !t.planPushPose() || t.pushPose == nil {
+		return nil
+	}
+	return t.pushPose
+}
+
 // planStandardPush is the push most ends of the two longest runways take
-// from req's stand; nil without a majority.
+// from req's stand, ends used for take-offs only (#1661); nil without a
+// majority.
 func planStandardPush(base TaxiRequest) *pushPose {
 	type vote struct {
 		p pushPose
@@ -922,33 +951,25 @@ func planStandardPush(base TaxiRequest) *pushPose {
 	}
 	var votes []vote
 	ends := 0
-	rwys := slices.Clone(base.Graph.Layout.Runways)
-	slices.SortStableFunc(rwys, func(a, b airport.Runway) int { return cmp.Compare(b.Length, a.Length) })
-	rwys = rwys[:min(2, len(rwys))]
-	for _, r := range rwys {
-		for _, end := range []string{r.Primary.Name, r.Secondary.Name} {
-			req := base
-			req.Runway, req.Entry = end, ""
-			route, err := req.Graph.RouteToRunwayEntry(req.Parking, end, "", req.Options)
-			if err != nil || len(route.Nodes) < 3 {
-				continue
+	for _, e := range standardPushEnds(base.Graph) {
+		if !e.ForTakeoff() {
+			continue
+		}
+		p := endPush(base, e.Name)
+		if p == nil {
+			continue
+		}
+		ends++
+		found := false
+		for i := range votes {
+			if samePose(votes[i].p, *p) {
+				votes[i].n++
+				found = true
+				break
 			}
-			t := &TaxiController{req: req, route: route, origRoute: route, pushJunction: 1, noStandard: true}
-			if t.standFacesOut() || !t.planPushPose() || t.pushPose == nil {
-				continue
-			}
-			ends++
-			found := false
-			for i := range votes {
-				if samePose(votes[i].p, *t.pushPose) {
-					votes[i].n++
-					found = true
-					break
-				}
-			}
-			if !found {
-				votes = append(votes, vote{p: *t.pushPose, n: 1})
-			}
+		}
+		if !found {
+			votes = append(votes, vote{p: *p, n: 1})
 		}
 	}
 	for i := range votes {

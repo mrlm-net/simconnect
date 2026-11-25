@@ -68,7 +68,7 @@ func endTurnPlan(g *airport.Graph, runwayEnd string, parking int, o ArrivalOptio
 		return airport.RunwayExit{}, nil, 0, false
 	}
 	r, a0 := endTurnRadius(rwy)
-	if reach.firmRollout(TurnSpeedKts) > rwy.Length-land.DisplacedM-(a0+2*r) {
+	if reach.firmRollout(TurnSpeedKts) > math.Min(rwy.Length-land.DisplacedM, land.LandingDistance(rwy.Length))-(a0+2*r) {
 		return airport.RunwayExit{}, nil, 0, false
 	}
 	for _, x := range endTurnExits(g, rwy, land) {

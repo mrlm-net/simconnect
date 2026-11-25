@@ -128,6 +128,8 @@ type runwayCandidate struct {
 // ActiveRunways chooses the departure and arrival runway ends of l for the
 // wind in w. The first Preferred end within the limits wins; otherwise the
 // end with the most headwind, ties (within 1 kt) going to the longer runway.
+// Departures only from ends used for take-offs, arrivals only onto ends
+// used for landings (airport.RunwayEnd.Use, #1661).
 // Runway headings are the layout's true headings and the wind is true, so no
 // magnetic variation is involved. Names are empty when l has no runway.
 func ActiveRunways(l *airport.Layout, w Weather, lim RunwayLimits) RunwayUse {
@@ -158,18 +160,20 @@ func ActiveRunways(l *airport.Layout, w Weather, lim RunwayLimits) RunwayUse {
 			}
 		}
 	}
-	dep, depOK := chooseRunway(cands, lim.Preferred)
+	depCands := slices.DeleteFunc(slices.Clone(cands), func(c runwayCandidate) bool { return !c.end.ForTakeoff() })
+	arrCands := slices.DeleteFunc(slices.Clone(cands), func(c runwayCandidate) bool { return !c.end.ForLanding() })
+	dep, depOK := chooseRunway(depCands, lim.Preferred)
 	arrPref := lim.Preferred
 	if len(lim.PreferredArrival) > 0 {
 		arrPref = lim.PreferredArrival
 	}
-	arr, arrOK := chooseRunway(cands, arrPref)
+	arr, arrOK := chooseRunway(arrCands, arrPref)
 	return withParallels(l, RunwayUse{
 		Departure:    dep.end,
 		Arrival:      arr.end,
 		HeadwindKts:  arr.headwind,
 		CrosswindKts: arr.cross,
-		WithinLimits: depOK && arrOK && len(cands) > 0,
+		WithinLimits: depOK && arrOK && len(depCands) > 0 && len(arrCands) > 0,
 		Approach:     ApproachFor(w),
 		Parallel:     ParallelNone,
 	}, cands, lim)
@@ -347,6 +351,26 @@ const RunwayBetterByKts = 2.5
 // before its pending change is dropped.
 const RunwayPendingClearAfter = time.Minute
 
+// useStill reports whether each end of u is still used, in l, for what u
+// uses it for (#1661): departures from ends used for take-offs, arrivals
+// onto ends used for landings. An end l lacks counts as still used.
+func useStill(l *airport.Layout, u RunwayUse) bool {
+	if l == nil {
+		return true
+	}
+	for _, e := range u.Departures {
+		if _, cur, ok := l.RunwayEnd(e.Name); ok && !cur.ForTakeoff() {
+			return false
+		}
+	}
+	for _, e := range u.Arrivals {
+		if _, cur, ok := l.RunwayEnd(e.Name); ok && !cur.ForLanding() {
+			return false
+		}
+	}
+	return true
+}
+
 // Choose is the runway in use at now: ActiveRunways with the wind limits
 // RunwayChoiceMarginKts tighter, held as above.
 func (s *RunwaySelector) Choose(now time.Time, l *airport.Layout, w Weather, lim RunwayLimits) RunwayUse {
@@ -361,8 +385,10 @@ func (s *RunwaySelector) Choose(now time.Time, l *airport.Layout, w Weather, lim
 	if lim.ChangeNow {
 		after = 0 // a supervisor's choice: at the next Ready moment
 	}
-	// A runway in use closed: the fresh choice at once, whatever its wind.
-	if s.have && slices.ContainsFunc(append(slices.Clone(s.use.Departures), s.use.Arrivals...), func(e airport.RunwayEnd) bool { return lim.ClosedEnd(e.Name) }) {
+	// A runway in use closed, or an end in use no longer used for what it
+	// is used for (#1661: the layout's use changed): the fresh choice at
+	// once, whatever its wind.
+	if s.have && (slices.ContainsFunc(append(slices.Clone(s.use.Departures), s.use.Arrivals...), func(e airport.RunwayEnd) bool { return lim.ClosedEnd(e.Name) }) || !useStill(l, s.use)) {
 		s.use, s.since, s.have = fresh, time.Time{}, fresh.Departure.Name != ""
 		return fresh
 	}

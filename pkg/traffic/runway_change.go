@@ -93,12 +93,15 @@ func (c *TaxiController) changeRoute(runway, entry string, departure []airport.N
 	case TaxiLiningUp, TaxiLinedUp, TaxiDeparting, TaxiComplete, TaxiFailed, TaxiCancelled:
 		return ErrTooLate
 	}
+	if !end.ForTakeoff() {
+		return fmt.Errorf("%w: no take-offs from runway %s (%s)", airport.ErrRunwayEndUse, end.Name, end.Use)
+	}
 	req := c.req
 	// Another runway, its full length shorter than the take-off needs: the
 	// crew refuses it (#1232); an entry is checked by entryLongEnough.
 	if entry == "" && !strings.EqualFold(runway, req.Runway) {
-		if need := req.takeoffRun(); rwy.Length < need {
-			return fmt.Errorf("%w: runway %s is %.0f m, the aircraft needs %.0f m", ErrRunwayTooShort, runway, rwy.Length, need)
+		if need, tora := req.takeoffRun(), end.TORA(rwy.Length); tora < need {
+			return fmt.Errorf("%w: runway %s is %.0f m, the aircraft needs %.0f m", ErrRunwayTooShort, runway, tora, need)
 		}
 	}
 	req.Runway, req.Entry = runway, entry
@@ -280,6 +283,9 @@ func (c *ArrivalController) ChangeRunway(runway string, procedure, missed []airp
 		return ErrTooLate
 	}
 	g, req := c.req.Graph, c.req
+	if _, end, ok := g.Layout.RunwayEnd(runway); ok && !end.ForLanding() {
+		return fmt.Errorf("%w: no landings on runway %s (%s)", airport.ErrRunwayEndUse, end.Name, end.Use)
+	}
 	plan, err := PlanArrival(g, runway, req.Parking, ArrivalOptions{
 		SpawnNm: req.SpawnNm, Route: req.Options, GroundAGL: req.GroundAGL, NoseOffset: req.NoseOffset, StandSide: req.StandSide,
 		TouchdownKts: approachProfileOf(req).TouchdownKts, BrakeDecel: req.Rollout.BrakeDecel,
@@ -293,6 +299,9 @@ func (c *ArrivalController) ChangeRunway(runway string, procedure, missed []airp
 	proc, err := PlanArrivalProcedure(procedure, plan.End, join, g.Layout.Altitude/0.3048+jp.HeightFt)
 	if err != nil {
 		return err
+	}
+	if !plan.End.ForTakeoff() {
+		c.tngLeft = 0 // no take-off off it: a full stop (#1661)
 	}
 	// From where it is now (the spawn point while it is still appearing).
 	from := airport.LatLon{Lat: proc.Spawn.Latitude, Lon: proc.Spawn.Longitude}

@@ -223,6 +223,11 @@ func (w *World) LoadFile(path string) (string, error) {
 	if err != nil {
 		return "", fmt.Errorf("%s: %w", path, err)
 	}
+	// Declared distances and uses not taken are left out of the layout:
+	// said, each (#1660, #1661).
+	for _, e := range airport.CheckDeclared(raw) {
+		tlog.printf("%s: %v", path, e)
+	}
 	w.st.cache.Put(l)
 	w.st.mu.Lock()
 	w.st.placeRunwayFixesLocked(l.ICAO) // procedures loaded first

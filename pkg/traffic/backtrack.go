@@ -89,7 +89,9 @@ func (c *TaxiController) startBacktrack(pose GroundPose, prof MotionProfile) boo
 	onRunway := entry[len(entry)-1]
 	along := alongHeading(thr, hdg, onRunway)
 	r := math.Min(math.Max(c.runway.Width/2-backtrackEdge, backtrackMinRadius), backtrackMaxRadius)
-	a0 := r + 5 // the turn's centre down the runway from the threshold
+	// The turn's centre down the runway from the threshold, from the
+	// take-off start when it is declared further in (#1660).
+	a0 := r + 5 + math.Max(0, c.end.TakeoffStartM)
 	nose := NoseGear(pose.Position, pose.Heading, prof)
 	pts := append([]airport.LatLon{nose}, entry...)
 	// Back along the centreline, over to one side for the turn's start.

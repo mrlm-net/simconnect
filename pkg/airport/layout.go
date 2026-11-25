@@ -110,6 +110,17 @@ type RunwayEnd struct {
 	// DisplacedM is how far the landing threshold is displaced in from
 	// Threshold along Heading, in meters; 0 when not displaced (#1560).
 	DisplacedM float64 `json:"displacedM,omitempty"`
+	// TakeoffStartM is how far in from Threshold a take-off roll starts
+	// (TakeoffStart); TORAM, ASDAM and LDAM are the declared take-off run,
+	// accelerate-stop and landing distances available. 0: not declared, the
+	// runway's own (TORA, ASDA, LandingDistance) (#1660).
+	TakeoffStartM float64 `json:"takeoffStartM,omitempty"`
+	TORAM         float64 `json:"toraM,omitempty"`
+	ASDAM         float64 `json:"asdaM,omitempty"`
+	LDAM          float64 `json:"ldaM,omitempty"`
+	// Use is what the end is used for: take-offs and landings (0), or only
+	// one, or neither (#1661; ForTakeoff, ForLanding).
+	Use RunwayEndUse `json:"use,omitempty"`
 	// ILS is the ident of the end's ILS and ILSRegion its region (the
 	// facility's VOR record has the frequency), "" without one.
 	ILS       string `json:"ils,omitempty"`

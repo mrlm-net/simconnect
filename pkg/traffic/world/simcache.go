@@ -229,6 +229,9 @@ func (c *simCache) layout(icao string) (*airport.Layout, airport.RawAirport, boo
 	if err != nil {
 		return nil, raw, false
 	}
+	for _, e := range airport.CheckDeclared(raw) {
+		tlog.printf("%s kept layout: %v", icao, e) // left out of it (#1660, #1661)
+	}
 	return l, raw, true
 }
 

@@ -535,6 +535,9 @@ func (c *TaxiController) Start(req TaxiRequest) error {
 		c.padNode = node
 	}
 	req.Options.OwnStands = append(slices.Clone(req.Options.OwnStands), req.Parking) // not an obstacle to itself
+	if _, end, ok := req.Graph.Layout.RunwayEnd(req.Runway); ok && !end.ForTakeoff() {
+		return fmt.Errorf("%w: no take-offs from runway %s (%s)", airport.ErrRunwayEndUse, end.Name, end.Use)
+	}
 	route, err := departureRoute(req)
 	if err != nil {
 		return err
@@ -959,7 +962,7 @@ func runwayAhead(req TaxiRequest, last airport.NodeID) (left, from float64, ok b
 	if end.Name == rwy.Secondary.Name {
 		from = rwy.Length - h.FromPrimary
 	}
-	return rwy.Length - from, from, true
+	return end.TakeoffRunAhead(from, rwy.Length), from, true
 }
 
 // departureRoute is req's route from its stand to its runway

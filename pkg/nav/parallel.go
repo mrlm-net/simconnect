@@ -109,6 +109,9 @@ func withParallels(l *airport.Layout, u RunwayUse, cands []runwayCandidate, lim 
 		if !c.withinLimits || math.Abs(headingDiff(c.end.Heading, u.Departure.Heading)) > parallelMaxDeg {
 			continue
 		}
+		if !c.end.ForTakeoff() && !c.end.ForLanding() {
+			continue // not used (#1661)
+		}
 		r, ok := runwayOfEnd(l, c.end.Name)
 		if !ok || slices.ContainsFunc(in, func(x airport.Runway) bool { return x.Index == r.Index }) {
 			continue
@@ -130,16 +133,24 @@ func withParallels(l *airport.Layout, u RunwayUse, cands []runwayCandidate, lim 
 		mode = lim.Parallel // the airport's rule, never more than the spacing allows
 	}
 	u.Parallel, u.SpacingM = mode, minSpacing
+	// Each end only for what it is used for (#1661), whichever way they are
+	// shared out below: take-offs from ends used for them, landings onto
+	// ends used for those.
+	deps := slices.DeleteFunc(slices.Clone(ends), func(e airport.RunwayEnd) bool { return !e.ForTakeoff() })
+	arrs := slices.DeleteFunc(slices.Clone(ends), func(e airport.RunwayEnd) bool { return !e.ForLanding() })
 	// One entered at its take-off threshold, the other only by backtracking
 	// (a 180 on the runway): take-offs from the first, landings on the
 	// other, which they vacate ahead of its far end anyway (live, LROP: 26L
 	// has no taxiway at its east end, 26R has).
 	if lim.ThresholdEntry != nil {
 		var with, without []airport.RunwayEnd
-		for _, e := range ends {
+		for _, e := range deps {
 			if lim.ThresholdEntry(e.Name) {
 				with = append(with, e)
-			} else {
+			}
+		}
+		for _, e := range arrs {
+			if !lim.ThresholdEntry(e.Name) {
 				without = append(without, e)
 			}
 		}
@@ -152,10 +163,16 @@ func withParallels(l *airport.Layout, u RunwayUse, cands []runwayCandidate, lim 
 	}
 	switch mode {
 	case ParallelSegregated:
-		u.Departures = []airport.RunwayEnd{ends[1]}
-		u.Departure = ends[1]
+		// Departures to a parallel used for them; none is: one runway in use.
+		i := slices.IndexFunc(ends[1:], func(e airport.RunwayEnd) bool { return e.ForTakeoff() })
+		if i < 0 {
+			u.Parallel, u.SpacingM = ParallelNone, 0
+			return u
+		}
+		u.Departures = []airport.RunwayEnd{ends[1+i]}
+		u.Departure = ends[1+i]
 	case ParallelDependent, ParallelIndependent:
-		u.Departures, u.Arrivals = ends, slices.Clone(ends)
+		u.Departures, u.Arrivals = deps, arrs
 	}
 	return u
 }

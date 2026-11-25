@@ -2,6 +2,7 @@ package traffic
 
 import (
 	"errors"
+	"fmt"
 	"math"
 	"time"
 
@@ -387,6 +388,9 @@ func CircuitJoinFor(l *airport.Layout, rwy string, cfg CircuitConfig, p airport.
 	r, end, ok := l.RunwayEnd(rwy)
 	if !ok {
 		return cfg, "", ErrNoRunway
+	}
+	if !end.ForLanding() {
+		return cfg, "", fmt.Errorf("%w: no landings on runway %s (%s)", airport.ErrRunwayEndUse, end.Name, end.Use)
 	}
 	if cfg.OverheadJoin {
 		return cfg, LegOverhead, nil // whatever side it comes from: overhead first
