@@ -173,7 +173,7 @@ func (c *TaxiController) chooseTakeoff(availableM float64) {
 func (c *TaxiController) plannedTakeoffRun() float64 {
 	g := c.req.Graph
 	if g == nil || c.route == nil || len(c.route.Nodes) == 0 || c.Backtracks() {
-		return c.runwayLength
+		return c.end.TORA(c.runwayLength)
 	}
 	last := c.route.Nodes[len(c.route.Nodes)-1]
 	if entries, err := g.RunwayEntries(c.end.Name); err == nil {
@@ -183,7 +183,7 @@ func (c *TaxiController) plannedTakeoffRun() float64 {
 			}
 		}
 	}
-	return c.runwayLength
+	return c.end.TORA(c.runwayLength)
 }
 
 // chooseTakeoffAt sets the configuration again for the roll starting at
@@ -197,7 +197,7 @@ func (c *TaxiController) chooseTakeoffAt(start airport.LatLon) {
 		return
 	}
 	set := c.flaps.target
-	c.chooseTakeoff(c.runwayLength - math.Max(0, alongHeading(c.end.Threshold, c.end.Heading, start)))
+	c.chooseTakeoff(c.end.TakeoffRunAhead(math.Max(0, alongHeading(c.end.Threshold, c.end.Heading, start)), c.runwayLength))
 	if to := c.toConfig.FlapsPct; set > 0 && set != to {
 		c.flaps.target, c.flaps.rate = to, math.Max(to, c.flaps.pct)/(FlapsSetSeconds*f(c.timing.flaps))
 	}

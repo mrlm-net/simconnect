@@ -74,14 +74,19 @@ func (g *Graph) RunwayEntries(runwayEnd string) ([]RunwayEntry, error) {
 		return nil, err
 	}
 	out := make([]RunwayEntry, 0, len(exits))
+	declared := end.TORAM > 0 || end.TakeoffStartM > 0
 	for _, x := range exits {
 		path := make([]NodeID, len(x.Path))
 		for i, id := range x.Path {
 			path[len(path)-1-i] = id
 		}
+		from, left := math.Max(0, rwy.Length-x.Along), x.Along
+		if declared {
+			left = end.TakeoffRunAhead(from, rwy.Length) // to the end of its TORA (#1660)
+		}
 		out = append(out, RunwayEntry{
 			RunwayNode: x.RunwayNode, Node: x.Node, Path: path,
-			FromThreshold: math.Max(0, rwy.Length-x.Along), Remaining: x.Along,
+			FromThreshold: from, Remaining: left,
 			Angle: x.Angle, Taxiway: x.Taxiway, HoldShort: x.HoldShort, ILSHoldShort: x.ILSHoldShort,
 		})
 	}

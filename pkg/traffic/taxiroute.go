@@ -167,7 +167,10 @@ func LineUpWaypoints(g *airport.Graph, r *airport.Route) ([]types.SIMCONNECT_DAT
 	along = math.Max(0, math.Min(along, rwy.Length-LineUpAlignMeters))
 
 	entryLat, entryLon := calc.DisplaceByHeading(t.Lat, t.Lon, end.Heading, along)
-	alignLat, alignLon := calc.DisplaceByHeading(t.Lat, t.Lon, end.Heading, along+LineUpAlignMeters)
+	// Aligned no nearer the pavement end than where the take-off starts
+	// (#1660: a declared start offset).
+	from := math.Min(math.Max(along, end.TakeoffStartM), math.Max(along, rwy.Length-LineUpAlignMeters))
+	alignLat, alignLon := calc.DisplaceByHeading(t.Lat, t.Lon, end.Heading, from+LineUpAlignMeters)
 	wps := []types.SIMCONNECT_DATA_WAYPOINT{
 		TaxiWaypoint(entryLat, entryLon, alt, LineUpSpeedKts),
 		LineupWaypoint(alignLat, alignLon, alt),

@@ -515,12 +515,18 @@ func (c *ArrivalController) Start(req ArrivalRequest) error {
 	}
 	req.resolveAircraft()
 	req.Options = withSpan(req.Options, req.Profile)
+	if _, end, ok := req.Graph.Layout.RunwayEnd(req.Runway); ok && !end.ForLanding() {
+		return fmt.Errorf("%w: no landings on runway %s (%s)", airport.ErrRunwayEndUse, end.Name, end.Use)
+	}
 	plan, err := PlanArrival(req.Graph, req.Runway, req.Parking, ArrivalOptions{
 		SpawnNm: req.SpawnNm, Exit: req.Exit, Route: req.Options, GroundAGL: req.GroundAGL, NoseOffset: req.NoseOffset, StandSide: req.StandSide,
 		TouchdownKts: approachProfileOf(req).TouchdownKts, BrakeDecel: req.Rollout.BrakeDecel,
 	})
 	if err != nil {
 		return err
+	}
+	if !plan.End.ForTakeoff() {
+		c.tngLeft = 0 // touch-and-goes need a take-off off it: a full stop (#1661)
 	}
 	if req.InjectApproach {
 		if c.inj == nil {

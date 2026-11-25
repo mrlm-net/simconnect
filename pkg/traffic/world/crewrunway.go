@@ -36,7 +36,7 @@ func (it *controlled) crewRunway() string {
 	best, bestD := "", math.Inf(1)
 	for _, r := range it.graph.Layout.Runways {
 		for _, end := range []airport.RunwayEnd{r.Primary, r.Secondary} {
-			if end.Name == "" || end.Name == it.view.Runway || sameFix(p.SIDsFor(end.Name), it.view.Procedure) == nil {
+			if end.Name == "" || end.Name == it.view.Runway || !end.ForTakeoff() || sameFix(p.SIDsFor(end.Name), it.view.Procedure) == nil {
 				continue
 			}
 			if w != nil && w.WindKts*math.Cos((w.WindDirTrue-end.Heading)*math.Pi/180) < -crewRunwayMaxTailKts {
@@ -63,7 +63,8 @@ func (it *controlled) grantRunway() {
 		return
 	}
 	g := it.graph
-	asked, _, free := g.Layout.RunwayEnd(rwy)
+	asked, askedEnd, free := g.Layout.RunwayEnd(rwy)
+	free = free && askedEnd.ForTakeoff() // no take-offs from it (#1661): unable
 	for _, arrival := range []bool{true, false} {
 		for _, end := range it.cc.runwaysInUse(g, arrival) {
 			inUse, _, found := g.Layout.RunwayEnd(end.Name)

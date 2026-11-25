@@ -7,6 +7,18 @@ This project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 ---
 
+## [0.195.0] - 2026-11-25
+
+### Added
+
+- `airport`: declared distances per runway end (#1660): an optional take-off start offset, TORA, ASDA and LDA, read from the raw runway record as `primaryTakeoffStartM`, `primaryToraM`, `primaryAsdaM`, `primaryLdaM` (and `secondary…`), meters, 0 or absent keeping the runway's own. `RunwayEnd.TakeoffStart()`, `TORA`, `ASDA`, `TakeoffRunAhead`, `LandingDistance` and `LandingEnd` give them. Departures line up no nearer the pavement end than the take-off start, the take-off run and configuration go to the end of the TORA, and an arrival's roll to the end and short-field touchdown are planned within the LDA. `airport.CheckDeclared` reports values left out (`ErrBadDeclared`); a negative take-off start (a paved start before the runway's end, as at NZQN) is refused, not supported
+- `airport`: runway end use (#1661): `primaryUse` / `secondaryUse` on the raw runway record, 0 take-offs and landings, 1 take-offs only, 2 landings only, 3 not used (`RunwayEnd.Use`, `ForTakeoff`, `ForLanding`). The runway choice and its changes, parallels in use together, the sequencer, diversions and circuits use each end only for what it is for; a departure, arrival, runway change or circuit join onto an end not used for it returns `airport.ErrRunwayEndUse`, and a staffed controller's amendment to one is answered "unable". A circuit on a landing-only end makes no touch-and-go. A runway in use whose end's use changes is chosen again at once; a layout's JSON `use` outside 0-3 reads as 0; declared values and uses left out of an offline or kept layout are logged (`CheckDeclared`)
+- `traffic.RunwayEndLongEnough`: `RunwayLongEnough` against an end's TORA
+
+- `traffic`: an arrival whose exit lies beyond its end's declared landing distance is down to its exit speed by the end of it and rolls on to the exit at that (#1660); a stand's standard push is voted by the ends that take off only, and saved standard pushes of a layout whose end uses differ are planned again (#1661)
+- `traffic.RunwayController`: a departure is cleared onto the runway ahead of an arrival to the other end only if, at the arrival's speed now, it is airborne and past the far end before the arrival comes inside `OppositeArrivalNM` (12 NM); before, only the arrival's distance at the line-up counted, and one lined up could be held there as the arrival came in. One lined up is still held while the arrival is inside 12 NM. With no declared values or uses set, this stricter line-up planning (both ends in use during a runway change) is the only change (#1661)
+- `world.SpawnRequest.SpawnNm`: how far out on final a spawned arrival appears; 0 the default as before
+
 ## [0.194.0] - 2026-11-24
 
 ### Added

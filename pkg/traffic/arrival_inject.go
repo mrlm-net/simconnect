@@ -206,7 +206,13 @@ func (c *ArrivalController) takeover(m arrivalMonitor, pos airport.LatLon, onRun
 			exitKts = math.Min(exitKts, ExitSpeed(c.plan.Exit))
 		}
 		v0, ve := m.GroundKts*ktsToMS, exitKts*ktsToMS
-		even := (v0*v0 - ve*ve) / (2 * math.Max(onRwy-rolloutExitLeadM, 1))
+		// Slowed to the exit speed by the end of the end's declared landing
+		// distance where its exit lies beyond it (#1660), on to it at that.
+		slowBy := onRwy
+		if c.plan.End.LDAM > 0 {
+			slowBy = math.Min(onRwy, math.Max(c.landingLeft(nose), 1))
+		}
+		even := (v0*v0 - ve*ve) / (2 * math.Max(slowBy-rolloutExitLeadM, 1))
 		// The exit speed kept until its tail is clear of the runway as the
 		// tower counts it, not only its nose off the surface (offline LKPR:
 		// an A320 down to 12 kt at the edge took 61 s from the threshold to
@@ -227,10 +233,10 @@ func (c *ArrivalController) takeover(m arrivalMonitor, pos airport.LatLon, onRun
 		} else if c.plan.Backtrack && clear > exitAt {
 			// Turning round off the exit and back along the runway at
 			// BacktrackKts (#1563), the exit speed only to the exit.
-			path.LimitRange(math.Max(onRwy-rolloutExitLeadM, 0), exitAt, exitKts, math.Min(math.Max(even, rolloutMinDecel), ro.BrakeDecel))
+			path.LimitRange(math.Max(slowBy-rolloutExitLeadM, 0), exitAt, exitKts, math.Min(math.Max(even, rolloutMinDecel), ro.BrakeDecel))
 			path.LimitRange(exitAt, fast, BacktrackKts, ro.BrakeDecel)
 		} else {
-			path.LimitRange(math.Max(onRwy-rolloutExitLeadM, 0), fast, exitKts, math.Min(math.Max(even, rolloutMinDecel), ro.BrakeDecel))
+			path.LimitRange(math.Max(slowBy-rolloutExitLeadM, 0), fast, exitKts, math.Min(math.Max(even, rolloutMinDecel), ro.BrakeDecel))
 			// Turning a right angle off the runway before the vacate stop:
 			// at the exit speed there too, a high-speed exit included.
 			path.limitTurnOff(c.plan.End.Heading, 0, math.Max(fast, hold), c.turnOffKts())
@@ -596,7 +602,7 @@ const (
 // touchdown spread drawn, or on a short field the shift to its early
 // touchdown.
 func (c *ArrivalController) aimShift(startMeters, spread float64) float64 {
-	landing := c.plan.Runway.Length - c.plan.End.DisplacedM
+	landing := c.plan.End.LandingDistance(c.plan.Runway.Length) // its LDA (#1660)
 	if landing <= 0 || landing >= shortFieldMeters {
 		return spread
 	}
@@ -1036,6 +1042,15 @@ func (c *ArrivalController) reverseIdle(kts float64) {
 	c.reversing = false
 	c.note("reverse idle", c.inj.SetThrottle(c.objectID, c.aircraft().EngineCount(), 0))
 	c.seq.add(c.now(), "reverse idle", 0, kts)
+}
+
+// landingLeft is how far ahead of nose, along the landing end, its declared
+// landing distance ends (RunwayEnd.LandingEnd); negative past it. c.mu
+// held.
+func (c *ArrivalController) landingLeft(nose airport.LatLon) float64 {
+	e := c.plan.End.LandingEnd(c.plan.Runway.Length)
+	off := (localBearing(nose, e) - c.plan.End.Heading) * math.Pi / 180
+	return localDist(nose, e) * math.Cos(off)
 }
 
 // The rollout's even deceleration (injected landing): to the exit speed

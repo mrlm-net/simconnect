@@ -32,6 +32,13 @@ func RunwayLongEnough(model string, r airport.Runway, elevationFt float64) bool 
 	return model == "" || r.Length <= 0 || r.Length >= takeoffRunFor(model, elevationFt)
 }
 
+// RunwayEndLongEnough is RunwayLongEnough for a take-off from end e of r:
+// its take-off run available (airport.RunwayEnd.TORA, #1660) against the
+// run. An empty model, or a runway of no known length: true.
+func RunwayEndLongEnough(model string, r airport.Runway, e airport.RunwayEnd, elevationFt float64) bool {
+	return model == "" || r.Length <= 0 || e.TORA(r.Length) >= takeoffRunFor(model, elevationFt)
+}
+
 // takeoffRuns: RequiredTakeoffRun by take-off profile and elevation (100
 // ft), worked out once.
 var takeoffRuns sync.Map

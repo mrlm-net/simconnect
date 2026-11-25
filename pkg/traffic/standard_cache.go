@@ -45,6 +45,14 @@ func layoutFingerprint(g *airport.Graph) string {
 	for _, p := range l.Parking {
 		fmt.Fprintf(h, "%.6f,%.6f,%.0f;", p.Position.Lat, p.Position.Lon, p.Heading)
 	}
+	// The runway ends' uses vote (#1661); none set, the print as before.
+	for _, r := range l.Runways {
+		for _, e := range []airport.RunwayEnd{r.Primary, r.Secondary} {
+			if e.Use != airport.RunwayUseBoth {
+				fmt.Fprintf(h, "use %s %d;", e.Name, e.Use)
+			}
+		}
+	}
 	return fmt.Sprintf("%x", h.Sum64())
 }
 

@@ -684,12 +684,18 @@ func PlanArrival(g *airport.Graph, runwayEnd string, parking int, o ArrivalOptio
 	if turnM >= 0 {
 		// Rolling to the end: slowing to the turn round there.
 		r, a0 := endTurnRadius(rwy)
-		toExit, exitKts = rwy.Length-end.DisplacedM-(a0+2*r), TurnSpeedKts
+		toExit, exitKts = math.Min(rwy.Length-end.DisplacedM, end.LandingDistance(rwy.Length))-(a0+2*r), TurnSpeedKts
 		vx = exitKts * knot
+	}
+	// At the exit speed by the end of a declared landing distance short of
+	// the exit (#1660), on to it at that.
+	slowBy := toExit
+	if end.LDAM > 0 {
+		slowBy = math.Min(toExit, end.LandingDistance(rwy.Length))
 	}
 	for s := TouchdownMeters; s < toExit; s += RolloutSpacingMeters {
 		lat, lon := calc.DisplaceByHeading(t.Lat, t.Lon, end.Heading, s)
-		v := math.Min(v0, math.Sqrt(vx*vx+2*RolloutDecel*(toExit-s))) / knot
+		v := math.Min(v0, math.Sqrt(vx*vx+2*RolloutDecel*math.Max(0, slowBy-s))) / knot
 		p.Waypoints = append(p.Waypoints, ground.waypoint(lat, lon, math.Max(v, exitKts)))
 	}
 	rn := route.Points[0]

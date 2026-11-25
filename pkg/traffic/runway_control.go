@@ -98,6 +98,11 @@ const DefaultClearToLandNM = 6.0
 // holds a take-off toward it.
 const OppositeArrivalNM = 12.0
 
+// oppositePastEnd: from lift-off to past the far end of the runway, for a
+// take-off cleared ahead of an arrival to the other end (#1661): the rest
+// of a long runway at a climb-out speed (2 km at 130 kt).
+const oppositePastEnd = 30 * time.Second
+
 // RunwayClearances are the controller's decisions this time.
 type RunwayClearances struct {
 	LineUp  []string `json:"lineUp,omitempty"`  // line up and wait
@@ -528,7 +533,21 @@ func (r *RunwayController) Decide(now time.Time, users []RunwayUser) RunwayClear
 	otherEnd := func(u, v RunwayUser) bool {
 		return u.End != "" && v.End != "" && v.End != u.End && v.Callsign != u.Callsign && !v.Crossing
 	}
-	departureBlocked := func(u RunwayUser) string {
+	// oppositeTooSoon: arrival v to the other end comes inside
+	// OppositeArrivalNM before stay, oppositePastEnd and the margin have
+	// run, at its speed now (at least 100 kt): a departure cleared onto the
+	// runway now would still be on it, or climbing toward the arrival short
+	// of the far end, as it comes in (#1661, one end for take-offs and the
+	// other for landings).
+	oppositeTooSoon := func(v RunwayUser, stay time.Duration) bool {
+		h := (v.DistanceNM - OppositeArrivalNM) / math.Max(v.GroundKts, 100)
+		return time.Duration(h*float64(time.Hour)) < stay+oppositePastEnd+r.opts.Margin
+	}
+	// departureBlocked: stay is how long u, not on the runway yet, would
+	// hold it from now until airborne; 0 for one lined up or lining up
+	// already, held by OppositeArrivalNM only: planned so at its line-up,
+	// it is past the far end before the arrival comes inside it.
+	departureBlocked := func(u RunwayUser, stay time.Duration) string {
 		for _, v := range users {
 			if !otherEnd(u, v) {
 				continue
@@ -537,7 +556,7 @@ func (r *RunwayController) Decide(now time.Time, users []RunwayUser) RunwayClear
 			// Close in only: farther out it is given the gap for the departures
 			// (a runway change, ApproachSequencer.SetNotBefore), and both waiting
 			// on each other nobody would go.
-			case v.Arrival && (v.Phase == RunwayRolling || v.Phase == RunwayFinal && v.DistanceNM < OppositeArrivalNM):
+			case v.Arrival && (v.Phase == RunwayRolling || v.Phase == RunwayFinal && (v.DistanceNM < OppositeArrivalNM || stay > 0 && oppositeTooSoon(v, stay))):
 				return v.Callsign + " landing on " + v.End
 			case !v.Arrival && (v.Phase == RunwayLinedUp || v.Phase == RunwayRolling || v.Phase == RunwayAirborne):
 				return v.Callsign + " departing from " + v.End
@@ -561,7 +580,11 @@ func (r *RunwayController) Decide(now time.Time, users []RunwayUser) RunwayClear
 		return false
 	}
 	takeoffWhy := func(u RunwayUser, lineUp time.Duration) string {
-		if why := departureBlocked(u); why != "" {
+		stay := time.Duration(0) // lined up: OppositeArrivalNM only
+		if !slices.ContainsFunc(ourLinedUp, func(o RunwayUser) bool { return o.Callsign == u.Callsign }) {
+			stay = takeoffSaidIn + lineUp + lineUpGoSlack + RunwayOccupancyIn(u.Wake, false, r.opts.Surface)
+		}
+		if why := departureBlocked(u, stay); why != "" {
 			return why
 		}
 		for _, v := range users {
@@ -743,7 +766,8 @@ func (r *RunwayController) Decide(now time.Time, users []RunwayUser) RunwayClear
 			// sent around).
 			if occ, ok := along[occupied]; ok && occupied != rollingDep && ourDep[occupied] && r.granted[occupied] && number == 1 && len(out.LineUpBehindDeparting) == 0 &&
 				len(ourLinedUp) == 1 && ourLinedUp[0].Callsign == occupied && !ourLinedUp[0].LiningUp &&
-				occ > u.AlongM+IntersectionPassed(u.Callsign) && departureBlocked(u) == "" &&
+				occ > u.AlongM+IntersectionPassed(u.Callsign) &&
+				departureBlocked(u, intervalAfter(occupied, u)+r.opts.LineUpTime+RunwayOccupancyIn(u.Wake, false, r.opts.Surface)+takeoffSaidIn) == "" &&
 				arrivalClear(intervalAfter(occupied, u)+r.opts.LineUpTime+RunwayOccupancyIn(u.Wake, false, r.opts.Surface)+takeoffSaidIn+r.opts.Margin, entryNM(u)) == "" {
 				out.LineUpBehindDeparting[u.Callsign] = occupied
 				out.LineUpAhead[u.Callsign] = true // down the runway past its way in
@@ -754,7 +778,8 @@ func (r *RunwayController) Decide(now time.Time, users []RunwayUser) RunwayClear
 			// goes next, and one lined up further down would be in its way
 			// (live, OKDIS lined up at an intersection ahead of CSA443 lined up
 			// at the threshold, both behind the one rolling).
-			if occupied == rollingDep && number == 1 && (rush || passed) && len(out.LineUpBehindDeparting) == 0 && len(ourLinedUp) == 0 && departureBlocked(u) == "" &&
+			if occupied == rollingDep && number == 1 && (rush || passed) && len(out.LineUpBehindDeparting) == 0 && len(ourLinedUp) == 0 &&
+				departureBlocked(u, max(intervalAfter(rollingDep, u), RollPastIn(u.AlongM+IntersectionPassed(u.Callsign)-along[rollingDep], rollingKts)+r.opts.LineUpTime)+RunwayOccupancyIn(u.Wake, false, r.opts.Surface)+takeoffSaidIn) == "" &&
 				// Its line-up too, while the interval runs: the room the map
 				// checks again once the one rolling has passed (LineUpRoom;
 				// offline LKPR, WZZ1040 told to line up, then to hold position).
@@ -796,7 +821,7 @@ func (r *RunwayController) Decide(now time.Time, users []RunwayUser) RunwayClear
 		// Lining up to a stop takes LineUpWaitTime, not the line-up-and-go
 		// LineUpTime (live, OKWMV at B lined up 100 s after its clearance,
 		// AFR765 on final went around).
-		case departureBlocked(u) == "" && r.intervalLeft(now, u) <= r.opts.LineUpTime+LineUpWaitMax &&
+		case departureBlocked(u, max(r.intervalLeft(now, u), r.opts.LineUpWaitTime)+RunwayOccupancyIn(u.Wake, false, r.opts.Surface)+takeoffSaidIn) == "" && r.intervalLeft(now, u) <= r.opts.LineUpTime+LineUpWaitMax &&
 			arrivalClear(max(r.intervalLeft(now, u), r.opts.LineUpWaitTime)+RunwayOccupancyIn(u.Wake, false, r.opts.Surface)+takeoffSaidIn+r.opts.Margin, entryNM(u)) == "":
 			// Only the interval runs: line up and wait.
 			out.LineUp = append(out.LineUp, u.Callsign)

@@ -104,6 +104,27 @@ type RawRunway struct {
 	// negative or not shorter than the runway: not displaced (#1560).
 	PrimaryDisplacedM   float32 `json:"primaryDisplacedM,omitempty"`
 	SecondaryDisplacedM float32 `json:"secondaryDisplacedM,omitempty"`
+	// Declared distances per end (#1660), meters, from the AIP; the sim
+	// does not send them. TakeoffStartM: the take-off roll starts that far
+	// in from the end's pavement end (where entries and line-up start);
+	// TORAM, ASDAM, LDAM: the take-off run, accelerate-stop and landing
+	// distances available (TORA from the take-off start, LDA from the
+	// landing threshold). 0 or absent: the runway's own (its length less
+	// the start or the displacement); a value CheckDeclared refuses
+	// (a negative start among them) is left out.
+	PrimaryTakeoffStartM   float32 `json:"primaryTakeoffStartM,omitempty"`
+	PrimaryTORAM           float32 `json:"primaryToraM,omitempty"`
+	PrimaryASDAM           float32 `json:"primaryAsdaM,omitempty"`
+	PrimaryLDAM            float32 `json:"primaryLdaM,omitempty"`
+	SecondaryTakeoffStartM float32 `json:"secondaryTakeoffStartM,omitempty"`
+	SecondaryTORAM         float32 `json:"secondaryToraM,omitempty"`
+	SecondaryASDAM         float32 `json:"secondaryAsdaM,omitempty"`
+	SecondaryLDAM          float32 `json:"secondaryLdaM,omitempty"`
+	// PrimaryUse and SecondaryUse are what each end is used for (#1661,
+	// RunwayEndUse): 0 or absent take-offs and landings, 1 take-offs only,
+	// 2 landings only, 3 not used.
+	PrimaryUse   int32 `json:"primaryUse,omitempty"`
+	SecondaryUse int32 `json:"secondaryUse,omitempty"`
 }
 
 // RawParking is a TAXI_PARKING record: NAME, SUFFIX, NUMBER, TYPE, HEADING,
@@ -257,7 +278,7 @@ func buildRunway(i int, r RawRunway) Runway {
 	sLat, sLon := calc.DisplaceByHeading(r.Latitude, r.Longitude, hdg, half)
 	pDes := types.SIMCONNECT_FACILITY_RUNWAY_DESIGNATOR(r.PrimaryDesignator)
 	sDes := types.SIMCONNECT_FACILITY_RUNWAY_DESIGNATOR(r.SecondaryDesignator)
-	return Runway{
+	rw := Runway{
 		Index:    i,
 		Center:   LatLon{Lat: r.Latitude, Lon: r.Longitude},
 		Altitude: r.Altitude,
@@ -277,6 +298,11 @@ func buildRunway(i int, r RawRunway) Runway {
 			ILS: r.SecondaryILS, ILSRegion: r.SecondaryILSRegion,
 		},
 	}
+	// Declared distances and use (#1660, #1661): each one refused left out.
+	p, s := rawDeclared(r)
+	applyDeclared(&rw.Primary, p, r.Length)
+	applyDeclared(&rw.Secondary, s, r.Length)
+	return rw
 }
 
 // displacedM is a runway end's threshold displacement in meters: m when it

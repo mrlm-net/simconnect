@@ -222,7 +222,7 @@ func (cc *controlCenter) changeDepartureRunway(g *airport.Graph, it *controlled,
 	if errors.Is(err, traffic.ErrTooLate) {
 		return // lined up: it goes from the runway it is on
 	}
-	if errors.Is(err, traffic.ErrRunwayTooShort) {
+	if errors.Is(err, traffic.ErrRunwayTooShort) || errors.Is(err, airport.ErrRunwayEndUse) {
 		it.unableRunway(runway, err)
 		return
 	}
@@ -292,6 +292,10 @@ func (cc *controlCenter) changeArrivalRunway(g *airport.Graph, it *controlled, r
 	err = cc.do(func() error { return it.arr.ChangeRunway(runway, pts, cc.missedFor(g, runway)) })
 	if errors.Is(err, traffic.ErrTooLate) {
 		return false // established: it lands on the runway it flies to
+	}
+	if errors.Is(err, airport.ErrRunwayEndUse) {
+		it.unableRunway(runway, err) // heard, as a departure's (#1661)
+		return false
 	}
 	if err != nil {
 		cc.log.printf("%-6s runway change to %s refused: %v", it.Tail, runway, err)

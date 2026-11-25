@@ -1072,6 +1072,9 @@ type SpawnRequest struct {
 	Squawk         string `json:"squawk"`
 	Gates          bool   `json:"gates"`          // hold at every clearance
 	InjectApproach bool   `json:"injectApproach"` // arrival: fly the approach by injection (the default: see AILanding)
+	// SpawnNm: an arrival appears this far out on final; 0:
+	// traffic.DefaultSpawnNm (or its procedure's join, as before).
+	SpawnNm float64 `json:"spawnNm,omitempty"`
 	// AILanding: MSFS AI flies the approach and lands (only when asked, an
 	// explicit injectApproach false; it lands at -1000 fpm). Every other
 	// arrival flies our injected approach.
@@ -1492,7 +1495,7 @@ func (cc *controlCenter) spawn(g *airport.Graph, r SpawnRequest) (*controlled, e
 		nose, side := cc.standPlace(g, r.Stand, model)
 		startAt := traffic.Now()
 		windKts, gustKts := cc.wind()
-		ctl, ach, err := cc.sim.StartArrival(defBase, reqBase, traffic.ArrivalRequest{Graph: g, Runway: r.Runway, Parking: r.Stand, NoseOffset: nose, StandSide: side, Model: model, Livery: livery, Tail: r.Tail, ObjectID: r.adopt, Exit: exit, Circuit: circuit, TouchAndGos: r.TouchAndGos, StopAndGo: r.StopAndGo, CircuitEntry: entryPoint, CircuitJoin: join,
+		ctl, ach, err := cc.sim.StartArrival(defBase, reqBase, traffic.ArrivalRequest{Graph: g, Runway: r.Runway, Parking: r.Stand, NoseOffset: nose, StandSide: side, Model: model, Livery: livery, Tail: r.Tail, ObjectID: r.adopt, Exit: exit, SpawnNm: r.SpawnNm, Circuit: circuit, TouchAndGos: r.TouchAndGos, StopAndGo: r.StopAndGo, CircuitEntry: entryPoint, CircuitJoin: join,
 			Options:          airport.RouteOptions{Via: r.Via, Taxiways: r.Taxiways},
 			HoldForClearance: r.Gates, HoldAtCrossings: true, InjectApproach: !r.AILanding, Profile: prof, FollowMe: cc.followMe(r, g, reqBase, prof),
 			Procedure: procRoute, MissedApproach: cc.missedFor(g, r.Runway), Aircraft: &ac, Airport: &lim,
@@ -3527,8 +3530,8 @@ func (cc *controlCenter) runwayForModel(g *airport.Graph, arrival bool, stand in
 	var others []airport.RunwayEnd
 	for _, r := range g.Layout.Runways {
 		for _, e := range []airport.RunwayEnd{r.Primary, r.Secondary} {
-			if !shut.ClosedEnd(e.Name) && !slices.ContainsFunc(ends, func(u airport.RunwayEnd) bool { return u.Name == e.Name }) {
-				others = append(others, e)
+			if e.ForTakeoff() && !shut.ClosedEnd(e.Name) && !slices.ContainsFunc(ends, func(u airport.RunwayEnd) bool { return u.Name == e.Name }) {
+				others = append(others, e) // one used for take-offs (#1661)
 			}
 		}
 	}
@@ -3583,7 +3586,7 @@ func suitedEnds(g *airport.Graph, ends []airport.RunwayEnd, model string) (long,
 		r := runwayOfEnd(g, e.Name)
 		switch {
 		case !traffic.RunwaySuits(model, r):
-		case traffic.RunwayLongEnough(model, r, elev):
+		case traffic.RunwayEndLongEnough(model, r, e, elev):
 			long = append(long, e)
 		default:
 			short = append(short, e)
@@ -3747,10 +3750,40 @@ func (cc *controlCenter) runwaysInUse(g *airport.Graph, arrival bool) []airport.
 			name = r.Primary.Name
 		}
 	}
-	if _, end, ok := g.Layout.RunwayEnd(name); ok {
+	return endInUse(g.Layout, name, shut, arrival)
+}
+
+// endInUse is runwaysInUse's choice without weather: the end name, else
+// none; one not used for this (#1661) gives the first end of a runway open
+// at both ends that is. Nothing declared: the end name as it is.
+func endInUse(l *airport.Layout, name string, shut nav.RunwayLimits, arrival bool) []airport.RunwayEnd {
+	_, end, ok := l.RunwayEnd(name)
+	if !ok {
+		return nil
+	}
+	if forUse(end, arrival) {
 		return []airport.RunwayEnd{end}
 	}
+	for _, r := range l.Runways {
+		if shut.ClosedEnd(r.Primary.Name) || shut.ClosedEnd(r.Secondary.Name) {
+			continue
+		}
+		for _, e := range []airport.RunwayEnd{r.Primary, r.Secondary} {
+			if forUse(e, arrival) {
+				return []airport.RunwayEnd{e}
+			}
+		}
+	}
 	return nil
+}
+
+// forUse reports whether runway end e is used for landings (arrival) or
+// take-offs (airport.RunwayEnd.Use, #1661).
+func forUse(e airport.RunwayEnd, arrival bool) bool {
+	if arrival {
+		return e.ForLanding()
+	}
+	return e.ForTakeoff()
 }
 
 // withSID leaves out the departure runways in use that publish no SID while
