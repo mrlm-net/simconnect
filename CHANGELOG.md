@@ -7,6 +7,12 @@ This project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 ---
 
+## [0.195.1] - 2026-11-26
+
+### Fixed
+
+- Tests: `TestArrivalStopsForStanding`'s late cases show the standing body only while the arrival can still stop for it within the braking limit, as documented. With some draws (about 1 in 20) the bed showed it 500 m off at 67 m/s on the landing roll and counted the normal landing braking as braking for it, failing the nightly race run. No code, limit or assertion changed.
+
 ## [0.195.0] - 2026-11-25
 
 ### Added

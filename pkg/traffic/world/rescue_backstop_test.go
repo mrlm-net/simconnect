@@ -498,7 +498,17 @@ func TestArrivalStopsForStanding(t *testing.T) {
 						return nil
 					}
 					room := backstopClearance + s.speed*s.speed/(2*1.5) + 0.6*s.speed + 1
-					if b.clearance(s.at, s.hdg, body) > room {
+					clr := b.clearance(s.at, s.hdg, body)
+					if clr > room {
+						return nil
+					}
+					// The room to brake at a rate still there: at most
+					// backstopAccel to its clearance. Nearer, it is no late
+					// find but one never to be stopped for at a rate, and
+					// the landing roll's own braking was counted as for it
+					// (seed 10: 500 m off at 67 m/s on the roll, within 10°
+					// of its heading, beside the runway, passed 64 m off).
+					if clr < backstopClearance+s.speed*s.speed/(2*backstopAccel) {
 						return nil
 					}
 					shown = true
