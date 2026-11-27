@@ -258,6 +258,14 @@ func (q *sequences) approachDo(icao, callsign, action string, at *airport.LatLon
 		// "number 4" from a conflict that only stretched its route).
 		if say, n := q.sequenceCall(q.cc.clock.Now(), callsign, e.Number, a.SpeedKts); say && (n > 0 || a.SpeedKts > 0) {
 			tx := traffic.Sequenced(callsign, n, 0, a)
+			if numberOnly(tx) {
+				// No speed to give, its route stretched or the time left
+				// to lose: a number alone is not a call, it goes with the
+				// next instruction as the sequence's does (#1428; nightly
+				// v0.199.0: "Ryanair 5E, number 4").
+				q.unsayNumber(callsign, n)
+				break
+			}
 			if n > 0 && q.spacingTold(callsign) {
 				tx = traffic.SpacingTold(tx)
 			}

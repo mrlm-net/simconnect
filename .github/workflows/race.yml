@@ -27,7 +27,18 @@ jobs:
       - name: Test
         env:
           CGO_ENABLED: '1'
-        run: go test -race -short ./... -count=1 -timeout 220m
+        shell: bash
+        # bash runs with -eo pipefail: go test's failure fails the step.
+        run: go test -race -short ./... -count=1 -timeout 220m 2>&1 | tee full.txt
+
+      - name: Keep the whole output
+        # A red run is read from it: every test's lines, the seeds too.
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: race-output
+          path: full.txt
+          if-no-files-found: ignore
 
   world-race:
     name: Whole-World runs under -race
@@ -62,7 +73,11 @@ jobs:
             {
               echo '### Failed tests and subtests'
               echo '```'
-              awk '/^=== (RUN|CONT)/ || /^[[:space:]]*--- (PASS|SKIP)/ { n = 0 } /_test.go:[0-9]+:/ { buf[n++] = $0 } /^[[:space:]]*--- FAIL/ { for (i = 0; i < n; i++) print buf[i]; print; n = 0 }' full.txt | head -n 300 || true
+              awk '/^=== (RUN|CONT)/ || /^[[:space:]]*--- (PASS|SKIP)/ { n = 0 } /_test.go:[0-9]+:|^worldtest: WORLDTEST_SEED=/ { buf[n++] = $0 } /^[[:space:]]*--- FAIL/ { for (i = 0; i < n; i++) print buf[i]; print; n = 0 }' full.txt | head -n 300 || true
+              echo '```'
+              echo '### Seeds (WORLDTEST_SEED replays a run; the whole output is the world-race-output artifact)'
+              echo '```'
+              grep -aE '^(=== RUN|worldtest: WORLDTEST_SEED=)' full.txt | grep -aB1 'WORLDTEST_SEED=' | grep -av '^--$' | head -n 400 || true
               echo '```'
             } >> "$GITHUB_STEP_SUMMARY"
           fi
@@ -77,6 +92,16 @@ jobs:
             echo "::error::the run crashed or timed out"
           fi
           test "$code" = 0
+
+      - name: Keep the whole output
+        # The World's log of a failed run and every seed, which the
+        # summary above only lists.
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: world-race-output
+          path: full.txt
+          if-no-files-found: ignore
 
   sweeps:
     name: Full validation sweeps
