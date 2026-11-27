@@ -62,6 +62,7 @@ const (
 	IntentEmergencyAck       Intent = "emergency_ack"        // roger MAYDAY, squawk 7700, number one
 	IntentCustom             Intent = "custom"               // a scenario's own words, said as written
 	IntentAfterDeparture     Intent = "after_departure"      // after departure climb to altitude N feet
+	IntentAfterDepartureTurn Intent = "after_departure_turn" // after departure turn right heading N
 	IntentEmergencyCancel    Intent = "emergency_cancel"     // a crew's cancel MAYDAY
 	IntentEmergencyQuestions Intent = "emergency_questions"  // report persons on board, fuel endurance and intentions
 	IntentEmergencyDetails   Intent = "emergency_details"    // the crew's persons on board, endurance, intentions
@@ -485,6 +486,8 @@ func phrase(cs string, in Intent, p map[string]string) string {
 		return cs + ", " + emergencyAck(p)
 	case IntentAfterDeparture:
 		return fmt.Sprintf("%s, after departure climb to altitude %s feet", cs, p[ParamAltitude])
+	case IntentAfterDepartureTurn:
+		return fmt.Sprintf("%s, after departure turn %s heading %s", cs, p[ParamTurn], p[ParamHeading])
 	case IntentEmergencyCancelAck:
 		return cs + ", " + cancelAck(p)
 	case IntentExpectDelay:

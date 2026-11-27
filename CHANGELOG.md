@@ -7,6 +7,17 @@ This project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 ---
 
+## [0.199.0] - 2026-11-27
+
+### Added
+
+- Traffic: a departure off one end of a runway keeps 3 NM horizontally (`traffic.OppositeSeparationNM`) from an arrival to the other end, whatever their levels. This is planned, not watched for. Before the take-off clearance, the way out is flown against the arrivals' ways in at the planned speeds, give or take. Where straight out would meet one, tower gives a turn with the take-off clearance: "after departure turn right heading 135". The aircraft flies that heading from about a mile past the far end, then goes on along its SID, or on the take-off heading again off to the side. Corners are rounded, so it turns smoothly. When no turn clears, or the departure is VFR, it waits ("... landing on the other end"). New: `traffic.DepartureTurn`, `TaxiController.TurnAfterDeparture`, `traffic.AfterDepartureTurn` (with its read-back), `traffic.DepartureTurnPath`, `traffic.ClosestApproachNM` (#1720).
+- Traffic: the same rule applies from the arrival's side. An arrival, IFR or in a circuit, appears only when its way in keeps clear of the departures off the other end of its runway that are cleared, rolling or airborne. An airborne departure is predicted to fly on along its last leg past its last climb point, as MSFS AI does. Until then the spawn returns `ErrSpawnBlocked` ("try again in a minute"), so it is released later and never made to orbit (#1720).
+
+### Changed
+
+- Tests: `TestDeclaredField` now fails below 3 NM horizontal between the two aircraft in the air; before, it only logged the distance. A new case asks for the arrival once the departure is airborne. `TestDeclaredFieldMirrored` runs the same cases on XDEC turned the other way round, and `TestDeclaredFieldTypes` adds an A320 departure with a DHC-6 arrival both ways round, asked for before and after the take-off. In the airborne cases the arrival is held until the departure is clear of its way in, so those cases get a 60-minute window instead of 40. A320 arrivals are left out for now and come back with #1718 (no landing-length rule: an A320 rolled past XDEC's 1500 m landing distance) and #1719 (an arrival's only exit is the taxiway a departure holds short on, and both wait). (#1720)
+
 ## [0.198.1] - 2026-11-27
 
 ### Fixed

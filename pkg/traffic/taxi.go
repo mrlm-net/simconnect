@@ -357,6 +357,7 @@ type TaxiController struct {
 	climbToFt       float64         // ClimbTo before the hand-over: the climb waypoints no lower
 	climbCapFt      float64         // LimitClimb: the climb waypoints no higher (after departure climb to)
 	vectorTo        *airport.LatLon // the end of a heading it is flying (FlyHeading)
+	turnAfter       *DepartureTurn  // TurnAfterDeparture: the climb turned at the hand-over
 	plannedKts      []RoutePoint    // its climb before a speed was assigned (AssignSpeed)
 	hasPendingLimit bool
 	flaps           surfaceRamp

@@ -44,6 +44,7 @@ type departureCtl interface {
 	LineUpLeft() time.Duration
 	Backtracks() bool
 	LimitClimb(ft float64) bool
+	TurnAfterDeparture(t traffic.DepartureTurn) bool
 	DirectTo(pos airport.LatLon, altFt, kts float64, fix airport.LatLon) error
 	FlyHeading(pos airport.LatLon, altFt, kts, heading, trueDeg float64) (traffic.Vector, error)
 	AssignSpeed(pos airport.LatLon, altFt, kts float64) error
