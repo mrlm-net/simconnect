@@ -7,6 +7,17 @@ This project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 ---
 
+## [0.198.1] - 2026-11-27
+
+### Fixed
+
+- Traffic: an arrival that is already at its minimum speed and is asked for a short spacing delay now loses about that delay, not minutes (#1716). On a STAR that joins the final at a slant, a first downwind extension also adds a whole base turn and intercept: at LKPR on LOMKI 8S for runway 24, a 38–41 s delay added 9.6 NM, about 3m16s. After the slower final chains of v0.197.0 the merge delays crossed into that case, and the landings behind slid out of `TestSpottingObserver`'s 45-minute window (5 instead of 6–7). Now, when a first downwind extension would add more than twice the track asked plus 2 NM as flown, the arrival gets a dog-leg sized to the time instead (at least a mile, out for `MinDogLegOut` at least). There are still no orbits, and the speed rules are unchanged.
+- Traffic: a dog-leg is stretched until the track as flown adds all of the time asked. Before, it could fall short by 0.2 NM, about 4 s, which left spacing a little under what was required (#706).
+
+### Changed
+
+- Tests: the new `TestSpacingDelaySizedVector` checks 38 and 41 s at LKPR on LOMKI 8S past PR518. The time lost must be within +20 s of the delay, with at most delay × speed + 1 NM of track and nothing left to a hold. `TestShortDelayAtMinimumSpeedIsLost` (#1691) now checks the time lost on the timeline: at least the delay less 1 s (straight legs against the rounded track flown) and at most 20 s more, by a vector out for `MinDogLegOut` or a downwind extension of `MinDownwindVector`, with nothing left to a hold. Before, it required the downwind extension itself. (#1716)
+
 ## [0.198.0] - 2026-11-27
 
 ### Added

@@ -4,14 +4,19 @@ import (
 	"fmt"
 	"testing"
 	"time"
+
+	"github.com/mrlm-net/simconnect/pkg/calc"
 )
 
 // TestShortDelayAtMinimumSpeedIsLost (#1691): an arrival at its minimum
 // speed asked for 10-45 s more loses them: speed has nothing left to take,
-// so its downwind is extended, by MinDownwindVector of flight at least (no
-// heading for spacing with the base turn seconds after it), and nothing is
-// left to a hold that never comes.
+// so a vector does, out for MinDogLegOut of flight at least or its downwind
+// extended for MinDownwindVector at least (no heading for spacing with the
+// base turn seconds after it), the time lost that and at most shortSlack
+// more (on straight legs: a second less with the turns rounded), and
+// nothing is left to a hold that never comes.
 func TestShortDelayAtMinimumSpeedIsLost(t *testing.T) {
+	const shortSlack = 20 * time.Second
 	g := lkprGraph(t)
 	route, err := lkprProcedures(t).Arrival("24", "VLM")
 	if err != nil {
@@ -39,6 +44,7 @@ func TestShortDelayAtMinimumSpeedIsLost(t *testing.T) {
 			if first.SpeedKts != MinProcedureSpeedKts {
 				t.Fatalf("setup: 3 min at %.0f kt, want the minimum %.0f", first.SpeedKts, MinProcedureSpeedKts)
 			}
+			was := timeToJoin(ctl)
 			a, err := ctl.AbsorbDelay(d)
 			if err != nil {
 				t.Fatal(err)
@@ -46,12 +52,17 @@ func TestShortDelayAtMinimumSpeedIsLost(t *testing.T) {
 			if a.Left > 0 {
 				t.Errorf("%v more at the minimum speed: %s; want it lost, none left", d, a)
 			}
-			lost := time.Duration(a.ExtraNM / MinProcedureSpeedKts * float64(time.Hour))
-			if !a.Downwind || lost < d {
-				t.Errorf("%v more: %s, loses %v; want the downwind extended by that at least", d, a, lost.Round(time.Second))
+			if lost := timeToJoin(ctl) - was; lost < d-time.Second || lost > d+shortSlack {
+				t.Errorf("%v more: %s, loses %v; want %v to %v", d, a, lost.Round(time.Second), d, d+shortSlack)
 			}
-			if on := time.Duration(ctl.tromboneNM / MinProcedureSpeedKts * float64(time.Hour)); on < MinDownwindVector-time.Second {
-				t.Errorf("%v more: the downwind extended for %v of flight, under MinDownwindVector", d, on.Round(time.Second))
+			out := time.Duration(ctl.tromboneNM / MinProcedureSpeedKts * float64(time.Hour))
+			if dl := ctl.dogLeg; dl != nil {
+				out = time.Duration(calc.HaversineNM(dl.from.Lat, dl.from.Lon, dl.apex.Lat, dl.apex.Lon) / MinProcedureSpeedKts * float64(time.Hour))
+				if out < MinDogLegOut-time.Second {
+					t.Errorf("%v more: %s, a vector out for %v of flight, under MinDogLegOut", d, a, out.Round(time.Second))
+				}
+			} else if out < MinDownwindVector-time.Second {
+				t.Errorf("%v more: %s, the downwind extended for %v of flight, under MinDownwindVector", d, a, out.Round(time.Second))
 			}
 		})
 	}
