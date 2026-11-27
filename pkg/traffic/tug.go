@@ -76,6 +76,7 @@ type SimObjectTug struct {
 	barSent   bool           // the bar's angle written once
 	barShown  float64        // the bar's angle written last
 	homing    bool           // driving back to the depot
+	backMore  int            // backed off further, its way home too near the aircraft (#1693)
 	err       error          // from the takeover, reported by Update
 	done      bool
 }
@@ -308,12 +309,24 @@ func (t *SimObjectTug) inbound(pose GroundPose) (*GroundPath, airport.LatLon, bo
 	// 3 m hop at the nose).
 	p := tugRoadProfile()
 	end := offsetHeading(t.pose.Position, localBearing(front, t.pose.Position), p.WheelbaseMeters-p.RefAheadMeters)
+	road := append(append([]airport.LatLon{}, route...), end)
 	route = endFacing(route, localBearing(front, t.pose.Position), tugTurnMeters)
-	path, err := NewArcPath(append(route, end), p, tugTurnMeters)
+	route = append(route, end)
+	arc, err := NewArcPath(route, p, tugTurnMeters)
 	if err != nil {
 		return nil, airport.LatLon{}, false
 	}
-	return path, depot, true
+	// Set off along its first 5 m, as Attach places it, turning on no less
+	// than tugWayMeters from there (#1693), along the road, not endFacing's
+	// turn of tugTurnMeters onto the nose: it lines up on its own, round
+	// once where it must, off the aircraft.
+	f := aircraftFrame{nose: NoseGear(pose.Position, pose.Heading, t.prof), hdg: pose.Heading, prof: t.prof}
+	if way, ok := steerWay(route[0], localBearing(arc.PointAt(0), arc.PointAt(math.Min(5, arc.Length()))), road, tugWayMeters, true, f.clear); ok {
+		if path, err := NewSmoothPath(way, p); err == nil {
+			return path, depot, true
+		}
+	}
+	return arc, depot, true
 }
 
 // throughStand is the tug's way home from p through the stand the
@@ -344,7 +357,7 @@ func (t *SimObjectTug) throughStand(p airport.LatLon, pose GroundPose) ([]airpor
 	return way, true
 }
 
-// tugTurnMeters is the radius a tug turns on.
+// tugTurnMeters is the radius a tug turns on (its own way: tugWayMeters).
 const tugTurnMeters = 6.0
 
 // endFacing has route reach its last point travelling along to: the turn made
@@ -519,7 +532,21 @@ func (t *SimObjectTug) Update(pose GroundPose, pushing bool, dt float64) error {
 			route, err = via, nil
 		}
 		if err == nil {
-			if path, err := NewArcPath(route, tugRoadProfile(), 6); err == nil {
+			// Its turns onto the way home on no less than tugWayMeters:
+			// where they take it under the aircraft, it backs off further
+			// first, as a driver backs and fills (LKPR N54: through the
+			// stand, under the wing).
+			f := aircraftFrame{nose: NoseGear(pose.Position, pose.Heading, t.prof), hdg: pose.Heading, prof: t.prof}
+			if way, ok := steerWay(p, h, route, tugWayMeters, false, nil); ok && !clearWay(way, f.clear) && t.backMore < tugBackMoreTimes {
+				q := t.pose.Position
+				if path, err := NewArcPath([]airport.LatLon{q, offsetHeading(q, t.pose.Heading+180, tugBackMoreMeters)}, tugProfile(), 6); err == nil {
+					t.backMore++
+					t.away = NewPushbackMover(path, tugProfile(), t.pose.Heading)
+					return t.place()
+				}
+			}
+			path, err := steerPath(p, h, route, tugRoadProfile(), tugWayMeters, false, nil)
+			if err == nil {
 				t.away, t.reversing, t.homing = NewGroundMoverFrom(path, tugRoadProfile(), h, 0), false, true
 				return t.place()
 			}
@@ -532,7 +559,7 @@ func (t *SimObjectTug) Update(pose GroundPose, pushing bool, dt float64) error {
 	p, h := offsetHeading(t.pose.Position, t.pose.Heading, tugProfile().WheelbaseMeters), t.pose.Heading
 	ahead := offsetHeading(p, h, 5)
 	off := offsetHeading(ahead, h+TugDriveOffTurnDeg, TugDriveOffMeters)
-	path, err := NewArcPath([]airport.LatLon{p, ahead, off}, tugProfile(), 6)
+	path, err := steerPath(p, h, []airport.LatLon{p, ahead, off}, tugProfile(), tugWayMeters, false, nil)
 	if err != nil {
 		return t.finish()
 	}

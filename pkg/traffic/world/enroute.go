@@ -2,6 +2,7 @@ package world
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"math"
 	"strings"
@@ -450,8 +451,11 @@ func (s *scheduler) handle(msg engine.Message) bool {
 }
 
 // handovers passes enroute arrivals to the arrival controller at their
-// STAR entry (scheduler goroutine).
+// STAR entry (scheduler goroutine). None while held for a replay (#1283).
 func (s *scheduler) handovers(now time.Time) {
+	if s.isHeld() {
+		return
+	}
 	lead := s.mgr.Options().ArrivalLead
 	pos := map[uint32]airport.LatLon{}
 	for _, a := range s.cc.world.Aircraft() {
@@ -535,6 +539,11 @@ func (s *scheduler) handovers(now time.Time) {
 				s.cc.world.ForgetOwn(e.objectID)
 				s.cc.do(func() error { return s.cc.sim.RemoveObject(e.objectID, reqRemoveEnroute) })
 				s.cc.log.printf("%-6s schedule: handover failed: %v", f.Callsign, err)
+				if errors.Is(err, ErrHeld) {
+					// Held for a replay as it was handed over: out, done (#1283).
+					s.mgr.Remove(f.Callsign, s.cc.clock.Now())
+					return
+				}
 				s.mgr.Failed(f.Callsign, err, s.cc.clock.Now())
 			}
 		}(e)
@@ -576,9 +585,21 @@ func (s *scheduler) dropEnroute(e *enrouteAC) {
 }
 
 // removeEnroute removes a flight's enroute aircraft; false when it has none.
+// One asked for, the simulator not answering yet, is only pending: marked
+// gone there, so its answer takes the object out (handle). Before, it was
+// not found and came in as ours, beside a replay (#1283).
 func (s *scheduler) removeEnroute(callsign string) bool {
 	s.mu.Lock()
 	e := s.enroute[callsign]
+	if e == nil {
+		for _, p := range s.pending {
+			if p.f.Callsign == callsign && p.objectID == 0 && !p.gone {
+				p.gone = true
+				s.mu.Unlock()
+				return true
+			}
+		}
+	}
 	s.mu.Unlock()
 	if e == nil {
 		return false

@@ -7,6 +7,14 @@ This project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 ---
 
+## [0.195.2] - 2026-11-27
+
+### Fixed
+
+- `world`: traffic held for a replay stays out (#1283). A schedule spawn under way as the hold came could put its aircraft in after the hold's pass and show it while held, and a spawn the manager handed over just after the hold still ran. Spawns now go in before the hold's pass or are refused (`ErrHeld`), are not started once held, and a refused one is done rather than tried again; no handovers from en route while held; and an en route aircraft removed before the simulator created it is taken out when it appears instead of coming in as ours. Found by the nightly race run (`TestHoldKeepsTrafficOut`).
+- `traffic`: a pushback tug no longer turns almost on the spot (#1693). On its way in, its way home and its drive-off it steers along its way and turns on no less than a 5 m radius, about the middle of the TLD TPX-200's 7.83 m outside and 2.15 m inner turning radii, for every tug model. Where that turn would take it under the aircraft it backs off further first, and it lines up on the nose on a clear way, or once round off the aircraft.
+- CI: the nightly race run's World job lists failed subtests with their log lines in the run summary and prints all goroutine stacks when a World hangs or crashes.
+
 ## [0.195.1] - 2026-11-26
 
 ### Fixed

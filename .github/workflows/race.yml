@@ -57,10 +57,24 @@ jobs:
           export SIMCONNECT_DATA="$PWD/data"
           code=0
           go test -race ./pkg/traffic/world/worldtest/ -v -count=1 -timeout 130m -skip "$SKIP" > full.txt 2>&1 || code=$?
-          grep -aE '^(--- |ok|FAIL|panic)|_test.go:[0-9]+:' full.txt || true
+          grep -aE '^(--- |ok|FAIL|panic)|^[[:space:]]+--- FAIL|_test.go:[0-9]+:' full.txt || true
+          if grep -aqE '^[[:space:]]*--- FAIL' full.txt; then
+            {
+              echo '### Failed tests and subtests'
+              echo '```'
+              awk '/^=== (RUN|CONT)/ || /^[[:space:]]*--- (PASS|SKIP)/ { n = 0 } /_test.go:[0-9]+:/ { buf[n++] = $0 } /^[[:space:]]*--- FAIL/ { for (i = 0; i < n; i++) print buf[i]; print; n = 0 }' full.txt | head -n 300 || true
+              echo '```'
+            } >> "$GITHUB_STEP_SUMMARY"
+          fi
           if grep -aq 'WARNING: DATA RACE' full.txt; then
             grep -a -A40 'WARNING: DATA RACE' full.txt | head -200
             echo "::error::data race"
+          fi
+          if grep -aqE '^(worldtest: hung: |panic:|fatal error:)' full.txt; then
+            echo "::group::all goroutines (a hung World's, or the crash's own)"
+            sed -nE '/^(worldtest: hung: |panic:|fatal error:)/,$p' full.txt | head -n 6000 || true
+            echo "::endgroup::"
+            echo "::error::the run crashed or timed out"
           fi
           test "$code" = 0
 

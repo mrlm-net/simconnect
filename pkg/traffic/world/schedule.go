@@ -463,9 +463,21 @@ func (s *scheduler) Spawn(f traffic.ManagedFlight) {
 
 // runSpawn runs a flight's spawn. A spawn takes a while, so a hold can
 // come while it is under way, and its pass over the flights and aircraft
-// finds nothing of it yet: what comes up then goes again (#1318).
+// finds nothing of it yet: what comes up then goes again (#1318). Held
+// before it starts (the manager's tick hands its spawns over after its
+// lock, a hold in between), it is not spawned at all, and a spawn the
+// hold refused is not failed: its flight is done, never tried again.
 func (s *scheduler) runSpawn(f traffic.ManagedFlight, spawn func() error) {
+	if s.isHeld() {
+		s.mgr.Remove(f.Callsign, s.cc.clock.Now())
+		return
+	}
 	if err := spawn(); err != nil {
+		if errors.Is(err, ErrHeld) {
+			s.mgr.Remove(f.Callsign, s.cc.clock.Now())
+			s.Remove(f)
+			return
+		}
 		if !errors.Is(err, traffic.ErrSpawnBlocked) { // a wait, logged once as such (EventBlocked)
 			s.cc.log.printf("%-6s schedule: %s %s → %s (attempt %d) failed: %v", f.Callsign, f.Kind, f.Origin, f.Destination, f.Attempts, err)
 		}
@@ -694,10 +706,19 @@ func (s *scheduler) spawnWith(f traffic.ManagedFlight, pre *planned, model strin
 		}
 	}
 	var it *controlled
-	if err := cc.do(func() (e error) { it, e = cc.spawn(g, req); return e }); err != nil && req.Procedure && !f.Departure() {
+	spawnIn := func() (e error) {
+		it, e = cc.spawn(g, req)
+		return e
+	}
+	if err := s.spawnUnlessHeld(spawnIn); errors.Is(err, ErrHeld) {
+		return err
+	} else if err != nil && req.Procedure && !f.Departure() {
 		// No STAR for the runway: a straight-in approach.
 		req.Procedure = false
-		if err2 := cc.do(func() (e error) { it, e = cc.spawn(g, req); return e }); err2 != nil {
+		if err2 := s.spawnUnlessHeld(spawnIn); err2 != nil {
+			if errors.Is(err2, ErrHeld) {
+				return err2
+			}
 			return err
 		}
 	} else if errors.Is(err, traffic.ErrNoStand) || errors.Is(err, traffic.ErrStandTaken) {
