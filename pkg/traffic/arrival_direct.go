@@ -124,7 +124,7 @@ func (c *ArrivalController) flyToPoint(pos, p airport.LatLon, k, final int) (Vec
 func (c *ArrivalController) reroute(pos airport.LatLon, plain []types.SIMCONNECT_DATA_WAYPOINT, names []string) error {
 	noClimb(plain, c.climbCap())
 	out := roundedChain(pos, plain, MaxBankDeg(*c.aircraft()))
-	if err := c.fleet.SetWaypoints(c.objectID, c.defBase+arrDefWaypoints, out); err != nil {
+	if err := c.fleet.SetWaypoints(c.objectID, c.defBase+arrDefWaypoints, c.airWaypoints(out)); err != nil {
 		c.note("direct", err)
 		return err
 	}

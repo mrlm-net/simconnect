@@ -59,8 +59,10 @@ type SimObjectTug struct {
 	bar       float64 // tow bar direction, from the nose wheel to the tug
 	haveBar   bool
 	engine    vehicleEngine  // running, so its lights are on (tug_engine.go)
-	lastNose  airport.LatLon // nose gear at the last bar update
+	lastNose  airport.LatLon // nose gear where it last moved
 	haveNose  bool
+	travelE   float64 // nose gear's way, east and north (m), its last tugTravelMeters counting most
+	travelN   float64
 	waitLeft  float64        // seconds to the drive-off after the push
 	arrive    *GroundMover   // driving in from the depot; nil once at the nose
 	depot     airport.LatLon // where it came from and goes back to
@@ -190,23 +192,37 @@ func (t *SimObjectTug) onNose(pose GroundPose) GroundPose {
 // steer turns the tow bar with the push: the tug pushes the nose wheel along
 // the bar, so the bar points against the nose wheel's direction of travel
 // (swinging out in the arc), within TugMaxBarDeg of the aircraft axis and
-// eased over TugBarSeconds.
+// eased over TugBarSeconds. The direction of travel is the nose wheel's way
+// over its last tugTravelMeters, taken every frame: turned only once the
+// nose wheel had moved 5 cm, by one frame's ease, the tug stood still every
+// other frame of a push at 60 frames a second and swung on in the next.
 func (t *SimObjectTug) steer(pose GroundPose, dt float64) {
 	nose := NoseGear(pose.Position, pose.Heading, t.prof)
 	if !t.haveNose {
 		t.lastNose, t.haveNose = nose, true
 		return
 	}
-	if localDist(t.lastNose, nose) < 0.05 {
+	if step := localDist(t.lastNose, nose); step > 0 {
+		b := localBearing(t.lastNose, nose) * math.Pi / 180
+		w := math.Exp(-step / tugTravelMeters)
+		t.travelE = t.travelE*w + math.Sin(b)*step
+		t.travelN = t.travelN*w + math.Cos(b)*step
+		t.lastNose = nose
+	}
+	if math.Hypot(t.travelE, t.travelN) < 0.05 {
 		return // too little movement for a direction
 	}
-	want := localBearing(t.lastNose, nose) + 180
+	want := math.Atan2(t.travelE, t.travelN)*180/math.Pi + 180
 	rel := math.Max(-TugMaxBarDeg, math.Min(TugMaxBarDeg, headingDiff(pose.Heading, want)))
 	want = pose.Heading + rel
 	k := 1 - math.Exp(-dt/TugBarSeconds)
 	t.bar = normDeg(t.bar + headingDiff(t.bar, want)*k)
-	t.lastNose = nose
 }
+
+// tugTravelMeters is how far back the nose wheel's way counts for the
+// direction it travels: its own small kinks smoothed, and still the way it
+// goes in an arc (about 1° behind on a 25 m one).
+const tugTravelMeters = 0.5
 
 func normDeg(d float64) float64 {
 	for d < 0 {

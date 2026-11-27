@@ -7,6 +7,21 @@ This project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 ---
 
+## [0.197.0] - 2026-11-27
+
+### Added
+
+- `traffic.ApproachProfile.TransitionMaxKts` and `vmoKts` in the aircraft type list: a type's top speed where it is below the procedure speeds, VMO or a piston's VNO from its type certificate data sheet: DHC6 166 KIAS, DA62 160 KEAS, DA42 155 KEAS, C172 129 KIAS, C152 111 KIAS, P28A 125 KIAS, DA40 129 KIAS, SR22 179 KCAS (#1682)
+- `traffic.ChainSpeeds` and `traffic.ApproachAircraft.TopKts`: the speeds a chain to the final is flown at, shared by the chain and the sequencer's estimate (#1682)
+
+### Fixed
+
+- Traffic: MSFS AI flies an arrival's STAR, approach transition, holds, circuits, go-arounds and the out-and-back for height no faster than its type's top speed, and its chain to the join point slows toward the approach: the alignment point halfway down to the injected approach's start speed, the join point at it. Before, a DHC6 flew 250 and 180 kt and the injected approach took it over at 88 kt in one write (#1682)
+- Traffic: the approach sequencer predicts the last part before the join at the speeds the arrival's chain is flown at there (`traffic.ChainSpeeds`), not 180 kt, so a slow type's place in the sequence matches what it flies (#1682)
+- Traffic: the injected approach takes over at the join from the speed MSFS AI flew the arrival at and eases to its own at 1.5 kt/s, faster where it would not be on its speeds by 500 ft above the runway, 3 kt/s at most (`traffic.JoinEaseKtsPerSecond`, `JoinEaseMaxKtsPerSecond`, `JoinEaseByFt`, `ApproachMover.EaseFrom`), and from the altitude MSFS AI had it at: the reference point's height above the wheels comes off the hand-over's height offset (`Injector.AirLiftFt`). Before, a DHC6 went from 180 to 87 kt and 9 ft up in one write (#1682)
+- Traffic: the pushback tug no longer turns in steps. Its tow bar (and with it the tug's heading, its place on the nose and the bar angle written) turned only once the nose wheel had moved 5 cm, by one frame's ease, so at 60 frames a second the tug stood still every other frame at 3 kt and two frames in three at 1 kt. The bar now follows the nose wheel's way over its last 0.5 m every frame. (#1711)
+- Traffic: a pushed-back aircraft no longer ticks through its turn. Its heading was the path's chord over ±1 m, which on an arc sampled every metre turned unevenly as the chord's ends passed the points, so the turn rate dropped by up to half for a frame or two at every metre of the push (and the tug on its nose with it). The heading now turns linearly along the path from one segment's direction to the next, at one rate round an arc. (#1712)
+
 ## [0.196.0] - 2026-11-27
 
 ### Added

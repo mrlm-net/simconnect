@@ -118,7 +118,7 @@ func (c *ArrivalController) circuitAgain(upwind bool) error {
 	c.flapsPct = c.aircraft().Flaps.ApproachPct
 	c.note("flaps", c.inj.SetFlaps(c.objectID, c.flapsPct))
 	c.note("release", c.inj.Release(c.objectID))
-	if err := c.fleet.SetWaypoints(c.objectID, c.defBase+arrDefWaypoints, wps); err != nil {
+	if err := c.fleet.SetWaypoints(c.objectID, c.defBase+arrDefWaypoints, c.airWaypoints(wps)); err != nil {
 		return err
 	}
 	c.tng = nil

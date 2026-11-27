@@ -212,6 +212,10 @@ type typeSpec struct {
 	span, length, wheelbase, cg, tod float64
 	// vapp is the final approach speed; the touchdown speed is 5 kt less.
 	vapp float64
+	// vmo is the top speed (kt) where it is below the procedure speeds:
+	// VMO, or VNO for a piston (the normal operating limit); 0 not set
+	// (ApproachProfile.TransitionMaxKts, #1682).
+	vmo float64
 	// Approach and flare pitch (°), flare height (ft), touchdown rate (fpm).
 	pitch, flarePitch, flareFt, tdFpm float64
 	takeoff                           TakeoffProfile
@@ -237,6 +241,7 @@ func (s typeSpec) profile() AircraftProfile {
 	r.BrakeDecel = s.brake
 	a := DefaultApproachProfile()
 	a.ApproachKts, a.TouchdownKts, a.StartKts = s.vapp, s.vapp-5, s.vapp+15
+	a.TransitionMaxKts = s.vmo
 	a.ApproachPitchDeg, a.FlarePitchDeg, a.FlareFt, a.TouchdownFpm = s.pitch, s.flarePitch, s.flareFt, s.tdFpm
 	if s.heavy {
 		// ICAO's lateral load factor is one for every code letter.

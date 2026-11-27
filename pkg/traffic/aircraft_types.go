@@ -166,12 +166,19 @@ var knownTypes = []typeSpec{
 	// Canada DHC-6 Twin Otter", retrieved 2026-11-20); vapp is 1.3 times the
 	// stall speed; wheelbase, CG height, climb and the other speeds are
 	// estimates.
+	// vmo: VMO 166 KIAS (170 KCAS) from sea level to 6,700 ft, EASA TCDS
+	// EASA.IM.A.575 DHC-6 Series 400, Issue 6, 18 June 2026, A.III.9
+	// (https://www.easa.europa.eu/en/downloads/7070/en).
 	{match: []string{"DHC6", "DHC-6", "TWIN OTTER"}, Type: "DHC6", Category: CategoryTurboprop, span: 19.81, length: 15.77, wheelbase: 4.5, cg: 1.5, tod: 450,
-		vapp: 73, pitch: 1, flarePitch: 4, flareFt: 15, tdFpm: -100, takeoff: toLightTprop(65, 85, 1500), brake: 2.0, taxi: 12, flaps: flapsBiz},
+		vapp: 73, vmo: 166, pitch: 1, flarePitch: 4, flareFt: 15, tdFpm: -100, takeoff: toLightTprop(65, 85, 1500), brake: 2.0, taxi: 12, flaps: flapsBiz},
+	// vmo: VNO 160 KEAS, EASA TCDS EASA.IM.A.629 DA 62, Issue 8,
+	// 16 August 2023 (https://www.easa.europa.eu/en/downloads/44256/en).
 	{match: []string{"DA62", "DA 62"}, Type: "DA62", Category: CategoryPiston, span: 14.55, length: 9.19, wheelbase: 2.3, cg: 1.1, tod: 883,
-		vapp: 88, pitch: 2, flarePitch: 6, flareFt: 10, tdFpm: -100, takeoff: toPiston(80, 100, 1028), brake: 2.0, taxi: 10, flaps: flapsBiz},
+		vapp: 88, vmo: 160, pitch: 2, flarePitch: 6, flareFt: 10, tdFpm: -100, takeoff: toPiston(80, 100, 1028), brake: 2.0, taxi: 10, flaps: flapsBiz},
+	// vmo: VNO 155 KEAS (DA 42 and DA 42 NG), EASA TCDS EASA.A.005, Issue
+	// 44, 30 August 2024 (https://www.easa.europa.eu/en/downloads/7516/en).
 	{match: []string{"DA42", "DA 42", "TWIN STAR"}, Type: "DA42", Category: CategoryPiston, span: 13.55, length: 8.56, wheelbase: 2.1, cg: 1.0, tod: 649,
-		vapp: 81, pitch: 2, flarePitch: 6, flareFt: 10, tdFpm: -100, takeoff: toPiston(70, 90, 1280), brake: 2.0, taxi: 10, flaps: flapsBiz},
+		vapp: 81, vmo: 155, pitch: 2, flarePitch: 6, flareFt: 10, tdFpm: -100, takeoff: toPiston(70, 90, 1280), brake: 2.0, taxi: 10, flaps: flapsBiz},
 	{match: []string{"BE58", "BARON 58", "BARON G58"}, Type: "BE58", Category: CategoryPiston, span: 11.53, length: 9.1, wheelbase: 2.3, cg: 1.1, tod: 715,
 		vapp: 95, pitch: 2, flarePitch: 6, flareFt: 10, tdFpm: -100, takeoff: toPiston(75, 100, 1700), brake: 2.0, taxi: 10, flaps: flapsBiz},
 	// Light aircraft (VFR traffic, #565). Span and length as published
@@ -179,16 +186,29 @@ var knownTypes = []typeSpec{
 	// vapp is 1.3 times the published flaps-down stall speed. Wheelbase,
 	// CG height and take-off distance are estimates (no published figure
 	// read); the simulator's SimVars refine span and the rest (Refine).
+	// vmo is VNO, the maximum structural cruising speed, from the type
+	// certificate data sheets cited per type.
+	// C172: 129 KIAS (172R, 172S), EASA TCDS IM.A.051, Issue 11
+	// (https://www.easa.europa.eu/es/downloads/7423/en).
 	{match: []string{"C172", "CESSNA 172", "SKYHAWK", "C-172"}, Type: "C172", Category: CategoryPiston, span: 11.0, length: 8.28, wheelbase: 1.7, cg: 1.0, tod: 500,
-		vapp: 61, pitch: 2, flarePitch: 6, flareFt: 10, tdFpm: -100, takeoff: toPiston(55, 75, 721), brake: 2.0, taxi: 10, flaps: flapsCessna},
+		vapp: 61, vmo: 129, pitch: 2, flarePitch: 6, flareFt: 10, tdFpm: -100, takeoff: toPiston(55, 75, 721), brake: 2.0, taxi: 10, flaps: flapsCessna},
+	// C152: 111 knots IAS (Model 152), FAA TCDS 3A19, Revision 50
+	// (https://dyzz9obi78pm5.cloudfront.net/app/image/id/615b69bfb50d81224e7b245f/n/3a19-rev-50.pdf).
 	{match: []string{"C152", "CESSNA 152", "C-152"}, Type: "C152", Category: CategoryPiston, span: 10.16, length: 7.34, wheelbase: 1.5, cg: 0.9, tod: 450,
-		vapp: 56, pitch: 2, flarePitch: 6, flareFt: 10, tdFpm: -100, takeoff: toPiston(50, 70, 715), brake: 2.0, taxi: 10, flaps: flapsCessna},
+		vapp: 56, vmo: 111, pitch: 2, flarePitch: 6, flareFt: 10, tdFpm: -100, takeoff: toPiston(50, 70, 715), brake: 2.0, taxi: 10, flaps: flapsCessna},
+	// P28A: 125 KIAS (PA-28-181 Archer III), EASA TCDS IM.A.234, Issue 8
+	// (https://www.easa.europa.eu/hr/downloads/17202/en).
 	{match: []string{"P28A", "PA28", "PA-28", "CHEROKEE", "ARCHER", "WARRIOR"}, Type: "P28A", Category: CategoryPiston, span: 9.14, length: 7.10, wheelbase: 1.9, cg: 0.9, tod: 500,
-		vapp: 61, pitch: 2, flarePitch: 6, flareFt: 10, tdFpm: -100, takeoff: toPiston(55, 75, 660), brake: 2.0, taxi: 10, flaps: flapsPiper},
+		vapp: 61, vmo: 125, pitch: 2, flarePitch: 6, flareFt: 10, tdFpm: -100, takeoff: toPiston(55, 75, 660), brake: 2.0, taxi: 10, flaps: flapsPiper},
+	// DA40: 129 KIAS (DA 40, Section A), EASA TCDS EASA.IM.A.022, Issue 24
+	// (https://www.easa.europa.eu/en/downloads/44254/en).
 	{match: []string{"DA40", "DA 40", "DIAMOND STAR"}, Type: "DA40", Category: CategoryPiston, span: 11.9, length: 8.1, wheelbase: 1.7, cg: 1.0, tod: 580,
-		vapp: 64, pitch: 2, flarePitch: 6, flareFt: 10, tdFpm: -100, takeoff: toPiston(59, 75, 1120), brake: 2.0, taxi: 10, flaps: flapsDiamond},
+		vapp: 64, vmo: 129, pitch: 2, flarePitch: 6, flareFt: 10, tdFpm: -100, takeoff: toPiston(59, 75, 1120), brake: 2.0, taxi: 10, flaps: flapsDiamond},
+	// SR22: 179 KCAS (serials 3915 and on; 180 KCAS before), EASA TCDS
+	// EASA.IM.A.007 SR2x, Issue 19, Section B
+	// (https://www.easa.europa.eu/en/downloads/7512/en).
 	{match: []string{"SR22", "SR-22", "CIRRUS"}, Type: "SR22", Category: CategoryPiston, span: 11.68, length: 7.92, wheelbase: 1.8, cg: 1.0, tod: 760,
-		vapp: 78, pitch: 2, flarePitch: 6, flareFt: 10, tdFpm: -110, takeoff: toPiston(70, 100, 1270), brake: 2.0, taxi: 10, flaps: flapsCirrus},
+		vapp: 78, vmo: 179, pitch: 2, flarePitch: 6, flareFt: 10, tdFpm: -110, takeoff: toPiston(70, 100, 1270), brake: 2.0, taxi: 10, flaps: flapsCirrus},
 }
 
 // toPiston is a light single's take-off: rotation and climb speeds (kt,

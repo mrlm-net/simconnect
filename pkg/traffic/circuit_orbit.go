@@ -71,7 +71,7 @@ func (c *ArrivalController) Orbit() (time.Duration, error) {
 	}
 	next := c.procWaypoint(c.proc.Waypoints)
 	all := append(orbit, c.proc.Waypoints[next:]...)
-	if err := c.fleet.SetWaypoints(c.objectID, c.defBase+arrDefWaypoints, all); err != nil {
+	if err := c.fleet.SetWaypoints(c.objectID, c.defBase+arrDefWaypoints, c.airWaypoints(all)); err != nil {
 		return 0, err
 	}
 	c.proc.Waypoints, c.procNext = all, 0
@@ -140,7 +140,7 @@ func (c *ArrivalController) absorbInCircuit(delay time.Duration) (Absorption, er
 		procedureWaypoint(finExt, fin.AltFt+out/1852*CircuitGlideFtPerNM, fin.Kts),
 		procedureWaypoint(fin.Position, fin.AltFt, fin.Kts))
 	rounded := roundedChain(pos, wps, MaxBankDeg(*c.aircraft()))
-	if err := c.fleet.SetWaypoints(c.objectID, c.defBase+arrDefWaypoints, rounded); err != nil {
+	if err := c.fleet.SetWaypoints(c.objectID, c.defBase+arrDefWaypoints, c.airWaypoints(rounded)); err != nil {
 		return Absorption{}, err
 	}
 	c.proc.Waypoints, c.procNext = rounded, 0
