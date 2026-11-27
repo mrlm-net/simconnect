@@ -1955,6 +1955,9 @@ func (c *TaxiController) handOverClimb(pose TakeoffPose) {
 		here := types.SIMCONNECT_DATA_WAYPOINT{Latitude: pose.Position.Lat, Longitude: pose.Position.Lon, KtsSpeed: ProcedureSpeedKts}
 		wps = roundCorners(append([]types.SIMCONNECT_DATA_WAYPOINT{here}, wps...), MaxBankDeg(*c.aircraft()))[1:]
 	}
+	if c.turnAfter != nil && !c.req.VFR { // "after departure turn right heading 135"
+		wps = c.turnedClimb(pose, wps)
+	}
 	if c.climbToFt > 0 { // cleared higher already (ClimbTo)
 		field := convert.MetersToFeet(c.req.Graph.Layout.Altitude)
 		for i := range wps {

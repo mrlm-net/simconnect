@@ -34,6 +34,19 @@ func takeoffPlan(end airport.RunwayEnd, fieldFt float64, sid []airport.NavPoint)
 	return me, reachable(me, route)
 }
 
+// turnedTakeoffPlan is takeoffPlan turned after departure as turn.
+func turnedTakeoffPlan(rwy airport.Runway, end airport.RunwayEnd, fieldFt float64, sid []airport.NavPoint, turn traffic.DepartureTurn) (traffic.TrackedAircraft, []traffic.RoutePoint) {
+	me, _ := takeoffPlan(end, fieldFt, sid)
+	var route []traffic.RoutePoint
+	alt, prev := fieldFt, me.Position
+	for _, p := range plannedWayOut(rwy, end, sid, &turn, 0)[1:] {
+		alt = math.Min(traffic.ProcedureTopFt, alt+calc.HaversineNM(prev.Lat, prev.Lon, p.Position.Lat, p.Position.Lon)*traffic.ProcedureClimbFtPerNm)
+		route = append(route, traffic.RoutePoint{Position: p.Position, AltFt: alt, Kts: traffic.ProcedureSpeedKts})
+		prev = p.Position
+	}
+	return me, reachable(me, route)
+}
+
 // takeoffMeets names an arrival of ours that departure it, taking off from
 // its runway now, would lose separation with on its way out (within
 // conflictLookAhead); "" none. The arrivals established on the final to
@@ -49,13 +62,16 @@ func (cc *controlCenter) takeoffMeetsCapped(g *airport.Graph, it *controlled, ca
 		return ""
 	}
 	it.mu.Lock()
-	rwy := it.view.Runway
+	rwy, turn := it.view.Runway, it.depTurn
 	it.mu.Unlock()
-	_, end, ok := g.Layout.RunwayEnd(rwy)
+	runway, end, ok := g.Layout.RunwayEnd(rwy)
 	if !ok {
 		return ""
 	}
 	me, plan := takeoffPlan(end, g.Layout.Altitude/0.3048, it.dep.DepartureRoute())
+	if turn != nil { // given a turn after departure (opposite_plan.go): flown with it
+		me, plan = turnedTakeoffPlan(runway, end, g.Layout.Altitude/0.3048, it.dep.DepartureRoute(), *turn)
+	}
 	me.Tail = it.Tail
 	if capFt > 0 {
 		for i := range plan {
@@ -128,6 +144,26 @@ func (t *towers) takeoffFilter(g *airport.Graph, tails []string, c *traffic.Runw
 			}
 			c.Waiting[tail] = "priority traffic " + who // an emergency on its way in (emergency.go)
 			continue
+		}
+		// Off one end with an arrival to the other: clear of it horizontally,
+		// a turn after departure where straight out meets it (opposite_plan.go).
+		if turn, who := t.cc.oppositeTurn(g, it); who != "" {
+			if c.Waiting == nil {
+				c.Waiting = map[string]string{}
+			}
+			c.Waiting[tail] = who + " landing on the other end"
+			continue
+		} else if turn != nil {
+			it.mu.Lock()
+			name := it.view.Runway
+			it.mu.Unlock()
+			if _, end, ok := g.Layout.RunwayEnd(name); !ok || !t.cc.giveTurn(it, end, *turn) {
+				if c.Waiting == nil {
+					c.Waiting = map[string]string{}
+				}
+				c.Waiting[tail] = "no turn after departure clear of the arrivals"
+				continue
+			}
 		}
 		if who := t.cc.takeoffMeets(g, it); who != "" {
 			// A restriction first, as tower amends the clearance: "after

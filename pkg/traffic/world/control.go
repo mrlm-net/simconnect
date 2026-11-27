@@ -251,6 +251,9 @@ type controlled struct {
 	// afterDepFt: the climb restriction tower gave it after departure (feet
 	// MSL, 0 none: takeoff_plan.go).
 	afterDepFt float64
+	// depTurn: the turn after departure tower gave it (nil none:
+	// opposite_plan.go).
+	depTurn *traffic.DepartureTurn
 	// progState: its controller's state last reported as progress;
 	// closestNM an arrival's least distance from the field so far.
 	progState string
@@ -1490,6 +1493,14 @@ func (cc *controlCenter) spawn(g *airport.Graph, r SpawnRequest) (*controlled, e
 			circuit, it.circuit = &c, &c
 			for _, p := range c.Points {
 				it.approach = append(it.approach, p.Position) // its way on the map
+			}
+		}
+		// Its way in clear of the departures off the other end of its runway
+		// (opposite_plan.go): else it appears later.
+		if _, end, ok := g.Layout.RunwayEnd(r.Runway); ok && r.adopt == 0 {
+			way, kts := arrivalWayIn(end, procRoute, circuit, entryPoint, r.SpawnNm)
+			if err := cc.releaseBlocked(g, r.Runway, r.Tail, way, kts); err != nil {
+				return nil, err
 			}
 		}
 		nose, side := cc.standPlace(g, r.Stand, model)
