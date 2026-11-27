@@ -93,6 +93,18 @@ func (s *scheduler) enable(on bool) {
 	}
 }
 
+// spawnUnlessHeld runs a schedule spawn's step that puts its aircraft in
+// on the connection goroutine, as the hold's barrier is: in before the
+// hold's pass over the traffic, or refused with ErrHeld (#1283).
+func (s *scheduler) spawnUnlessHeld(in func() error) error {
+	return s.cc.do(func() error {
+		if s.isHeld() {
+			return ErrHeld
+		}
+		return in()
+	})
+}
+
 // hold is World.Hold on the scheduler. Held again, whatever came in
 // meanwhile is removed too (#1283).
 func (s *scheduler) hold(on bool) HoldResult {
@@ -116,6 +128,12 @@ func (s *scheduler) hold(on bool) HoldResult {
 		return HoldResult{}
 	}
 	s.mgr.SetEnabled(false)
+	// A spawn under way puts its aircraft in on the connection goroutine,
+	// refused there once held (spawnWith): one before this barrier is in
+	// by now, for the pass below to find; one after is never in. Before,
+	// one finishing after the pass was there while held until its spawn
+	// took it out again (race run, TestHoldKeepsTrafficOut).
+	_ = s.cc.do(func() error { return nil })
 	now := s.cc.clock.Now()
 	removed := 0
 	for _, f := range s.mgr.Flights() {

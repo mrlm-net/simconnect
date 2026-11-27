@@ -20,6 +20,7 @@ func (h *holdSpawner) Remove(f traffic.ManagedFlight) { h.removed = append(h.rem
 func TestHoldDuringTick(t *testing.T) {
 	w := New(Options{DataDir: t.TempDir()})
 	cc := &controlCenter{core: w.st.core, log: w.st.core.log, clock: traffic.NewSimClock(), items: map[int]*controlled{}}
+	pumpCmds(t, cc)
 	inTick, holding := make(chan struct{}), make(chan struct{})
 	var once sync.Once
 	mgr := traffic.NewTrafficManager(&holdSpawner{}, traffic.ManagerOptions{Conditions: func(string) (traffic.ApproachConditions, bool) {
@@ -121,6 +122,7 @@ func TestHoldDuringSpawn(t *testing.T) {
 func TestHold(t *testing.T) {
 	w := New(Options{DataDir: t.TempDir()})
 	cc := &controlCenter{core: w.st.core, log: w.st.core.log, clock: traffic.NewSimClock(), items: map[int]*controlled{}}
+	pumpCmds(t, cc)
 	sp := &holdSpawner{}
 	mgr := traffic.NewTrafficManager(sp, traffic.ManagerOptions{})
 	mgr.SetAirports("LKPR")
