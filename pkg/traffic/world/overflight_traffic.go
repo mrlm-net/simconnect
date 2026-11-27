@@ -113,16 +113,25 @@ func (s *scheduler) overflightSettings() overflightTraffic {
 
 // crossingTraffic is the traffic crossing the area in an hour: the
 // overflights (traffic.Overflights with o) and, when on, the transits.
+// None takes a call sign the schedule gave within usedCallsignFor, and
+// theirs are kept from the airports' flights in turn (#1708).
 func (s *scheduler) crossingTraffic(o traffic.OverflightOptions, from, to time.Time) []traffic.Flight {
+	s.mu.Lock()
+	o.Used = s.usedCallsignsLocked(from)
+	s.mu.Unlock()
 	out := traffic.Overflights(s.config(), o, from, to)
 	if s.overflightSettings().transits {
 		used := map[string]bool{}
+		for cs := range o.Used {
+			used[cs] = true
+		}
 		for _, f := range out {
 			used[f.Callsign] = true
 		}
 		out = append(out, s.transits(o, used, from, to)...)
 	}
 	s.mu.Lock()
+	s.noteCallsignsLocked(out, from)
 	if s.over.crossing == nil {
 		s.over.crossing = map[string][2]string{}
 	}

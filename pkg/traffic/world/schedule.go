@@ -256,23 +256,11 @@ func (s *scheduler) source(from, to time.Time, focus []string) []traffic.Flight 
 		// The timetable of from+offset, flown now (#738).
 		// Call signs of the hours before kept out (#98).
 		s.mu.Lock()
-		opts.Used = map[string]bool{}
-		for cs, at := range s.usedCS {
-			if from.Sub(at) > usedCallsignFor {
-				delete(s.usedCS, cs)
-				continue
-			}
-			opts.Used[cs] = true
-		}
+		opts.Used = s.usedCallsignsLocked(from)
 		s.mu.Unlock()
 		ifr := traffic.Schedule(s.config(), opts, from.Add(off), to.Add(off))
 		s.mu.Lock()
-		if s.usedCS == nil {
-			s.usedCS = map[string]time.Time{}
-		}
-		for _, f := range ifr {
-			s.usedCS[f.Callsign] = from
-		}
+		s.noteCallsignsLocked(ifr, from)
 		s.mu.Unlock()
 		// Business jets and turboprops at the large airports, IFR between
 		// airports (#619).
@@ -1298,6 +1286,32 @@ func registerSchedule(mux *http.ServeMux, st *state) {
 		}
 		writeJSON(w, map[string]any{"departures": deps, "arrivals": arrs})
 	})
+}
+
+// usedCallsignsLocked are the call signs given less than usedCallsignFor
+// before from, the airports' flights and the overflights alike (#98,
+// #1708); older ones are forgotten. s.mu held.
+func (s *scheduler) usedCallsignsLocked(from time.Time) map[string]bool {
+	used := map[string]bool{}
+	for cs, at := range s.usedCS {
+		if from.Sub(at) > usedCallsignFor {
+			delete(s.usedCS, cs)
+			continue
+		}
+		used[cs] = true
+	}
+	return used
+}
+
+// noteCallsignsLocked records the call signs of fs as given at from, so
+// neither schedule gives them again. s.mu held.
+func (s *scheduler) noteCallsignsLocked(fs []traffic.Flight, from time.Time) {
+	if s.usedCS == nil {
+		s.usedCS = map[string]time.Time{}
+	}
+	for _, f := range fs {
+		s.usedCS[f.Callsign] = from
+	}
 }
 
 // usedCallsignFor: a scheduled call sign is not given again for this long.

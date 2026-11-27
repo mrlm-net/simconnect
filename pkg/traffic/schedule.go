@@ -737,6 +737,10 @@ type OverflightOptions struct {
 	// the generic fallback (#1483, overflight_flows.go); PerHour, when
 	// set, is the peak volume instead. False: as before.
 	Flows bool
+	// Used are call signs already given (an airport schedule's flights,
+	// ScheduleOptions.Used): none is given to an overflight (#1708: an
+	// overflight and an arrival both DLH446). Nil: none kept out.
+	Used map[string]bool
 }
 
 // Overflights generates flights between the config's airports outside the
@@ -761,7 +765,7 @@ func Overflights(cfg ScheduleConfig, o OverflightOptions, from, to time.Time) []
 	// first (live, LKPR: three overflights at the start, then none for two
 	// hours).
 	rng := rand.New(rand.NewPCG(o.Seed, 0x0f1e^uint64(from.Truncate(time.Hour).Unix())))
-	g := scheduler{cfg: cfg, rng: rng, used: map[string]bool{}, airports: map[string]ScheduleAirport{}}
+	g := scheduler{cfg: cfg, rng: rng, used: usedCopy(o.Used), airports: map[string]ScheduleAirport{}}
 	var outside []ScheduleAirport
 	var weights []float64
 	for _, a := range cfg.Airports {
@@ -794,6 +798,17 @@ func Overflights(cfg ScheduleConfig, o OverflightOptions, from, to time.Time) []
 		}
 	}
 	sort.Slice(out, func(i, j int) bool { return out[i].Enter.Before(out[j].Enter) })
+	return out
+}
+
+// usedCopy is a copy of used to draw call signs against (never nil).
+func usedCopy(used map[string]bool) map[string]bool {
+	out := make(map[string]bool, len(used))
+	for cs, ok := range used {
+		if ok {
+			out[cs] = true
+		}
+	}
 	return out
 }
 
