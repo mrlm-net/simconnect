@@ -176,6 +176,12 @@ type controlled struct {
 	// pushPassFrom: since when its push is held for traffic passing
 	// behind (holdPushForPassing).
 	pushPassFrom time.Time
+	// pushPassFor, pushPassAt, pushPassMoved: the one on the ground its
+	// push is held for, where it was and when it was last seen making way
+	// (holdPushForPassing).
+	pushPassFor   string
+	pushPassAt    airport.LatLon
+	pushPassMoved time.Time
 	// clearedFt: the initial climb of its departure clearance (feet), the
 	// level a staffed departure climbs to and no further until the player
 	// clears it (climbCapped once set); cruiseFt its flight plan's level,

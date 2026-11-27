@@ -21,6 +21,11 @@ type groundDrive struct {
 	clock    func() time.Time
 	record   func(desc string, err error)
 
+	// inbound: an arrival's, landed and taxiing in (GroundPicture
+	// ReportInbound): it keeps priority over a departure coming the other
+	// way.
+	inbound bool
+
 	mover    *GroundMover
 	lastStep time.Time
 	frameDt  float64 // seconds since the previous frame
@@ -511,6 +516,9 @@ func (d *groundDrive) brakeForRunwayAhead(now time.Time) {
 			clearTo = math.Min(clearTo, math.Max(hs+TrafficOverrunMeters, at-noseTip))
 		}
 	}
+	if held {
+		d.picture.ReportHeldFor(d.object, d.onOther)
+	}
 	if math.IsInf(stop, 1) {
 		m.ClearTrafficStop()
 		return
@@ -537,6 +545,8 @@ func (d *groundDrive) followAhead(now time.Time) {
 		if d.picture != nil && d.object != 0 {
 			d.picture.ReportIntent(d.object, nil) // not taxiing: no intent (#775)
 			d.picture.ReportBehind(d.object, 0)
+			d.picture.ReportHeldFor(d.object, 0)
+			d.picture.ReportInbound(d.object, d.inbound)
 			if len(d.planned) > 0 {
 				d.picture.ReportPlanned(d.object, d.planned, d.prof.SpanMeters/2)
 			} else {
@@ -591,13 +601,17 @@ func (d *groundDrive) followAhead(now time.Time) {
 			d.onNear = d.picture.nearWay(d.onOther, path, s0, d.onS, half)
 		}
 	}
+	d.picture.ReportInbound(d.object, d.inbound)
+	heldFor := uint32(0)
 	if at, o, hold := d.onS, d.onOther, d.onHold; hold && !math.IsInf(at, 1) && at-s0 <= OncomingLookMeters {
+		heldFor = o
 		hs := d.junctionStopTo(path, s0, d.onNear-noseTip-TrafficGapMeters, noseTip, half+DefaultHalfSpanMeters+GiveWayMarginMeters, at)
 		if hs < stop {
 			stop = hs
 			d.blockedBy, d.facing = o, true
 		}
 	}
+	d.picture.ReportHeldFor(d.object, heldFor)
 	// Give way where routes cross or merge: stop short of the conflict
 	// (its first point is already a half-span away from the other path).
 	gw, whom := d.picture.giveWayTo(d.object, path, s0, GiveWayLookMeters, half, now)
