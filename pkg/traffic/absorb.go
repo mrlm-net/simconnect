@@ -237,6 +237,7 @@ func (c *ArrivalController) absorb(delay time.Duration, withinNM float64) (Absor
 		out = append(out, w)
 	}
 	stretched := false
+	overshot := false // a downwind extension would add far more than asked
 	// Round its circuit back to the final after a go-around: the others
 	// it follows meet it where it turns base, so its downwind is extended
 	// however far on that is, and never a dog-leg off its climb-out or
@@ -284,6 +285,17 @@ func (c *ArrivalController) absorb(delay time.Duration, withinNM float64) (Absor
 			if ok && circuitBack {
 				widenGoAroundDownwind(ext, k+1, wps[final], wps[final+1])
 			}
+			// A first extension adds as flown at most twice the track asked
+			// and downwindOverNM: past a STAR that joins the final at a slant
+			// it is a whole downwind, base and intercept (LKPR LOMKI 8S for
+			// 24: 1.75 NM on added 9.9 NM, 2m49s for 10-60 s; behind the
+			// slower chains of v0.197.0, TestSpottingObserver a landing
+			// short): not that, a dog-leg sized to the time instead.
+			if ok && !circuitBack && c.tromboneNM == 0 {
+				if got := c.flownExtraNM(pos, ext, outNames, k, f, wps[final:], names[final:], before); got > 2*a.ExtraNM+downwindOverNM {
+					ok, overshot = false, true
+				}
+			}
 			if ok {
 				out, c.tromboneNM, stretched, baseAt = ext, c.tromboneNM+x, true, k+1
 				a.Downwind = true
@@ -306,6 +318,11 @@ func (c *ArrivalController) absorb(delay time.Duration, withinNM float64) (Absor
 		}
 	}
 	// Under a mile is not worth a turn: the hold, or the sequencer asks again.
+	// At the minimum speed with a downwind that would add minutes, a mile:
+	// a little more than asked, lost all the same (#1691).
+	if a.ExtraNM > 0 && a.ExtraNM < 1 && !stretched && overshot {
+		a.ExtraNM = 1
+	}
 	if a.ExtraNM > 0 && a.ExtraNM < 1 && !stretched {
 		a.Left += time.Duration(a.ExtraNM / math.Max(a.SpeedKts, speed) * float64(time.Hour))
 		a.ExtraNM = 0
@@ -426,7 +443,7 @@ func (c *ArrivalController) absorb(delay time.Duration, withinNM float64) (Absor
 		want := a.ExtraNM
 		for i := 0; i < 3; i++ {
 			got := pathNMOf(pos, out[:len(out)-2], out[len(out)-2]) - before
-			if got >= want-0.2 || extra >= 2*want {
+			if got >= want || extra >= 2*want {
 				break
 			}
 			extra = math.Min(2*want, extra+want-got)
@@ -490,6 +507,29 @@ const (
 	InterceptBeyondNM = 1.0
 	interceptRoomNM   = 1.0 // the base corner at least this farther out than the leg's start
 )
+
+// downwindOverNM: a first extension of the downwind adds as flown at most
+// twice the track asked and this.
+const downwindOverNM = 2.0
+
+// flownExtraNM is the track ext adds over before as flown from pos: ext
+// (the STAR ahead with its downwind extended, outNames its names, k the
+// last downwind point kept and f the first after the new base turn and
+// final) then the align and join points (tail, tailNames), its turns
+// rounded and its intercept as the extended chain gets them. c.mu held.
+func (c *ArrivalController) flownExtraNM(pos airport.LatLon, ext []types.SIMCONNECT_DATA_WAYPOINT, outNames []string, k, f int, tail []types.SIMCONNECT_DATA_WAYPOINT, tailNames []string, before float64) float64 {
+	kept := append([]string(nil), outNames[:k+1]...)
+	for i := range kept {
+		if kept[i] == "BASE" {
+			kept[i] = ""
+		}
+	}
+	names := append(append(append(kept, "BASE", ""), outNames[f:]...), tailNames...)
+	plain := append(append([]types.SIMCONNECT_DATA_WAYPOINT(nil), ext...), tail...)
+	plain, _ = withIntercept(plain, names)
+	r := roundedChain(pos, plain, MaxBankDeg(*c.aircraft()))
+	return pathNMOf(pos, r[:len(r)-2], r[len(r)-2]) - before
+}
 
 // withIntercept gives plain (…, base corner, the final's points, align,
 // join) an intercept leg before the corner where its final begins when the
