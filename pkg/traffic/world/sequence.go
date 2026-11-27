@@ -939,7 +939,7 @@ func (q *sequences) tick(now time.Time) {
 		fed[cs] = true
 		prof := traffic.ProfileFor(model)
 		feed[key{icao, rwy}] = append(feed[key{icao, rwy}], traffic.ApproachAircraft{Callsign: cs, Wake: traffic.WakeFor(model),
-			DistanceToGoNM: dtg, GroundKts: kts, FinalKts: prof.Approach.ApproachKts, Fixed: fixed, Extendable: extendable, Fixes: fixesOf[cs], RunwayOccupancy: occOf[cs]})
+			DistanceToGoNM: dtg, GroundKts: kts, FinalKts: prof.Approach.ApproachKts, TopKts: prof.Approach.TransitionMaxKts, Fixed: fixed, Extendable: extendable, Fixes: fixesOf[cs], RunwayOccupancy: occOf[cs]})
 	}
 	// Controlled arrivals, airborne.
 	q.cc.mu.Lock()

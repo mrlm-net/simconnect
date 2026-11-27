@@ -53,6 +53,106 @@ var (
 	JoinBlendSeconds = 20.0
 )
 
+// JoinEaseKtsPerSecond: the injected approach eases from the speed MSFS AI
+// flew it at to its own this fast (#1682), faster where it would not be on
+// its speeds by JoinEaseByFt (ApproachMover.EaseFrom), up to
+// JoinEaseMaxKtsPerSecond. The maximum is an estimate (no published
+// figure read): an airliner slowing on the glide path with drag out.
+const (
+	JoinEaseKtsPerSecond    = 1.5
+	JoinEaseMaxKtsPerSecond = 3.0
+	JoinEaseByFt            = 500.0
+)
+
+// airWaypoints fits a chain MSFS AI flies for the arrival to its type
+// (#1682): no airborne point faster than its top speed
+// (ApproachProfile.TransitionMaxKts), and a chain ending on the final, as
+// to the join point, slows toward the approach: the last point at the
+// approach's start speed (StartKts), the one before it on the final
+// halfway from the transition speed (ProcedureApproachSpeedKts, no more
+// than the top speed), so the injected approach takes over at about its
+// own speed.
+func (c *ArrivalController) airWaypoints(wps []types.SIMCONNECT_DATA_WAYPOINT) []types.SIMCONNECT_DATA_WAYPOINT {
+	if c.plan == nil {
+		return fitAirSpeeds(wps, c.approachProfile(), nil)
+	}
+	end := c.plan.End
+	return fitAirSpeeds(wps, c.approachProfile(), &end)
+}
+
+// airHoldWaypoints is airWaypoints for a hold's racetrack: no faster than
+// the type's top speed, never slowed as a chain to the final is (a hold
+// near the final's extended centreline is not a join).
+func (c *ArrivalController) airHoldWaypoints(wps []types.SIMCONNECT_DATA_WAYPOINT) []types.SIMCONNECT_DATA_WAYPOINT {
+	return fitAirSpeeds(wps, c.approachProfile(), nil)
+}
+
+// fitAirSpeeds is airWaypoints for profile p and the landing end (nil: no
+// final known).
+func fitAirSpeeds(wps []types.SIMCONNECT_DATA_WAYPOINT, p ApproachProfile, end *airport.RunwayEnd) []types.SIMCONNECT_DATA_WAYPOINT {
+	if len(wps) == 0 {
+		return wps
+	}
+	out := make([]types.SIMCONNECT_DATA_WAYPOINT, len(wps))
+	copy(out, wps)
+	air := func(w types.SIMCONNECT_DATA_WAYPOINT) bool {
+		return w.Flags&uint32(types.SIMCONNECT_WAYPOINT_ON_GROUND) == 0
+	}
+	top := p.TransitionMaxKts
+	for i := range out {
+		if top > 0 && air(out[i]) && out[i].KtsSpeed > top {
+			out[i].KtsSpeed = top
+		}
+	}
+	if end == nil || p.StartKts <= 0 {
+		return out
+	}
+	t := end.LandingThreshold()
+	onFinal := func(w types.SIMCONNECT_DATA_WAYPOINT) bool {
+		if !air(w) {
+			return false
+		}
+		q := airport.LatLon{Lat: w.Latitude, Lon: w.Longitude}
+		back := -alongHeading(t, end.Heading, q)
+		cross := calc.HaversineMeters(t.Lat, t.Lon, q.Lat, q.Lon)
+		off := math.Sqrt(math.Max(0, cross*cross-back*back))
+		return back > 0 && back < airFinalMaxM && off < airFinalOffM
+	}
+	n := len(out)
+	if !onFinal(out[n-1]) {
+		return out
+	}
+	_, align, join := ChainSpeeds(p.StartKts, top)
+	out[n-1].KtsSpeed = math.Min(out[n-1].KtsSpeed, join)
+	if n >= 2 && onFinal(out[n-2]) {
+		out[n-2].KtsSpeed = math.Min(out[n-2].KtsSpeed, align)
+	}
+	return out
+}
+
+// ChainSpeeds is the speeds a chain to the final is flown at (#1682), for
+// an approach starting at startKts (ApproachProfile.StartKts) and a type
+// whose top speed is topKts (ApproachProfile.TransitionMaxKts, 0: none):
+// the transition at ProcedureApproachSpeedKts or the top speed if lower,
+// the join at the approach's start speed, the align point halfway between.
+// The chain (airWaypoints) and the sequencer's estimate (eta) both use it.
+func ChainSpeeds(startKts, topKts float64) (trans, align, join float64) {
+	trans = ProcedureApproachSpeedKts
+	if topKts > 0 {
+		trans = math.Min(trans, topKts)
+	}
+	join = math.Min(startKts, trans)
+	align = math.Max(join, (trans+join)/2)
+	return trans, align, join
+}
+
+// A chain's last point is on the final (airWaypoints) when it is out on the
+// extended centreline, at most airFinalMaxM back and airFinalOffM off it.
+const (
+	airFinalMaxM = 15 * 1852.0
+	airFinalOffM = 150.0
+)
+
 // procedureWaypoint is an airborne waypoint at altFt MSL.
 func procedureWaypoint(p airport.LatLon, altFt, kts float64) types.SIMCONNECT_DATA_WAYPOINT {
 	return types.SIMCONNECT_DATA_WAYPOINT{
@@ -261,6 +361,9 @@ type joinBlend struct {
 	dPitch, dBank, attitudeLeft float64
 	// attitudeFresh: not applied yet, so a newer answer may still replace it.
 	attitudeFresh bool
+	// liftDue: dFt is still to the reference point's altitude MSFS AI
+	// reported, not yet less its height above the wheels (#1682).
+	liftDue bool
 }
 
 // attitudeBlendSeconds: out of a 25° banked turn at 7.5°/s at most.
@@ -373,6 +476,16 @@ func joinBlendFtSeconds(dFt, pathFpm float64) float64 {
 	return math.Max(JoinBlendSeconds, 1.5*math.Abs(dFt)/room*60)
 }
 
+// ftShare is the share of dFt apply added last: the height fade's
+// smoothed factor, 0 once faded.
+func (b *joinBlend) ftShare() float64 {
+	if b.ftLeft <= 0 || b.ftFor <= 0 {
+		return 0
+	}
+	k := b.ftLeft / b.ftFor
+	return k * k * (3 - 2*k)
+}
+
 func (b *joinBlend) apply(p ApproachPose, dt float64) ApproachPose {
 	b.attitudeFresh = false
 	if b.attitudeLeft > 0 {
@@ -446,7 +559,7 @@ func (c *ArrivalController) startProcedure() error {
 		return err
 	}
 	c.setLights(false, false, true, true, true, "lights arrival")
-	if err := c.fleet.SetWaypoints(c.objectID, c.defBase+arrDefWaypoints, c.proc.Waypoints); err != nil {
+	if err := c.fleet.SetWaypoints(c.objectID, c.defBase+arrDefWaypoints, c.airWaypoints(c.proc.Waypoints)); err != nil {
 		return err
 	}
 	c.monitorEvery(types.SIMCONNECT_PERIOD_SECOND)
@@ -512,9 +625,16 @@ func (c *ArrivalController) onProcedureFrame(m arrivalMonitor) {
 		return
 	}
 	p := c.approach.Pose()
+	// MSFS AI's altitude is its reference point's, the pose's height its
+	// wheels': the reference point's height above them comes off before
+	// the first write (liftDue, onApproachFrame), so it is written where
+	// MSFS AI had it (#1682: 9 ft up in one write).
 	c.blend = joinBlend{dLat: pos.Lat - p.Position.Lat, dLon: pos.Lon - p.Position.Lon, dFt: above - p.HeightFt,
 		dHdg: headingDiff(p.Heading, m.Heading), left: JoinBlendSeconds,
-		attitudeFresh: true}
+		attitudeFresh: true, liftDue: true}
+	// From the speed MSFS AI flew it at, eased to the approach's (#1682: a
+	// DHC6 from 180 to 87 kt in one write).
+	c.approach.EaseFrom(m.GroundKts)
 	// The height at an airliner's rate at most (#1681): over JoinBlendSeconds
 	// for every arrival MSFS AI brings in near its path.
 	path := joinPathFpm(p)

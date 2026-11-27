@@ -26,6 +26,9 @@ type ApproachAircraft struct {
 	DistanceToGoNM float64
 	// GroundKts is its speed now; FinalKts its speed on final (0: 140).
 	GroundKts, FinalKts float64
+	// TopKts is its type's top speed (ApproachProfile.TransitionMaxKts,
+	// #1682): its chain to the final is flown no faster. 0: none.
+	TopKts float64
 	// Fixed: it cannot be delayed — other traffic, or already established.
 	// The sequencer also fixes aircraft inside FreezeNM.
 	Fixed bool
@@ -456,11 +459,23 @@ func (s *ApproachSequencer) eta(now time.Time, a ApproachAircraft, c ApproachCon
 	// slow only from there, and slower than halfway between (offline LKPR:
 	// a TBM9 predicted 1m40s early, 18 NM out, the B738 behind it planned
 	// that much too close).
-	// To the join at most at the align and join points' speed.
+	// To the join at most at the speeds its chain is flown at there
+	// (ChainSpeeds, #1682): from the align point's down to the join's.
 	mid := math.Max(0, math.Min(d, s.opts.FinalNM)-join)
-	midKts := math.Max(math.Min(term, ProcedureApproachSpeedKts), final)
+	midKts := math.Max(math.Min(term, chainMidKts(a)), final)
 	h := far/gs + outer/term + mid/midKts + finalScheduleHours(math.Min(d, join), join, a.FinalKts, c)
 	return now.Add(time.Duration(h * float64(time.Hour)))
+}
+
+// chainMidKts is the mean of the align and join points' speeds an
+// arrival's chain is flown at (ChainSpeeds).
+func chainMidKts(a ApproachAircraft) float64 {
+	fk := a.FinalKts
+	if fk <= 0 {
+		fk = 140
+	}
+	_, align, join := ChainSpeeds(fk+finalStartAboveKts, a.TopKts)
+	return (align + join) / 2
 }
 
 // finalStartAboveKts: the injected final starts at the join this much

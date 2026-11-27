@@ -38,6 +38,7 @@ type AircraftTypeItem struct {
 	CGM        float64          `json:"cgM"`
 	TakeoffM   float64          `json:"takeoffDistanceM"`
 	VappKts    float64          `json:"vappKts"`
+	VmoKts     float64          `json:"vmoKts,omitempty"`
 	Pitch      float64          `json:"pitchDeg"`
 	FlarePitch float64          `json:"flarePitchDeg"`
 	FlareFt    float64          `json:"flareFt"`
@@ -223,7 +224,7 @@ func shippedTelephony() []TelephonyItem {
 
 func (s typeSpec) item() AircraftTypeItem {
 	return AircraftTypeItem{Type: s.Type, Match: s.match, Category: s.Category, SpanM: s.span, LengthM: s.length, WheelbaseM: s.wheelbase,
-		CGM: s.cg, TakeoffM: s.tod, VappKts: s.vapp, Pitch: s.pitch, FlarePitch: s.flarePitch, FlareFt: s.flareFt, TouchFpm: s.tdFpm,
+		CGM: s.cg, TakeoffM: s.tod, VappKts: s.vapp, VmoKts: s.vmo, Pitch: s.pitch, FlarePitch: s.flarePitch, FlareFt: s.flareFt, TouchFpm: s.tdFpm,
 		Takeoff: s.takeoff, Brake: s.brake, TaxiKts: s.taxi, Flaps: s.flaps, Heavy: s.heavy}
 }
 
@@ -233,6 +234,6 @@ func (i AircraftTypeItem) spec() typeSpec {
 		match = []string{strings.ToUpper(i.Type)}
 	}
 	return typeSpec{match: match, Type: i.Type, Category: i.Category, span: i.SpanM, length: i.LengthM, wheelbase: i.WheelbaseM,
-		cg: i.CGM, tod: i.TakeoffM, vapp: i.VappKts, pitch: i.Pitch, flarePitch: i.FlarePitch, flareFt: i.FlareFt, tdFpm: i.TouchFpm,
+		cg: i.CGM, tod: i.TakeoffM, vapp: i.VappKts, vmo: i.VmoKts, pitch: i.Pitch, flarePitch: i.FlarePitch, flareFt: i.FlareFt, tdFpm: i.TouchFpm,
 		takeoff: i.Takeoff, brake: i.Brake, taxi: i.TaxiKts, flaps: i.Flaps, heavy: i.Heavy}
 }

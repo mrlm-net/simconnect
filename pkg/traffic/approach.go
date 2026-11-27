@@ -37,6 +37,10 @@ type ApproachProfile struct {
 	// (ApproachMover.SetBalance): 1 for an A320, more for a light aircraft,
 	// less for a heavy.
 	BalanceScale float64
+	// TransitionMaxKts is the type's top speed (VMO) where it is below the
+	// procedure speeds: MSFS AI flies its STAR and approach transition no
+	// faster (#1682); 0 none set.
+	TransitionMaxKts float64
 }
 
 // DefaultApproachProfile is an A320 family approach, tried live at LKPR
@@ -152,6 +156,31 @@ type ApproachMover struct {
 	// t is seconds flown; bal the balancing on final (SetBalance).
 	t   float64
 	bal balance
+	// easing: from EaseFrom's speed toward the schedule at easeKts (kt/s),
+	// not the schedule's lag, until on it.
+	easing  bool
+	easeKts float64
+}
+
+// EaseFrom has the approach start at kts (what MSFS AI flew it at; 0 or
+// less: as it is) and ease to its scheduled speed (#1682): at
+// JoinEaseKtsPerSecond, or as fast as it takes to be on it by JoinEaseByFt
+// above the runway, at most JoinEaseMaxKtsPerSecond, so a fast join does
+// not reach the flare fast.
+func (m *ApproachMover) EaseFrom(kts float64) {
+	if kts <= 0 || m.phase != ApproachFinal {
+		return
+	}
+	m.v, m.easing, m.easeKts = kts*ktsToMS, true, JoinEaseMaxKtsPerSecond
+	// Its scheduled speed there, where the glide path is JoinEaseByFt high.
+	tan := math.Tan(m.p.GlideSlopeDeg * math.Pi / 180)
+	target := m.speedAt(-math.Max(0, JoinEaseByFt-m.p.ThresholdHeightFt) * 0.3048 / math.Max(tan, 1e-3))
+	dKts := math.Abs(m.v-target) / ktsToMS
+	// The time to JoinEaseByFt down the glide path at the mean speed.
+	sink := (m.v + target) / 2 * tan / 0.3048
+	if over := m.h - JoinEaseByFt; over > 0 && sink > 0 {
+		m.easeKts = math.Min(JoinEaseMaxKtsPerSecond, math.Max(JoinEaseKtsPerSecond, 1.1*dKts/(over/sink)))
+	}
 }
 
 // SetAimShift moves the aiming point, and so the touchdown, by meters
@@ -325,7 +354,13 @@ func (m *ApproachMover) step(dt float64) {
 	switch m.phase {
 	case ApproachFinal, ApproachFlare:
 		target := m.speedAt(m.x)
-		m.v += (target - m.v) * math.Min(1, dt/math.Max(p.SpeedTimeSeconds, 0.01))
+		if m.easing {
+			lim := m.easeKts * ktsToMS * dt
+			m.v += math.Max(-lim, math.Min(lim, target-m.v))
+			m.easing = math.Abs(target-m.v) > 0.1
+		} else {
+			m.v += (target - m.v) * math.Min(1, dt/math.Max(p.SpeedTimeSeconds, 0.01))
+		}
 		onGS := -m.v * math.Tan(p.GlideSlopeDeg*math.Pi/180) / 0.3048 * 60
 		m.vs, m.pitch = onGS, p.ApproachPitchDeg
 		if m.h <= p.FlareFt {

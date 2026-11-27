@@ -666,6 +666,17 @@ func (c *ArrivalController) onApproachFrame(m arrivalMonitor) {
 	}
 	onPath := c.approach.Step(math.Max(dt, 0))
 	pose := c.blend.apply(onPath, math.Max(dt, 0))
+	if c.blend.liftDue {
+		// The reference point's height above the wheels off the join's
+		// height offset, once the injector knows it (it writes nothing
+		// before), at the blended pitch PlaceAir lifts the main gear by:
+		// written where MSFS AI had it (#1682).
+		if lift, ok := c.inj.AirLiftFt(c.objectID, ApproachPose{MainGearBehindM: c.profile().RefAheadMeters, PitchDeg: pose.PitchDeg}); ok {
+			pose.HeightFt -= lift * c.blend.ftShare()
+			c.blend.dFt -= lift
+			c.blend.liftDue = false
+		}
+	}
 	if !c.last.Unstable && c.blend.judgeGate(onPath.HeightFt) {
 		c.last.Unstable = true
 		c.note("not stable at the gate: the hand-over's height still off", nil)

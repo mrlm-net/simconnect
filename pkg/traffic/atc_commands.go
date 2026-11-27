@@ -464,7 +464,7 @@ func (c *ArrivalController) goAroundLocked() error {
 	wps = roundedChain(c.last.Position, wps, MaxBankDeg(*c.aircraft()))
 	c.note("go around", nil)
 	c.note("release", c.inj.Release(c.objectID))
-	if err := c.fleet.SetWaypoints(c.objectID, c.defBase+arrDefWaypoints, wps); err != nil {
+	if err := c.fleet.SetWaypoints(c.objectID, c.defBase+arrDefWaypoints, c.airWaypoints(wps)); err != nil {
 		return err
 	}
 	c.approach = nil
@@ -650,7 +650,7 @@ func (c *ArrivalController) goAroundToDownwind(join, joinFt, circuitFt float64) 
 	rounded := roundedChain(c.last.Position, wps, MaxBankDeg(*c.aircraft()))
 	c.note("go around: back to the downwind at "+route[k].Ident, nil)
 	c.note("release", c.inj.Release(c.objectID))
-	if err := c.fleet.SetWaypoints(c.objectID, c.defBase+arrDefWaypoints, rounded); err != nil {
+	if err := c.fleet.SetWaypoints(c.objectID, c.defBase+arrDefWaypoints, c.airWaypoints(rounded)); err != nil {
 		return true, err
 	}
 	c.approach = nil

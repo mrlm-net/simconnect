@@ -1189,6 +1189,21 @@ func airAltitude(pose ApproachPose, groundFt float64) float64 {
 	return w*(pose.RunwayFt+h) + (1-w)*(groundFt+h)
 }
 
+// AirLiftFt is how far above a pose's wheel height (HeightFt) PlaceAir
+// puts objectID's reference point in the air: its static CG height, plus
+// the main gear's lift nose up (mainGearLift). False until its ground
+// answer gave the CG height (PlaceAir writes nothing before). What a
+// reported altitude (the reference point's) is above the wheels (#1682).
+func (i *Injector) AirLiftFt(objectID uint32, pose ApproachPose) (float64, bool) {
+	i.mu.Lock()
+	defer i.mu.Unlock()
+	o, ok := i.objects[objectID]
+	if !ok || !o.haveGround {
+		return 0, false
+	}
+	return o.cgFt + mainGearLift(pose), true
+}
+
 // GroundFt is the ground elevation under an injected object (feet MSL).
 func (i *Injector) GroundFt(objectID uint32) (float64, bool) {
 	i.mu.Lock()

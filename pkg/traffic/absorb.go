@@ -439,7 +439,7 @@ func (c *ArrivalController) absorb(delay time.Duration, withinNM float64) (Absor
 		// The track added as flown: the rounded turns included.
 		a.ExtraNM = pathNMOf(pos, out[:len(out)-2], out[len(out)-2]) - before
 	}
-	if err := c.fleet.SetWaypoints(c.objectID, c.defBase+arrDefWaypoints, out); err != nil {
+	if err := c.fleet.SetWaypoints(c.objectID, c.defBase+arrDefWaypoints, c.airWaypoints(out)); err != nil {
 		return Absorption{}, err
 	}
 	c.keepReach(plain)
@@ -1002,7 +1002,7 @@ func (c *ArrivalController) DirectToJoin() error {
 		mid = []types.SIMCONNECT_DATA_WAYPOINT{procedureWaypoint(p, math.Max(to.Altitude, final[0].Altitude), to.KtsSpeed)}
 		route = append(mid, route...)
 	}
-	if err := c.fleet.SetWaypoints(c.objectID, c.defBase+arrDefWaypoints, route); err != nil {
+	if err := c.fleet.SetWaypoints(c.objectID, c.defBase+arrDefWaypoints, c.airWaypoints(route)); err != nil {
 		return err
 	}
 	c.proc.Waypoints, c.procNext = route, 0
@@ -1054,7 +1054,7 @@ func (c *ArrivalController) StopDescent(altFt, forNM float64) error {
 		return out
 	}
 	out := raise(wps[next:], final-next)
-	if err := c.fleet.SetWaypoints(c.objectID, c.defBase+arrDefWaypoints, out); err != nil {
+	if err := c.fleet.SetWaypoints(c.objectID, c.defBase+arrDefWaypoints, c.airWaypoints(out)); err != nil {
 		return err
 	}
 	c.proc.Waypoints, c.procNext = out, 0
@@ -1110,7 +1110,7 @@ func (c *ArrivalController) DescendExpedited(fromFt, altFt, throughFt, kts float
 			out = append([]types.SIMCONNECT_DATA_WAYPOINT{first}, out...)
 		}
 	}
-	if err := c.fleet.SetWaypoints(c.objectID, c.defBase+arrDefWaypoints, out); err != nil {
+	if err := c.fleet.SetWaypoints(c.objectID, c.defBase+arrDefWaypoints, c.airWaypoints(out)); err != nil {
 		return err
 	}
 	c.proc.Waypoints, c.procNext = out, 0
@@ -1257,7 +1257,7 @@ func (c *ArrivalController) Shortcut(maxSaveNM float64, keep []string) (string, 
 	plain := append([]types.SIMCONNECT_DATA_WAYPOINT(nil), c.corners[best:]...)
 	names := append([]string(nil), c.cornerNames[best:]...)
 	out := roundedChain(pos, plain, MaxBankDeg(*c.aircraft()))
-	if err := c.fleet.SetWaypoints(c.objectID, c.defBase+arrDefWaypoints, out); err != nil {
+	if err := c.fleet.SetWaypoints(c.objectID, c.defBase+arrDefWaypoints, c.airWaypoints(out)); err != nil {
 		return "", 0, err
 	}
 	fix := c.cornerName(best)

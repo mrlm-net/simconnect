@@ -119,7 +119,7 @@ func (c *ArrivalController) extendForHeight(m arrivalMonitor, along, above, high
 	c.setCorners(wps, []string{"DOWNWIND", "BASE", "", "FINAL"})
 	c.cornerNext = 0
 	wps = roundedChain(c.last.Position, wps, MaxBankDeg(*c.aircraft()))
-	if err := c.fleet.SetWaypoints(c.objectID, c.defBase+arrDefWaypoints, wps); err != nil {
+	if err := c.fleet.SetWaypoints(c.objectID, c.defBase+arrDefWaypoints, c.airWaypoints(wps)); err != nil {
 		return err
 	}
 	c.proc = &ArrivalProcedure{Waypoints: wps, Join: joinAt, JoinMeters: join, MinJoinMeters: c.proc.MinJoinMeters}

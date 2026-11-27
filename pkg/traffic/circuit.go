@@ -564,7 +564,7 @@ func (c *ArrivalController) anotherCircuit(goAround bool) (time.Duration, error)
 		wps = append(wps, procedureWaypoint(p.Position, p.AltFt, p.Kts))
 	}
 	rounded := roundedChain(pos, wps, MaxBankDeg(*c.aircraft()))
-	if err := c.fleet.SetWaypoints(c.objectID, c.defBase+arrDefWaypoints, rounded); err != nil {
+	if err := c.fleet.SetWaypoints(c.objectID, c.defBase+arrDefWaypoints, c.airWaypoints(rounded)); err != nil {
 		return 0, err
 	}
 	c.proc.Waypoints, c.procNext = rounded, 0

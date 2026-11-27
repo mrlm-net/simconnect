@@ -1076,8 +1076,10 @@ func (m *GroundMover) placeReverse() {
 	b := m.path.PointAt(math.Min(m.path.Length(), m.s+d))
 	gear := m.path.PointAt(m.s)
 	hdg := m.pose.Heading
-	if localDist(a, b) > 1e-6 {
-		hdg = localBearing(b, a) // the nose points back along the path
+	if h, ok := m.path.headingAt(m.s, d); ok {
+		hdg = normDeg(h + 180) // the nose points back along the path
+	} else if localDist(a, b) > 1e-6 {
+		hdg = localBearing(b, a)
 	}
 	m.pose = GroundPose{
 		Position:       offsetHeading(gear, hdg, m.p.RefAheadMeters),
@@ -1087,6 +1089,64 @@ func (m *GroundMover) placeReverse() {
 		Stopped:        m.v == 0,
 		Arrived:        m.v == 0 && m.s >= m.path.Length()-0.05,
 	}
+}
+
+// headingAt is the path's direction at s, true degrees: each segment's
+// bearing, turned on to the next one's from d before the point between them
+// to d after it (half the segment where shorter). Linear along the path, an
+// arc sampled every metre turns at one rate: the chord over ±d turned
+// unevenly as its ends passed the points at different times, and a pushed
+// aircraft's turn dropped by up to half for a frame at every point.
+// Segments too short for a direction (a point repeated) are passed over;
+// ok is false on a path with none longer.
+func (g *GroundPath) headingAt(s, d float64) (float64, bool) {
+	const tooShort = 1e-3
+	n := len(g.pts)
+	if n < 2 {
+		return 0, false
+	}
+	s = math.Max(0, math.Min(g.Length(), s))
+	length := func(k int) float64 { return g.cum[k] - g.cum[k-1] }
+	half := func(k int) float64 { return math.Min(d, length(k)/2) }
+	bearing := func(k int) float64 { return localBearing(g.pts[k-1], g.pts[k]) }
+	// The segments with a direction after and before segment k: 0 for none.
+	next := func(k int) int {
+		for k++; k < n; k++ {
+			if length(k) >= tooShort {
+				return k
+			}
+		}
+		return 0
+	}
+	prev := func(k int) int {
+		for k--; k >= 1; k-- {
+			if length(k) >= tooShort {
+				return k
+			}
+		}
+		return 0
+	}
+	i, _ := g.segment(s)
+	if length(i) < tooShort {
+		if i = next(i); i == 0 {
+			if i, _ = g.segment(s); prev(i) == 0 {
+				return 0, false
+			}
+			i = prev(i)
+		}
+	}
+	blend := func(a, b int) float64 {
+		from, to := g.cum[a]-half(a), g.cum[b-1]+half(b)
+		f := math.Max(0, math.Min(1, (s-from)/(to-from)))
+		return normDeg(bearing(a) + headingDiff(bearing(a), bearing(b))*f)
+	}
+	if j := next(i); j != 0 && s > g.cum[i]-half(i) {
+		return blend(i, j), true
+	}
+	if j := prev(i); j != 0 && s < g.cum[i-1]+half(i) {
+		return blend(j, i), true
+	}
+	return bearing(i), true
 }
 
 // NewArcPath is a GroundPath whose corners are circular arcs of radius

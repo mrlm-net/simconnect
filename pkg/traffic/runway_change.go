@@ -332,7 +332,7 @@ func (c *ArrivalController) ChangeRunway(runway string, procedure, missed []airp
 	c.exitAlong = c.track.cum[len(plan.Exit.Path)-1]
 	c.vacateAlong = c.track.cum[plan.VacateIndex] - plan.VacateBackMeters
 	if c.flyingProc && c.objectID != 0 {
-		if err := c.fleet.SetWaypoints(c.objectID, c.defBase+arrDefWaypoints, c.proc.Waypoints); err != nil {
+		if err := c.fleet.SetWaypoints(c.objectID, c.defBase+arrDefWaypoints, c.airWaypoints(c.proc.Waypoints)); err != nil {
 			return err
 		}
 	}

@@ -313,7 +313,7 @@ func (c *ArrivalController) EnterHold(h Hold, altFt float64) (HoldEntry, error) 
 	if len(h.EntryPoints(e, altFt)) == 0 {
 		pts = append([]airport.LatLon{h.Fix}, pts...)
 	}
-	if err := c.fleet.SetWaypoints(c.objectID, c.defBase+arrDefWaypoints, holdWaypoints(pts, altFt, false)); err != nil {
+	if err := c.fleet.SetWaypoints(c.objectID, c.defBase+arrDefWaypoints, c.airHoldWaypoints(holdWaypoints(pts, altFt, false))); err != nil {
 		return 0, err
 	}
 	c.holding = &holdState{hold: h, altFt: altFt, entry: e, resume: resume, since: c.now()}
@@ -332,7 +332,7 @@ func (c *ArrivalController) HoldAltitude(altFt float64) error {
 	}
 	c.holding.altFt = altFt
 	c.holding.looping = true
-	return c.fleet.SetWaypoints(c.objectID, c.defBase+arrDefWaypoints, holdWaypoints(c.holding.hold.Racetrack(altFt), altFt, true))
+	return c.fleet.SetWaypoints(c.objectID, c.defBase+arrDefWaypoints, c.airHoldWaypoints(holdWaypoints(c.holding.hold.Racetrack(altFt), altFt, true)))
 }
 
 // LeaveHold sends a holding arrival on along its STAR from the fix.
@@ -345,7 +345,7 @@ func (c *ArrivalController) LeaveHold() error {
 	h := c.holding
 	rest := c.proc.Waypoints[min(h.resume, len(c.proc.Waypoints)-2):]
 	chain := append(holdWaypoints([]airport.LatLon{h.hold.Fix}, h.altFt, false), rest...)
-	if err := c.fleet.SetWaypoints(c.objectID, c.defBase+arrDefWaypoints, chain); err != nil {
+	if err := c.fleet.SetWaypoints(c.objectID, c.defBase+arrDefWaypoints, c.airWaypoints(chain)); err != nil {
 		return err
 	}
 	c.proc.Waypoints, c.procNext = chain, 0
@@ -373,6 +373,6 @@ func (c *ArrivalController) holdFrame(pos airport.LatLon) {
 	}
 	if calc.HaversineNM(pos.Lat, pos.Lon, h.hold.Fix.Lat, h.hold.Fix.Lon) < 1.5 {
 		h.looping = true
-		c.note("holding: racetrack", c.fleet.SetWaypoints(c.objectID, c.defBase+arrDefWaypoints, holdWaypoints(h.hold.Racetrack(h.altFt), h.altFt, true)))
+		c.note("holding: racetrack", c.fleet.SetWaypoints(c.objectID, c.defBase+arrDefWaypoints, c.airHoldWaypoints(holdWaypoints(h.hold.Racetrack(h.altFt), h.altFt, true))))
 	}
 }
