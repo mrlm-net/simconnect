@@ -48,6 +48,13 @@ var (
 	// JoinCaptureMeters: the takeover happens once the aircraft is this
 	// close to the join point, or abeam it on the centreline.
 	JoinCaptureMeters = 1500.0
+	// JoinCaptureCrossMeters: near the join point, the takeover waits until
+	// the aircraft is this close to the centreline: the offset fades out
+	// over JoinBlendSeconds, which at most adds 1.5 times it over that time
+	// to the speed shown (22 m/s across a DHC6 flying 38). From 1.4 km
+	// abeam (TFFJ, in the turn onto a base leg shorter than
+	// JoinCaptureMeters) it was shown at 212 kt flying 73 (#1713).
+	JoinCaptureCrossMeters = 300.0
 	// JoinBlendSeconds: the offset between where MSFS AI flew the aircraft
 	// and the injected approach path fades out over this time.
 	JoinBlendSeconds = 20.0
@@ -591,7 +598,7 @@ func (c *ArrivalController) onProcedureFrame(m arrivalMonitor) {
 	t, far := c.plan.End.LandingThreshold(), c.proc.Join
 	along := calc.AlongTrackMeters(t.Lat, t.Lon, far.Lat, far.Lon, pos.Lat, pos.Lon)
 	cross := math.Abs(calc.CrossTrackMeters(t.Lat, t.Lon, far.Lat, far.Lon, pos.Lat, pos.Lon))
-	near := calc.HaversineMeters(pos.Lat, pos.Lon, far.Lat, far.Lon) < JoinCaptureMeters
+	near := calc.HaversineMeters(pos.Lat, pos.Lon, far.Lat, far.Lon) < JoinCaptureMeters && cross < JoinCaptureCrossMeters
 	established := along > c.proc.minJoin() && along <= c.proc.JoinMeters+300 && cross < 2000 && math.Abs(headingDiff(m.Heading, c.plan.End.Heading)) < 45
 	if c.circuit && c.procWaypoint(c.proc.Waypoints) < len(c.proc.Waypoints)-2 {
 		near, established = false, false // still going around
