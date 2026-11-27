@@ -195,13 +195,35 @@ func (m *ApproachMover) SetAimShift(meters float64) { m.aim = meters }
 // (a B77W 1.51 m a frame, TestStandTurnInNoDrift).
 const aimFadeShare = 0.8
 
-// aimNow is the aim shift as far as it has faded in.
+// aimNow is the aim shift as far as it has faded in: smoothly, no kink at
+// either end.
 func (m *ApproachMover) aimNow() float64 {
 	span := -aimFadeShare * m.x0
 	if span <= 0 {
 		return m.aim
 	}
-	return m.aim * math.Max(0, math.Min(1, (m.x-m.x0)/span))
+	f := math.Max(0, math.Min(1, (m.x-m.x0)/span))
+	return m.aim * f * f * (3 - 2*f)
+}
+
+// aimPaceAt is how far the aircraft moves along the runway for each metre of
+// its glide path while the aim shift fades in: it flies its own speed
+// along the runway and the glide path runs at its speed over this, so the
+// shift comes in as a slightly steeper or flatter descent. Moved along the
+// runway on top of its speed, a DHC6 joining a short field 1132 m out
+// (TFFJ, 240 m earlier) flew 54 kt while it reported 73, and 73 again in
+// one frame at the end of the fade (#1713). x is a point of the glide path;
+// the pace is a quarter at the least, however large the shift.
+func (m *ApproachMover) aimPaceAt(x float64) float64 {
+	span := -aimFadeShare * m.x0
+	if span <= 0 {
+		return 1
+	}
+	f := (x - m.x0) / span
+	if f <= 0 || f >= 1 {
+		return 1
+	}
+	return math.Max(0.25, 1+m.aim*6*f*(1-f)/span)
 }
 
 // TouchdownSpreadMeters: an injected landing touches down up to this much
@@ -327,7 +349,7 @@ func (m *ApproachMover) timeToGo() time.Duration {
 	t := 0.0
 	for x := m.x; x < 0; x += step {
 		v := math.Max(m.speedAt(x+step/2), 1)
-		t += math.Min(step, -x) / v
+		t += math.Min(step, -x) / v * m.aimPaceAt(x+step/2)
 	}
 	return time.Duration(t * float64(time.Second))
 }
@@ -353,26 +375,39 @@ func (m *ApproachMover) step(dt float64) {
 	m.t += dt
 	switch m.phase {
 	case ApproachFinal, ApproachFlare:
+		// The glide path runs at 1/pace of the clock while the aim shift fades
+		// in (aimPaceAt): along it the approach flies as it would unshifted.
+		pace := m.aimPaceAt(m.x)
+		gdt := dt / pace
 		target := m.speedAt(m.x)
 		if m.easing {
-			lim := m.easeKts * ktsToMS * dt
+			lim := m.easeKts * ktsToMS * gdt
 			m.v += math.Max(-lim, math.Min(lim, target-m.v))
 			m.easing = math.Abs(target-m.v) > 0.1
 		} else {
-			m.v += (target - m.v) * math.Min(1, dt/math.Max(p.SpeedTimeSeconds, 0.01))
+			m.v += (target - m.v) * math.Min(1, gdt/math.Max(p.SpeedTimeSeconds, 0.01))
 		}
 		onGS := -m.v * math.Tan(p.GlideSlopeDeg*math.Pi/180) / 0.3048 * 60
-		m.vs, m.pitch = onGS, p.ApproachPitchDeg
+		vs := onGS
+		m.pitch = p.ApproachPitchDeg
 		if m.h <= p.FlareFt {
 			m.phase = ApproachFlare
 			f := math.Max(0, m.h/p.FlareFt)
-			m.vs = p.TouchdownFpm + (onGS-p.TouchdownFpm)*f
+			vs = p.TouchdownFpm + (onGS-p.TouchdownFpm)*f
 			m.pitch = p.FlarePitchDeg + (p.ApproachPitchDeg-p.FlarePitchDeg)*f
 		}
-		m.h += m.vs / 60 * dt
-		m.x += m.v * dt
+		m.vs = vs / pace
+		h0, x0 := m.h, m.x
+		m.h += vs / 60 * gdt
+		m.x += m.v * gdt
 		if m.h <= 0 {
-			m.h, m.phase, m.touchX, m.touchFpm = 0, ApproachDerotate, m.x, m.vs
+			// Where in the step it reached the runway: the touchdown, not the
+			// end of the step (two approaches stepped apart touch down apart).
+			touch := m.x
+			if h0 > m.h {
+				touch = x0 + (m.x-x0)*h0/(h0-m.h)
+			}
+			m.h, m.phase, m.touchX, m.touchFpm = 0, ApproachDerotate, touch, m.vs
 		}
 	case ApproachDerotate:
 		m.derotateT += dt

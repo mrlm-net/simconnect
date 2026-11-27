@@ -7,6 +7,16 @@ This project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 ---
 
+## [0.198.0] - 2026-11-27
+
+### Added
+
+- `traffic.JoinCaptureCrossMeters` (300 m): near the join point, the injected approach takes an arrival over only within this distance of the centreline (#1713)
+
+### Fixed
+
+- Traffic: a VFR arrival on a tight circuit (TFFJ) is no longer shown flying far off its speed. The injected approach took it over in the turn onto a base leg shorter than the capture distance, 1.4 km off the centreline, and faded that offset out over 20 s (shown at up to 212 kt while flying 73). Near the join point it now takes over only within 300 m of the centreline, so the calls also come in order (downwind, base, final). And an approach whose touchdown is shifted (a short field's early touchdown, the touchdown spread) no longer flies slower or faster than it reports while the shift comes in, nor changes speed in one frame at its end (a DHC6 54 kt for 73, then 73 in one frame): the shift comes in as a slightly steeper or flatter descent. Touchdown is interpolated within the 0.05 s step, so a reported touchdown point moves by less than one step (#1713)
+
 ## [0.197.0] - 2026-11-27
 
 ### Added
