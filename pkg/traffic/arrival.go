@@ -460,7 +460,7 @@ func NewArrivalController(fleet *Fleet, opts ...ArrivalOption) *ArrivalControlle
 		events: make(chan ArrivalEvent, 256), now: Now,
 		rng: NewRandom(0x5eed),
 	}
-	c.groundDrive = groundDrive{ignoreRunway: -1, limitNode: -1, clock: func() time.Time { return c.now() }, record: c.note}
+	c.groundDrive = groundDrive{inbound: true, ignoreRunway: -1, limitNode: -1, clock: func() time.Time { return c.now() }, record: c.note}
 	c.last.LimitNode, c.last.HoldAt = -1, -1
 	for _, o := range opts {
 		o(c)

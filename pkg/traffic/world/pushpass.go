@@ -188,8 +188,15 @@ func wayMeets(way []airport.LatLon, area airport.Occupied, reach, ahead float64)
 }
 
 // holdPushForPassing is whether ground holds its push for traffic passing
-// behind: told once, asked again after pushPassRetry; never longer than
-// pushPassMaxWait in all (pushLegMaxWait for traffic along its leg).
+// behind: told once, asked again after pushPassRetry. For one on the
+// ground (landed, backtracking or taxiing) until it is by, or has made no
+// way (pushProgressM) for pushPassMaxWait: stopped for good, or for
+// something else. Released on a flat time while it still came along the
+// leg, the departure pushed facing it and the two stood nose to nose
+// (nightly v0.199.0, XDEC: XDD1 held for XDA1's roll to the far end and
+// taxi in, 9.5 to 10.1 minutes of pushLegMaxWait's 10). For one still on
+// approach, never longer than pushPassMaxWait in all (pushLegMaxWait
+// along its leg): a stream of arrivals never holds it for good.
 func (it *controlled) holdPushForPassing(req string) bool {
 	o, leg := it.passingFor()
 	now := it.cc.clock.Now()
@@ -197,15 +204,32 @@ func (it *controlled) holdPushForPassing(req string) bool {
 	if leg {
 		wait = pushLegMaxWait
 	}
-	// One backtracking on the runway is not waited out: it has to come by.
-	waitOut := o == nil || o.backtrackWay(false) == nil
+	down := o != nil && o.onGroundNow()
+	var pos airport.LatLon
+	if down {
+		o.mu.Lock()
+		pos = o.view.Position
+		o.mu.Unlock()
+	}
 	it.mu.Lock()
-	if o == nil || it.request != req || waitOut && !it.pushPassFrom.IsZero() && now.Sub(it.pushPassFrom) > wait {
+	if o == nil || it.request != req {
 		it.mu.Unlock()
 		return false
 	}
 	if it.pushPassFrom.IsZero() {
 		it.pushPassFrom = now
+	}
+	if down {
+		if it.pushPassFor != o.Tail || calc.HaversineMeters(pos.Lat, pos.Lon, it.pushPassAt.Lat, it.pushPassAt.Lon) > pushProgressM {
+			it.pushPassFor, it.pushPassAt, it.pushPassMoved = o.Tail, pos, now
+		}
+		if now.Sub(it.pushPassMoved) > pushPassMaxWait {
+			it.mu.Unlock()
+			return false
+		}
+	} else if now.Sub(it.pushPassFrom) > wait {
+		it.mu.Unlock()
+		return false
 	}
 	first := !it.spoken["standby passing"]
 	it.spoken["standby passing"] = true
@@ -217,6 +241,24 @@ func (it *controlled) holdPushForPassing(req string) bool {
 	}
 	it.cc.pending.later(now.Add(pushPassRetry), func() { it.askGround(req) })
 	return true
+}
+
+// pushProgressM: one a push is held for that moves this far since last
+// seen moving is making way (holdPushForPassing).
+const pushProgressM = 10.0
+
+// onGroundNow reports whether it is down on the ground and moving under
+// its own control: an arrival landed (landing, rolling out, vacating,
+// taxiing in), or a departure.
+func (it *controlled) onGroundNow() bool {
+	if it.arr == nil {
+		return it.dep != nil
+	}
+	switch it.arr.State() {
+	case traffic.ArrivalLanding, traffic.ArrivalRollout, traffic.ArrivalVacating, traffic.ArrivalAwaitingTaxi, traffic.ArrivalTaxiing, traffic.ArrivalParking:
+		return true
+	}
+	return false
 }
 
 // backtrackWay is the way an arrival backtracking along its runway to its

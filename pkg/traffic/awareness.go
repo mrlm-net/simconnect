@@ -49,6 +49,15 @@ type groundEntry struct {
 	// behind: the aircraft it stands stopped behind, in its way (not one
 	// coming the other way it holds for); 0 none (ReportBehind).
 	behind uint32
+	// heldFor: the aircraft coming the other way it holds for at its last
+	// junction before their shared stretch (#775); 0 none (ReportHeldFor).
+	// That one does not give way to it: its way stops clear of the
+	// stretch, or each stands for the other.
+	heldFor uint32
+	// inbound: an arrival taxiing in (ReportInbound). Meeting a departure
+	// the other way along one taxiway, it keeps priority: the departure
+	// holds at its last junction before their shared stretch (oncoming).
+	inbound bool
 	// parked: on its stand, not yet pushing (ReportParked): taxiing
 	// traffic passes behind it, as the stand is laid out.
 	parked bool
@@ -105,6 +114,7 @@ func (p *GroundPicture) report(id uint32, pos airport.LatLon, hdg float64, prof 
 	p.aircraft[id] = groundEntry{
 		pos: pos, hdg: hdg, at: now, ahead: p.aircraft[id].ahead, half: p.aircraft[id].half, pushing: p.aircraft[id].pushing, waiting: p.aircraft[id].waiting,
 		intent: p.aircraft[id].intent, parked: p.aircraft[id].parked, behind: p.aircraft[id].behind,
+		heldFor: p.aircraft[id].heldFor, inbound: p.aircraft[id].inbound,
 		nose: prof.WheelbaseMeters*pushNoseFactor - prof.RefAheadMeters,
 		tail: tail + prof.RefAheadMeters,
 	}
@@ -309,6 +319,13 @@ func (p *GroundPicture) giveWayTo(id uint32, path *GroundPath, from, look, half 
 		// Told to follow: behind its leader wherever their ways meet; a
 		// follower is never given way to.
 		if followers[o.id] {
+			continue
+		}
+		// Holding for this one at its last junction before their shared
+		// stretch (oncoming): not given way to, or each stands for the
+		// other for good (nightly v0.199.0, XDEC: XDA1 held for XDD1,
+		// XDD1 gave way to XDA1's way up to that junction).
+		if o.e.heldFor == id {
 			continue
 		}
 		if o.id == lead {
@@ -789,6 +806,27 @@ func (p *GroundPicture) ReportIntent(id uint32, intent []airport.LatLon) {
 	}
 }
 
+// ReportHeldFor records that aircraft id holds at its last junction for
+// aircraft by coming the other way (0: not), as oncoming decided.
+func (p *GroundPicture) ReportHeldFor(id, by uint32) {
+	p.mu.Lock()
+	defer p.mu.Unlock()
+	if e, ok := p.aircraft[id]; ok {
+		e.heldFor = by
+		p.aircraft[id] = e
+	}
+}
+
+// ReportInbound records whether aircraft id is an arrival taxiing in.
+func (p *GroundPicture) ReportInbound(id uint32, inbound bool) {
+	p.mu.Lock()
+	defer p.mu.Unlock()
+	if e, ok := p.aircraft[id]; ok {
+		e.inbound = inbound
+		p.aircraft[id] = e
+	}
+}
+
 // ReportBehind records that aircraft id is stopped behind aircraft by, in
 // its way (0: not).
 func (p *GroundPicture) ReportBehind(id, by uint32) {
@@ -806,18 +844,21 @@ func (p *GroundPicture) ReportBehind(id, by uint32) {
 // least oncomingDeg away) — where, on one taxiway, the two would meet
 // nose to nose (#775: LKPR, live, WZZ1023 and TVS1771 on F). hold: this
 // aircraft is the one to hold, being further from that shared stretch
-// than the other is (a tie: the higher ID holds); one already in it
+// than the other is (a tie: the higher ID holds), but of an arrival
+// taxiing in and a departure the departure (inbound); one already in it
 // (within headOnCommitMeters) never holds. +Inf when none. Both whole
 // ways, not the next OncomingLookMeters: a stretch longer than that is
 // decided before either is in it.
 func (p *GroundPicture) oncoming(id uint32, path *GroundPath, from, half float64, now time.Time) (at float64, other uint32, hold bool) {
 	p.mu.Lock()
 	type them struct {
-		id     uint32
-		intent []airport.LatLon
-		half   float64
+		id      uint32
+		intent  []airport.LatLon
+		half    float64
+		inbound bool
 	}
 	var others []them
+	meInbound := p.aircraft[id].inbound
 	for oid, e := range p.aircraft {
 		if oid == id || now.Sub(e.at) > TrafficStaleAfter {
 			continue
@@ -851,7 +892,7 @@ func (p *GroundPicture) oncoming(id uint32, path *GroundPath, from, half float64
 			if h <= 0 {
 				h = DefaultHalfSpanMeters
 			}
-			others = append(others, them{oid, way, h})
+			others = append(others, them{oid, way, h, e.inbound})
 		}
 	}
 	p.mu.Unlock()
@@ -950,6 +991,13 @@ func (p *GroundPicture) oncoming(id uint32, path *GroundPath, from, half float64
 			continue
 		}
 		me := mine > theirs || mine == theirs && id > o.id
+		if meInbound != o.inbound {
+			// An arrival taxiing in and a departure: the arrival keeps
+			// priority, the departure holds (nightly v0.199.0, XDEC: XDA1,
+			// further from the stretch, held with no junction left before
+			// it, and XDD1 gave way to it: each stood for the other).
+			me = o.inbound
+		}
 		if mine <= headOnCommitMeters && theirs > headOnCommitMeters {
 			me = false // in it already, the other not: the other holds
 		}

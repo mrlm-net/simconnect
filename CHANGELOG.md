@@ -7,6 +7,16 @@ This project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 ---
 
+## [0.200.0] - 2026-11-28
+
+### Added
+
+- Traffic: `GroundPicture.ReportInbound` and `GroundPicture.ReportHeldFor`. When an arrival taxiing in meets a departure coming the other way along one taxiway, the arrival keeps priority and the departure holds at its last junction before the stretch they share. An aircraft holding for another is not given way to by that other, so the two are never both stopped for each other. One already in the stretch still never holds (#775).
+
+### Fixed
+
+- Traffic: a push held for an arrival on the ground (landed, backtracking or taxiing in) is held until that arrival is by, or until it has made no way for 3 minutes. Before, a flat 10-minute cap let a departure push into a slow arrival still coming along its leg, and both stood nose to nose for good. Seen in the nightly run on v0.199.0 (`TestDeclaredField/arrivalFirst`). An arrival still on approach keeps the old time caps, so a stream of arrivals never holds a departure for good.
+
 ## [0.199.1] - 2026-11-27
 
 ### Fixed
