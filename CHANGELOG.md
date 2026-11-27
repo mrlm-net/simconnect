@@ -7,6 +7,16 @@ This project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 ---
 
+## [0.196.0] - 2026-11-27
+
+### Added
+
+- `traffic`: `OverflightOptions.Used`: call signs not to give an overflight, as `ScheduleOptions.Used` does for the airport schedule. Nil (the default) draws as before.
+
+### Fixed
+
+- `traffic/world`: an overflight (or a transit) never takes the call sign of an airport's flight, nor the other way round (#1708). Overflight call signs were drawn on their own, so an overflight and an LKPR arrival could both be DLH446: two aircraft with one call sign on the frequency. The scheduler's used call signs (#98, kept 12 h) now cover the overflights and transits as well, both ways. In `TestOverflightTiers`'s cap run (nightly race 45605319381, seed 14997800560881590864) the clashing overflight counted against the cap of four, while the test left it out, so 29 tracks looked "virtual with room in the simulator". `TestOverflightCallsignsUnique` fails on 0.195.1 with that seed and passes now.
+
 ## [0.195.2] - 2026-11-27
 
 ### Fixed

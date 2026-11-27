@@ -299,7 +299,7 @@ func overflightsByFlows(cfg ScheduleConfig, o OverflightOptions, from, to time.T
 		return nil
 	}
 	rng := rand.New(rand.NewPCG(o.Seed, 0x0f1e^uint64(from.Truncate(time.Hour).Unix())))
-	g := scheduler{cfg: cfg, rng: rng, used: map[string]bool{}, airports: map[string]ScheduleAirport{}}
+	g := scheduler{cfg: cfg, rng: rng, used: usedCopy(o.Used), airports: map[string]ScheduleAirport{}}
 	var outside []ScheduleAirport
 	var weights []float64
 	for _, a := range cfg.Airports {
