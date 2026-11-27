@@ -7,6 +7,16 @@ This project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 ---
 
+## [0.199.1] - 2026-11-27
+
+### Fixed
+
+- Traffic: when the conflict watch asks an arrival to lose time by a longer route only, with no speed to give, the arrival is no longer told its sequence number alone ("Ryanair 5E, number 4"); the number goes with its next instruction, as in the sequence's own calls (#1428). Seen in the nightly run on v0.199.0 (`TestSequenceCallsPhrased`).
+
+### Changed
+
+- CI: a red test or race run keeps its whole output as a workflow artifact (`test-output`, `race-output`, `world-race-output`), and the run summary lists the `WORLDTEST_SEED` of each whole-World run, so a failure is replayed offline.
+
 ## [0.199.0] - 2026-11-27
 
 ### Added

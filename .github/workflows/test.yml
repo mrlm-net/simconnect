@@ -60,7 +60,28 @@ jobs:
         run: go vet -unsafeptr=false ./...
 
       - name: Test
-        run: go test ./... -short -count=1 -timeout 50m
+        shell: bash
+        # bash runs with -eo pipefail: go test's failure fails the step.
+        run: go test ./... -short -count=1 -timeout 50m 2>&1 | tee full.txt
+
+      - name: Seeds of a red run
+        if: failure()
+        shell: bash
+        run: |
+          {
+            echo '### Seeds (WORLDTEST_SEED replays a run; the whole output is the test-output artifact)'
+            echo '```'
+            grep -aE '^worldtest: WORLDTEST_SEED=|^(--- FAIL|FAIL)|^[[:space:]]+--- FAIL' full.txt | head -n 400 || true
+            echo '```'
+          } >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Keep the whole output
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: test-output
+          path: full.txt
+          if-no-files-found: ignore
 
       - name: Modules of their own (simvar-cli, airport-map)
         # Each has its own go.mod, so ./... above never reaches them.
