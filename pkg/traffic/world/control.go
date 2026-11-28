@@ -3495,11 +3495,18 @@ func (cc *controlCenter) runwayFor(g *airport.Graph, arrival bool, stand int) st
 // is); a departure from a stand, one its stand reaches, else another open
 // runway its aircraft can use and its stand reaches (the end nearest the
 // direction in use first). None: "" and why ("stand 26 reaches no runway
-// in use (09, 27)"). An empty model suits every runway.
+// in use (09, 27)"). An arrival only on one long enough to land on
+// (landable), else an error. An empty model suits every runway.
 func (cc *controlCenter) runwayForModel(g *airport.Graph, arrival bool, stand int, model string) (string, error) {
 	ends := cc.runwaysInUse(g, arrival)
 	if len(ends) == 0 {
 		return "", nil
+	}
+	if arrival {
+		var err error
+		if ends, err = landable(g, ends, model); err != nil {
+			return "", err
+		}
 	}
 	usable := firstSuited(g, ends, model)
 	if stand < 0 || stand >= len(g.Layout.Parking) {
@@ -3612,6 +3619,45 @@ func suitedEnds(g *airport.Graph, ends []airport.RunwayEnd, model string) (long,
 	return long, short
 }
 
+// landable are the ends of ends an aircraft of model can land on (#1718,
+// traffic.RunwayEndLandingLongEnough), and an error saying why when none
+// is ("no runway in use long enough for its A320 to land (27: 1300 m,
+// needs 1368 m)"): it is not sent to one it cannot stop on, nor to another
+// against the flow. An empty model: ends as they are.
+func landable(g *airport.Graph, ends []airport.RunwayEnd, model string) ([]airport.RunwayEnd, error) {
+	if model == "" {
+		return ends, nil
+	}
+	var out []airport.RunwayEnd
+	var short []string
+	for _, e := range ends {
+		r := runwayOfEnd(g, e.Name)
+		if traffic.RunwayEndLandingLongEnough(model, r, e) {
+			out = append(out, e)
+		} else {
+			short = append(short, fmt.Sprintf("%s: %.0f m", e.Name, e.LandingDistance(r.Length)))
+		}
+	}
+	if len(out) == 0 && len(ends) > 0 {
+		return nil, fmt.Errorf("%w: no runway in use long enough for its %s to land (%s, needs %.0f m)",
+			traffic.ErrRunwayTooShortToLand, traffic.ProfileFor(model).Type, strings.Join(short, ", "), traffic.RequiredLandingRun(model))
+	}
+	return out, nil
+}
+
+// landsAt reports whether layout l has a runway end used for landings long
+// enough for model to land on (#1718), whichever is in use.
+func landsAt(l *airport.Layout, model string) bool {
+	for _, r := range l.Runways {
+		for _, e := range []airport.RunwayEnd{r.Primary, r.Secondary} {
+			if e.ForLanding() && traffic.RunwayEndLandingLongEnough(model, r, e) {
+				return true
+			}
+		}
+	}
+	return false
+}
+
 // firstSuited is the long set of suitedEnds when it has any, else the
 // short one, else nil.
 func firstSuited(g *airport.Graph, ends []airport.RunwayEnd, model string) []airport.RunwayEnd {
@@ -3708,6 +3754,10 @@ func (cc *controlCenter) pickRunwayFor(g *airport.Graph, arrival bool, stand int
 			return cc.runwayFor(g, arrival, stand), nil
 		}
 		return cc.runwayForModel(g, arrival, stand, model)
+	}
+	ends, err := landable(g, ends, model)
+	if err != nil {
+		return "", err
 	}
 	if usable := firstSuited(g, ends, model); len(usable) > 0 {
 		ends = usable

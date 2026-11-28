@@ -286,6 +286,11 @@ func (c *ArrivalController) ChangeRunway(runway string, procedure, missed []airp
 	if _, end, ok := g.Layout.RunwayEnd(runway); ok && !end.ForLanding() {
 		return fmt.Errorf("%w: no landings on runway %s (%s)", airport.ErrRunwayEndUse, end.Name, end.Use)
 	}
+	to := req
+	to.Runway = runway
+	if err := landingFits(to); err != nil {
+		return err
+	}
 	plan, err := PlanArrival(g, runway, req.Parking, ArrivalOptions{
 		SpawnNm: req.SpawnNm, Route: req.Options, GroundAGL: req.GroundAGL, NoseOffset: req.NoseOffset, StandSide: req.StandSide,
 		TouchdownKts: approachProfileOf(req).TouchdownKts, BrakeDecel: req.Rollout.BrakeDecel,

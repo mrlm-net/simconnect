@@ -58,7 +58,8 @@ func (cc *controlCenter) checkRunways(now time.Time) {
 				it.mu.Lock()
 				v, stand := it.view, it.stand
 				it.mu.Unlock()
-				if it.arr != nil && !v.Done && shut.ClosedEnd(v.Runway) && !slices.Contains(arrs, v.Runway) {
+				diverting := cc.crewDiverting != nil && cc.crewDiverting(it.Tail) // its new runway too short (#1718)
+				if it.arr != nil && !v.Done && shut.ClosedEnd(v.Runway) && !slices.Contains(arrs, v.Runway) && !diverting {
 					cc.changeArrivalRunway(g, it, cc.runwayFor(g, true, stand))
 				}
 			}
@@ -295,6 +296,20 @@ func (cc *controlCenter) changeArrivalRunway(g *airport.Graph, it *controlled, r
 	}
 	if errors.Is(err, airport.ErrRunwayEndUse) {
 		it.unableRunway(runway, err) // heard, as a departure's (#1661)
+		return false
+	}
+	if errors.Is(err, traffic.ErrRunwayTooShortToLand) {
+		// Too short to land on (#1718): it lands on its own runway, open
+		// still; closed, it diverts as a crew does (#1411).
+		it.unableRunway(runway, err)
+		it.mu.Lock()
+		own := it.view.Runway
+		it.mu.Unlock()
+		if shut := (nav.RunwayLimits{Closed: cc.core.closed(g.Layout.ICAO)}); shut.ClosedEnd(own) && cc.crewDivert != nil {
+			if to := cc.crewDivert(g.Layout.ICAO, it.Tail); to != "" {
+				cc.log.printf("%-6s runway %s closed, %s too short: diverting to %s", it.Tail, own, runway, to)
+			}
+		}
 		return false
 	}
 	if err != nil {
