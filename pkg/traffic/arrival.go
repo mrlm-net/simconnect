@@ -518,6 +518,9 @@ func (c *ArrivalController) Start(req ArrivalRequest) error {
 	if _, end, ok := req.Graph.Layout.RunwayEnd(req.Runway); ok && !end.ForLanding() {
 		return fmt.Errorf("%w: no landings on runway %s (%s)", airport.ErrRunwayEndUse, end.Name, end.Use)
 	}
+	if err := landingFits(req); err != nil {
+		return err
+	}
 	plan, err := PlanArrival(req.Graph, req.Runway, req.Parking, ArrivalOptions{
 		SpawnNm: req.SpawnNm, Exit: req.Exit, Route: req.Options, GroundAGL: req.GroundAGL, NoseOffset: req.NoseOffset, StandSide: req.StandSide,
 		TouchdownKts: approachProfileOf(req).TouchdownKts, BrakeDecel: req.Rollout.BrakeDecel,

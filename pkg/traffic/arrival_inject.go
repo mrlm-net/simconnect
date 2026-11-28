@@ -591,7 +591,8 @@ func (c *ArrivalController) startInjectedApproach(startMeters float64) error {
 // down shortFieldShare of it past the threshold, at least
 // shortFieldMinTouchdownM, with a tenth of the usual spread. At its usual
 // point (about 300 m for a DHC6) it touched down past the exit and swung
-// round to it at 64 kt.
+// round to it at 64 kt. So too on a longer one its usual touchdown and
+// roll (landingRollFor) do not fit (#1718), which RequiredLandingRun is.
 const (
 	shortFieldMeters        = 1200.0
 	shortFieldShare         = 0.1
@@ -603,7 +604,8 @@ const (
 // touchdown.
 func (c *ArrivalController) aimShift(startMeters, spread float64) float64 {
 	landing := c.plan.End.LandingDistance(c.plan.Runway.Length) // its LDA (#1660)
-	if landing <= 0 || landing >= shortFieldMeters {
+	roll := landingRollFor(c.approachProfile(), c.rolloutProfile())
+	if landing <= 0 || landing >= shortFieldMeters && landing >= exitTouchdownMeters+roll {
 		return spread
 	}
 	probe := NewApproachMover(c.plan.End.LandingThreshold(), c.plan.End.Heading, startMeters, c.approachProfile())
@@ -612,6 +614,9 @@ func (c *ArrivalController) aimShift(startMeters, spread float64) float64 {
 	}
 	if probe.phase < ApproachDerotate {
 		return spread
+	}
+	if landing >= shortFieldMeters && probe.touchX+spread+roll <= landing {
+		return spread // its usual landing fits its landing distance (#1718)
 	}
 	target := math.Max(shortFieldMinTouchdownM, shortFieldShare*landing)
 	return math.Min(0, target-probe.touchX) + spread/10

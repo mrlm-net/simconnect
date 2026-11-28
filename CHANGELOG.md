@@ -7,6 +7,12 @@ This project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 ---
 
+## [0.201.0] - 2026-11-28
+
+### Added
+
+- Traffic: an arrival is no longer planned onto a runway end whose landing distance its type cannot stop in. `RequiredLandingRun(model)` is the roll the World flies there: its short-field landing (touchdown a tenth of the landing distance in, at least 60 m), the nose coming down, then braking that builds up to its `BrakeDecel`, down to its exit speed. An A320 needs 1368 m, a B744 2116 m, a DHC-6 515 m. Where its usual landing does not fit the landing distance, an injected landing now flies that short-field landing (before, only below 1200 m). `ArrivalController.Start` and `ChangeRunway` return `ErrRunwayTooShortToLand`. The World refuses such an arrival with 422 and the reason, with no fallback to an end against the flow; the schedule drops such a flight with one log line, and `POST /api/flights` refuses one. An arrival whose own end closes while the others are too short diverts. New: `RunwayEndLandingLongEnough` (#1718).
+
 ## [0.200.0] - 2026-11-28
 
 ### Added

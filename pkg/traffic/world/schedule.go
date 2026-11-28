@@ -640,6 +640,9 @@ func (s *scheduler) spawnWith(f traffic.ManagedFlight, pre *planned, model strin
 		// One its aircraft can use and its stand reaches (#1561).
 		m, _, _ := strings.Cut(req.Model, liverySep)
 		rwy, err := cc.pickRunwayFor(g, !f.Departure(), req.Stand, m)
+		if errors.Is(err, traffic.ErrRunwayTooShortToLand) {
+			return fmt.Errorf("%w: %w", traffic.ErrSpawnImpossible, err) // cancelled, not tried again (#1718)
+		}
 		if err != nil {
 			return err
 		}
@@ -1243,6 +1246,11 @@ func registerSchedule(mux *http.ServeMux, st *state) {
 					http.Error(w, fmt.Sprintf("%s: no stand at %s fits a %s", f.Callsign, icao, f.Type), http.StatusUnprocessableEntity)
 					return
 				}
+			}
+			// Nor to an airport with no runway it can land on (#1718).
+			if l, ok := s.st.cache.Layout(f.Destination); ok && l != nil && slices.Contains(managed, f.Destination) && !landsAt(l, f.Type) {
+				http.Error(w, fmt.Sprintf("%s: no runway at %s long enough for a %s to land (needs %.0f m)", f.Callsign, f.Destination, f.Type, traffic.RequiredLandingRun(f.Type)), http.StatusUnprocessableEntity)
+				return
 			}
 			// An arrival appears ArrivalLead before its STA to fly the STAR
 			// and approach: one added later than that (and ArrivalLate) is
