@@ -11,16 +11,21 @@ import (
 // backtracking (ArrivalPlan.Backtrack, EndTurn: rolling to the end first),
 // and on to its stand, passes none of occ: where others stand or will hold
 // short (#1640: at TFFJ it stood on the runway nose to nose with the
-// departure holding short on its exit, each waiting for the other). True
-// for any other arrival.
+// departure holding short on its exit, each waiting for the other). For
+// any other arrival its exit up to the first junction past its vacate
+// stop (exitStretch, #1719: XDEC, XDA1 planned off by B with XDD1 holding
+// short there).
 func (c *ArrivalController) WayOffClear(occ []airport.Occupied) bool {
 	c.mu.Lock()
 	defer c.mu.Unlock()
-	if c.plan == nil || !(c.plan.EndTurn || c.plan.Backtrack) || c.plan.Route == nil || len(occ) == 0 {
+	if c.plan == nil || c.plan.Route == nil || len(occ) == 0 {
 		return true
 	}
 	opts := withSpan(c.req.Options, c.profile())
 	opts.Occupied = occ
+	if !(c.plan.EndTurn || c.plan.Backtrack) {
+		return !c.req.Graph.PassesOccupied(exitStretch(c.req.Graph, c.plan.Route, c.plan.VacateIndex), 0, opts)
+	}
 	return !c.req.Graph.PassesOccupied(c.plan.Route, 0, opts)
 }
 
@@ -33,6 +38,10 @@ func (c *ArrivalController) WayOffClear(occ []airport.Occupied) bool {
 // the end keeps its exit (#1641: only the way on to a stand differs).
 func (c *ArrivalController) PlanWayOff(parking int, occ []airport.Occupied) func() bool {
 	c.mu.Lock()
+	if c.plan != nil && !(c.plan.EndTurn || c.plan.Backtrack) {
+		c.mu.Unlock()
+		return c.planExitClear(parking, occ)
+	}
 	if c.plan == nil || !(c.plan.EndTurn || c.plan.Backtrack) || c.state >= ArrivalRollout || !c.req.InjectApproach && !c.flyingProc {
 		c.mu.Unlock()
 		return nil

@@ -599,13 +599,41 @@ const (
 	shortFieldMinTouchdownM = 60.0
 )
 
+// shortFieldLanding: on landing meters of landing distance an injected
+// landing rolling roll from its touchdown to its exit speed flies the
+// short-field landing (aimShift), its usual one not fitting.
+func shortFieldLanding(landing, roll float64) bool {
+	return landing > 0 && (landing < shortFieldMeters || landing < exitTouchdownMeters+roll)
+}
+
+// shortFieldRun is how far past the landing threshold req's injected
+// landing is down to its exit speed when it flies the short-field one
+// (shortFieldLanding): its touchdown aimed at the latest (aimShift, the
+// spread's tenth) and its roll; 0 when it lands as usual, or is not
+// injected. Its exit is planned on it (exitReach.short, #1719).
+func shortFieldRun(req ArrivalRequest) float64 {
+	if !req.InjectApproach || req.Graph == nil {
+		return 0
+	}
+	r, e, ok := req.Graph.Layout.RunwayEnd(req.Runway)
+	if !ok || r.Length <= 0 {
+		return 0
+	}
+	landing := e.LandingDistance(r.Length)
+	roll := landingRollFor(approachProfileOf(req), withDefaults(req.Rollout, DefaultRolloutProfile()))
+	if !shortFieldLanding(landing, roll) {
+		return 0
+	}
+	return math.Max(shortFieldMinTouchdownM, shortFieldShare*landing) + TouchdownSpreadMeters/10 + roll
+}
+
 // aimShift is the injected approach's aim shift from startMeters out: the
 // touchdown spread drawn, or on a short field the shift to its early
 // touchdown.
 func (c *ArrivalController) aimShift(startMeters, spread float64) float64 {
 	landing := c.plan.End.LandingDistance(c.plan.Runway.Length) // its LDA (#1660)
 	roll := landingRollFor(c.approachProfile(), c.rolloutProfile())
-	if landing <= 0 || landing >= shortFieldMeters && landing >= exitTouchdownMeters+roll {
+	if !shortFieldLanding(landing, roll) {
 		return spread
 	}
 	probe := NewApproachMover(c.plan.End.LandingThreshold(), c.plan.End.Heading, startMeters, c.approachProfile())

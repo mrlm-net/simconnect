@@ -85,7 +85,7 @@ func TestEndTurnPlannedUpFront(t *testing.T) {
 		ap := ProfileFor(model)
 		ro := withDefaults(ap.Rollout, DefaultRolloutProfile())
 		o := ArrivalOptions{TouchdownKts: ap.Approach.TouchdownKts, BrakeDecel: ro.BrakeDecel}
-		reach := exitReach{o.TouchdownKts, o.BrakeDecel}
+		reach := o.reach()
 
 		g := midExitGraph(t, 100)
 		p, err := PlanArrival(g, "27", 0, o)
@@ -125,7 +125,7 @@ func TestFirmExitOwnTouchdown(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	airliner, fast := exitReach{TouchdownSpeedKts, 2.5}, exitReach{140, 2.5}
+	airliner, fast := exitReach{touchdownKts: TouchdownSpeedKts, decel: 2.5}, exitReach{touchdownKts: 140, decel: 2.5}
 	for _, e := range exits {
 		if e.Taxiway != "C" {
 			continue

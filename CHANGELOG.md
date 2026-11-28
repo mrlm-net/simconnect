@@ -7,6 +7,16 @@ This project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 ---
 
+## [0.202.0] - 2026-11-28
+
+### Added
+
+- Traffic: `GroundPicture.ReportWayOff`. From 6 NM out until it has vacated, an arrival keeps its way off the runway in the ground picture: its exit up to the first junction past its vacate stop. An aircraft taxiing to hold short on that exit stops at the last junction before it ("hold short of (taxiway)" or "hold position") and gets "continue taxi" once the arrival has vacated. It never stops on the exit, on the runway, or where it would block the arrival's taxi-in (#1719).
+
+### Fixed
+
+- Traffic: an arrival and a departure no longer stand waiting for each other at an exit. An injected arrival flying the short-field landing plans its exit from where that landing slows to exit speed, not from its usual touchdown: at XDEC an A320 is slow by 1368 m on 27's 1500 m, so it leaves by D, not by B where the departure holds short of 09. An arrival whose exit already has a departure holding short on it is re-planned to another exit still ahead that it makes braking as planned; with none, it rolls to the end and back, only before touchdown (#1719).
+
 ## [0.201.0] - 2026-11-28
 
 ### Added
