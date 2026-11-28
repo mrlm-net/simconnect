@@ -25,6 +25,18 @@ type GroundPicture struct {
 	follows map[uint32]uint32
 	// why: by aircraft, why giveWayTo last stopped it (GiveWayWhy).
 	why map[uint32]string
+	// wayOffs: by arrival about to land or rolling out, the way off the
+	// runway it keeps (ReportWayOff).
+	wayOffs map[uint32]wayOffEntry
+}
+
+// wayOffEntry is an arrival's way off the runway (ReportWayOff): its exit
+// up to the first junction past where it stops clear of the runway, and
+// its taxi-in on from there, sampled every trafficBodyStep meters.
+type wayOffEntry struct {
+	way, in []airport.LatLon
+	half    float64
+	at      time.Time
 }
 
 type groundEntry struct {
@@ -193,6 +205,29 @@ func (p *GroundPicture) ReportPush(id uint32, corridor []airport.LatLon, half fl
 	}
 }
 
+// ReportWayOff records the way off the runway arrival id keeps as it comes
+// in to land and rolls out (#1719): way, its exit up to the first junction
+// past where it stops clear of the runway, and in, its taxi-in on from
+// there; nil way once it has vacated. An aircraft whose way ends on it (a
+// departure taxiing to hold short on that exit) stops short, at the last
+// junction before it, unless that is on the arrival's taxi-in too
+// (giveWayTo); one passing through goes on.
+func (p *GroundPicture) ReportWayOff(id uint32, way, in []airport.LatLon, half float64, now time.Time) {
+	if p == nil {
+		return
+	}
+	p.mu.Lock()
+	defer p.mu.Unlock()
+	if len(way) == 0 {
+		delete(p.wayOffs, id)
+		return
+	}
+	if p.wayOffs == nil {
+		p.wayOffs = map[uint32]wayOffEntry{}
+	}
+	p.wayOffs[id] = wayOffEntry{way: way, in: in, half: half, at: now}
+}
+
 // giveWay is where along path (after from) this aircraft stops to give
 // way: the first point within look where its path comes within both
 // half-spans (plus GiveWayMarginMeters) of another aircraft's path ahead,
@@ -252,6 +287,16 @@ func (p *GroundPicture) giveWayTo(id uint32, path *GroundPath, from, look, half 
 			others = append(others, other{oid, e})
 		}
 	}
+	type wayOff struct {
+		id uint32
+		w  wayOffEntry
+	}
+	var offs []wayOff
+	for oid, w := range p.wayOffs {
+		if oid != id && now.Sub(w.at) <= TrafficStaleAfter {
+			offs = append(offs, wayOff{oid, w})
+		}
+	}
 	me, haveMe := p.aircraft[id]
 	lead := p.follows[id]
 	followers := map[uint32]bool{}
@@ -286,7 +331,7 @@ func (p *GroundPicture) giveWayTo(id uint32, path *GroundPath, from, look, half 
 		return false
 	}
 	best, to, why := math.Inf(1), uint32(0), ""
-	if len(others) == 0 {
+	if len(others) == 0 && len(offs) == 0 {
 		p.noteWhy(id, "")
 		return best, 0
 	}
@@ -307,6 +352,34 @@ func (p *GroundPicture) giveWayTo(id uint32, path *GroundPath, from, look, half 
 			}
 		}
 		return -1
+	}
+	// The way off the runway of an arrival coming in (ReportWayOff): its
+	// way ending on it, this aircraft stops short until the arrival is
+	// clear of the runway, or each would wait for the other, the arrival
+	// on the runway and this one on its exit (#1719: XDEC, XDA1 down and
+	// planned off by B, XDD1 holding short of 09 at B). Not where it is in
+	// it already, or would wait on the arrival's taxi-in: the arrival
+	// plans its way off clear of it instead (PlanWayOff).
+	if len(offs) > 0 {
+		tail := []airport.LatLon{path.PointAt(path.Length())}
+		for _, w := range offs {
+			reach := half + w.w.half + GiveWayMarginMeters
+			if first(tail, w.w.way, reach) < 0 {
+				continue
+			}
+			at := first(mine, w.w.way, reach)
+			if at < half {
+				continue
+			}
+			short := mine[:int(math.Max(0, at-reach)/trafficBodyStep)+1]
+			if first(short, w.w.in, reach) >= 0 {
+				continue
+			}
+			if from+at < best {
+				best, to = from+at, w.id
+				why = fmt.Sprintf("the way off the runway #%d keeps, %.0f m on", w.id, at)
+			}
+		}
 	}
 	for _, o := range others {
 		reach := half + o.e.half + GiveWayMarginMeters
@@ -545,6 +618,7 @@ func (p *GroundPicture) Forget(id uint32) {
 	delete(p.aircraft, id)
 	delete(p.follows, id)
 	delete(p.why, id)
+	delete(p.wayOffs, id)
 	for f, l := range p.follows {
 		if l == id {
 			delete(p.follows, f) // its leader gone

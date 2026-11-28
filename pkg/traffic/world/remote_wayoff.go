@@ -168,7 +168,7 @@ func (a *actuatorWayOff) TakeWayOff(step uint64, parking int, occ []airport.Occu
 // place, asking nothing.
 func (cc *controlCenter) lookOverLink(it *controlled, p *remotePlanner, items []*controlled) {
 	defer it.wayOffLooking.Store(false)
-	if !beforeTouchdown(it) {
+	if !lookable(it) {
 		it.wayOffBlocked.Store(false) // down, or not answered
 		return
 	}
@@ -177,7 +177,7 @@ func (cc *controlCenter) lookOverLink(it *controlled, p *remotePlanner, items []
 		it.wayOffBlocked.Store(false)
 		return
 	}
-	if l.backtracks {
+	if l.backtracks || l.exitOnly {
 		now := cc.snapshotItems()
 		if cc.wayOffStale(it, l.stand, l.occ) != "" || l.clear && l.apron != apronPlacesFor(it, now).key {
 			return // looked at afresh a second later

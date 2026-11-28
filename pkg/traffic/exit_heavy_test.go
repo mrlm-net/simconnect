@@ -17,7 +17,7 @@ func TestHeavyExitAtItsOwnSpeed(t *testing.T) {
 		t.Fatal(err)
 	}
 	heavy := ProfileFor("B77W")
-	reach := exitReach{heavy.Approach.TouchdownKts, heavy.Rollout.BrakeDecel}
+	reach := exitReach{touchdownKts: heavy.Approach.TouchdownKts, decel: heavy.Rollout.BrakeDecel}
 	for _, rwy := range []string{"24", "06"} {
 		a, _, err := bestExit(g, rwy, b14, airport.RouteOptions{}, exitReach{})
 		if err != nil {
@@ -40,7 +40,7 @@ func TestHeavyExitAtItsOwnSpeed(t *testing.T) {
 		// Narrowbodies, faster than the plan too, keep the airliner's exit.
 		for _, m := range []string{"A320", "B738", "B739"} {
 			p := ProfileFor(m)
-			n, _, err := bestExit(g, rwy, b14, airport.RouteOptions{}, exitReach{p.Approach.TouchdownKts, p.Rollout.BrakeDecel})
+			n, _, err := bestExit(g, rwy, b14, airport.RouteOptions{}, exitReach{touchdownKts: p.Approach.TouchdownKts, decel: p.Rollout.BrakeDecel})
 			if err != nil {
 				t.Fatal(err)
 			}

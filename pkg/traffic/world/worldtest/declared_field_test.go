@@ -176,9 +176,10 @@ func TestDeclaredFieldMirrored(t *testing.T) {
 
 // TestDeclaredFieldTypes is TestDeclaredField's opposite directions with
 // an airliner (declaredJet) departing, both ways round, the arrival a
-// DHC-6: faster out, kept as far apart. An airliner landing comes back
-// with #1718 (no landing-length rule: an A320 rolled past XDEC's 1500 m)
-// and #1719 (its only exit the taxiway a departure held short on).
+// DHC-6: faster out, kept as far apart; and an airliner landing first,
+// the departure a DHC-6, down to its exit speed by the landing distance
+// (#1718: an A320 rolled past XDEC's 1500 m) and off by D, not B where the
+// departure holds short (#1719, TestDeclaredFieldExit).
 func TestDeclaredFieldTypes(t *testing.T) {
 	if testing.Short() {
 		t.Skip("runs the World")
@@ -193,6 +194,9 @@ func TestDeclaredFieldTypes(t *testing.T) {
 		})
 		t.Run(way+"/jetOutAirborne", func(t *testing.T) {
 			declaredRun(t, declaredCase{spawnNm: declaredFarNM, airborne: true, mirror: mirror, dep: declaredJet})
+		})
+		t.Run(way+"/jetIn", func(t *testing.T) {
+			declaredRun(t, declaredCase{mirror: mirror, arr: declaredJet})
 		})
 	}
 }

@@ -52,7 +52,7 @@ func (cc *controlCenter) keepWayOffClear(items []*controlled) {
 			go cc.lookOverLink(it, r, items)
 			continue
 		}
-		if beforeTouchdown(it) {
+		if lookable(it) {
 			cc.takeLook(it, p, cc.lookWayOff(it, p, items))
 		}
 	}
@@ -62,6 +62,7 @@ func (cc *controlCenter) keepWayOffClear(items []*controlled) {
 type wayOffLook struct {
 	stand      int // it was on
 	backtracks bool
+	exitOnly   bool               // off by an exit ahead: that exit only (#1719)
 	occ        []airport.Occupied // where departures hold or will
 	clear      bool               // of occ
 	apronClear bool               // of the apron's places too
@@ -76,7 +77,15 @@ func (cc *controlCenter) lookWayOff(it *controlled, p wayOffPlanner, items []*co
 	// Only one backtracking has a way in to keep clear: for the others
 	// nothing is gathered.
 	plan := it.arr.Plan()
-	if plan == nil || !(plan.EndTurn || plan.Backtrack) {
+	if plan == nil {
+		return l
+	}
+	if !(plan.EndTurn || plan.Backtrack) {
+		// Off by an exit ahead (#1719): that exit clear of where departures
+		// hold short already (one taxiing there stops short of it, the
+		// ground picture's way off); the apron not looked at.
+		l.exitOnly, l.occ = true, holdingTaken(it, items)
+		l.clear, l.apronClear = len(l.occ) == 0 || p.WayOffClear(l.occ), true
 		return l
 	}
 	l.backtracks, l.occ = true, wayOffTaken(it, items)
@@ -91,7 +100,7 @@ func (cc *controlCenter) lookWayOff(it *controlled, p wayOffPlanner, items []*co
 // takeLook puts what look l found in place and starts the search it asks
 // for; it asks the controller nothing. On the connection's goroutine.
 func (cc *controlCenter) takeLook(it *controlled, p wayOffPlanner, l wayOffLook) {
-	if !l.backtracks {
+	if !l.backtracks && !l.exitOnly {
 		it.wayOffBlocked.Store(false)
 		it.apronBlocked.Store(false)
 		return
@@ -187,13 +196,13 @@ func (cc *controlCenter) wayOffStale(it *controlled, from int, occ []airport.Occ
 	if it.gates.Load() {
 		return "a player's now"
 	}
-	if !beforeTouchdown(it) {
+	if !lookable(it) {
 		return "down or gone"
 	}
 	if it.standNow() != from {
 		return "given another stand"
 	}
-	if !sameTaken(occ, wayOffTaken(it, cc.snapshotItems())) {
+	if !sameTaken(occ, takenFor(it, cc.snapshotItems(), plainExit(it))) {
 		return "the departures have moved on"
 	}
 	return ""
@@ -212,7 +221,13 @@ func (cc *controlCenter) planWayOff(it *controlled, p wayOffPlanner, occ []airpo
 	it.mu.Lock()
 	old, tail, model := it.stand, it.Tail, it.view.Model
 	it.mu.Unlock()
-	ap := apronPlacesFor(it, cc.snapshotItems())
+	// Off by an exit ahead (#1719): another exit, or to the end and back,
+	// to its own stand; the apron not looked at.
+	exitOnly := plainExit(it)
+	var ap apronPlaces
+	if !exitOnly {
+		ap = apronPlacesFor(it, cc.snapshotItems())
+	}
 	half := traffic.MotionProfileFor(model).SpanMeters / 2
 	search := func(taken []airport.Occupied, fits func(stand int) bool) (int, func() bool) {
 		if fits(old) {
@@ -258,7 +273,11 @@ func (cc *controlCenter) planWayOff(it *controlled, p wayOffPlanner, occ []airpo
 		}
 		return old, nil
 	}
-	to, apply := search(slices.Concat(occ, ap.bodies), func(i int) bool { return ap.standClear(cc, it.graph, i, model) })
+	fits := func(i int) bool { return ap.standClear(cc, it.graph, i, model) }
+	if exitOnly {
+		fits = func(i int) bool { return i == old }
+	}
+	to, apply := search(slices.Concat(occ, ap.bodies), fits)
 	// apronOnly: clear of occ, not of the apron; kept: as planned is.
 	apronOnly, kept := false, false
 	if apply == nil && (len(ap.bodies) > 0 || len(ap.out) > 0) {
@@ -271,7 +290,7 @@ func (cc *controlCenter) planWayOff(it *controlled, p wayOffPlanner, occ []airpo
 	// holds: the departures and it are where they were, and nobody else is
 	// on the apron or pushing.
 	holds := func() bool {
-		return cc.wayOffStale(it, old, occ) == "" && ap.key == apronPlacesFor(it, cc.snapshotItems()).key
+		return cc.wayOffStale(it, old, occ) == "" && (exitOnly || ap.key == apronPlacesFor(it, cc.snapshotItems()).key)
 	}
 	endTurns := func() bool {
 		plan := it.arr.Plan()
@@ -321,6 +340,10 @@ func (cc *controlCenter) planWayOff(it *controlled, p wayOffPlanner, occ []airpo
 		}
 		if apply == nil {
 			it.wayOffRetryAt.Store(cc.clock.Now().Add(wayOffRetry).UnixNano())
+			if exitOnly {
+				it.wayOffBlocked.Store(false) // its exit kept: looked at again
+				return nil
+			}
 			// Sent round for a departure only where it rolls to the end
 			// (#1640); elsewhere it keeps its exit and is held short of.
 			if !linked {

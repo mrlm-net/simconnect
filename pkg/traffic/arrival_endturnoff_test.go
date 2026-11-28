@@ -19,7 +19,7 @@ func TestEndTurnoffTaken(t *testing.T) {
 		ap := ProfileFor(model)
 		ro := withDefaults(ap.Rollout, DefaultRolloutProfile())
 		o := ArrivalOptions{TouchdownKts: ap.Approach.TouchdownKts, BrakeDecel: ro.BrakeDecel}
-		reach := exitReach{o.TouchdownKts, o.BrakeDecel}
+		reach := o.reach()
 		for rwy, want := range ahead {
 			for parking := range 2 {
 				// Sharper than MaxEntryAngle: no turnoff, the roll to the end

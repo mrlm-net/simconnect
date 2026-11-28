@@ -327,7 +327,12 @@ type ArrivalController struct {
 	// (SetLandsUnstable); landsOccupied: lands with another aircraft on
 	// its runway (SetLandsOnOccupied).
 	landsUnstable, landsOccupied bool
-	// heightExtends: the ways out and back it was given at its join, too
+	// wayOffSent: a way off the runway is in the ground picture
+	// (reportWayOff); wayOffWay and wayOffIn are wayOffPlan's (exitWay).
+	wayOffSent          bool
+	wayOffPlan          *ArrivalPlan
+	wayOffWay, wayOffIn []airport.LatLon
+	// heightExtends:the ways out and back it was given at its join, too
 	// high to make the gate (extendForHeight), since it last joined.
 	heightExtends int
 	// goAroundFt: the level a go-around climbs to (MSL), until reached: a
@@ -523,7 +528,7 @@ func (c *ArrivalController) Start(req ArrivalRequest) error {
 	}
 	plan, err := PlanArrival(req.Graph, req.Runway, req.Parking, ArrivalOptions{
 		SpawnNm: req.SpawnNm, Exit: req.Exit, Route: req.Options, GroundAGL: req.GroundAGL, NoseOffset: req.NoseOffset, StandSide: req.StandSide,
-		TouchdownKts: approachProfileOf(req).TouchdownKts, BrakeDecel: req.Rollout.BrakeDecel,
+		TouchdownKts: approachProfileOf(req).TouchdownKts, BrakeDecel: req.Rollout.BrakeDecel, shortRun: shortFieldRun(req),
 	})
 	if err != nil {
 		return err
@@ -758,6 +763,7 @@ func (c *ArrivalController) onPosition(m arrivalMonitor) {
 		}
 		c.reportGround(c.objectID, pos, hdg, c.now())
 	}
+	c.reportWayOff(airport.LatLon{Lat: m.Latitude, Lon: m.Longitude})
 	if l := m.currentLights(); l != c.last.Lights {
 		c.last.Lights, c.lightsChanged = l, true // reported even between throttled events
 	}
@@ -1191,7 +1197,7 @@ func (c *ArrivalController) ChangeStand(parking int) error {
 	req := c.req
 	plan, err := PlanArrival(g, req.Runway, parking, ArrivalOptions{
 		SpawnNm: c.plan.SpawnNm, Exit: &exit, Route: req.Options, GroundAGL: req.GroundAGL, NoseOffset: req.NoseOffset, StandSide: req.StandSide,
-		TouchdownKts: approachProfileOf(req).TouchdownKts, BrakeDecel: req.Rollout.BrakeDecel,
+		TouchdownKts: approachProfileOf(req).TouchdownKts, BrakeDecel: req.Rollout.BrakeDecel, shortRun: shortFieldRun(req),
 		endTurn: c.plan.EndTurn,
 	})
 	if err != nil {
@@ -1270,7 +1276,7 @@ func (c *ArrivalController) vacateAt(x airport.RunwayExit) error {
 			return err
 		}
 	} else {
-		reach := exitReach{approachProfileOf(req).TouchdownKts, req.Rollout.BrakeDecel}
+		reach := exitReach{approachProfileOf(req).TouchdownKts, req.Rollout.BrakeDecel, shortFieldRun(req)}
 		exits, err := g.RunwayExits(c.plan.End.Name)
 		if err != nil {
 			return err
@@ -1282,7 +1288,7 @@ func (c *ArrivalController) vacateAt(x airport.RunwayExit) error {
 	// Another one it doesn't make before the end: to the end and back to it
 	// (#1658). On the roll canMakeExit has found it made.
 	endTurn := !rolling && (c.plan.EndTurn || c.plan.EndTurnoff) &&
-		!exitReach{approachProfileOf(req).TouchdownKts, req.Rollout.BrakeDecel}.makes(g, c.plan.End.Name, x)
+		!exitReach{approachProfileOf(req).TouchdownKts, req.Rollout.BrakeDecel, shortFieldRun(req)}.makes(g, c.plan.End.Name, x)
 	if err := c.planExit(x, true, endTurn); err != nil {
 		return err
 	}
@@ -1331,7 +1337,7 @@ func (c *ArrivalController) planExit(x airport.RunwayExit, ai, endTurn bool) err
 	req := c.req
 	plan, err := PlanArrival(req.Graph, req.Runway, req.Parking, ArrivalOptions{
 		SpawnNm: c.plan.SpawnNm, Exit: &x, Route: req.Options, GroundAGL: req.GroundAGL, NoseOffset: req.NoseOffset, StandSide: req.StandSide,
-		TouchdownKts: approachProfileOf(req).TouchdownKts, BrakeDecel: req.Rollout.BrakeDecel,
+		TouchdownKts: approachProfileOf(req).TouchdownKts, BrakeDecel: req.Rollout.BrakeDecel, shortRun: shortFieldRun(req),
 		endTurn: endTurn,
 	})
 	if err != nil {

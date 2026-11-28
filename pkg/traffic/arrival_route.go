@@ -27,8 +27,13 @@ func RequiredRollout(exitKts float64) float64 {
 // touchdown speed (kt) and planned braking (m/s²). A light single (touching
 // down below exitLightTouchdownKts) has its own: it touches down at half an
 // airliner's speed and turns off at the first exits. Any other aircraft,
-// and zero, use an airliner's (TouchdownSpeedKts, RolloutDecel).
-type exitReach struct{ touchdownKts, decel float64 }
+// and zero, use an airliner's (TouchdownSpeedKts, RolloutDecel). short,
+// when not 0, is where its short-field landing (shortFieldRun) is down to
+// its exit speed, from the landing threshold: no later than that it makes
+// an exit (#1719: an A320 on XDEC's 1500 m, down by 1368 m, planned as
+// touching down 550 m in, could not make D at 1900 m and took B, where a
+// departure held short).
+type exitReach struct{ touchdownKts, decel, short float64 }
 
 // exitLightTouchdownKts: below this touchdown speed an aircraft is light
 // (exitReach). A light aircraft is planned to touch down
@@ -97,7 +102,16 @@ func (x exitReach) rollout(exitKts float64) float64 {
 	if x.light() {
 		at = exitLightTouchdownMeters
 	}
-	return at + (v0*v0-v1*v1)/(2*decel)
+	return x.shortOr(at + (v0*v0-v1*v1)/(2*decel))
+}
+
+// shortOr is d, or the short-field landing's run (exitReach.short) when
+// that is shorter.
+func (x exitReach) shortOr(d float64) float64 {
+	if x.short > 0 {
+		return math.Min(d, x.short)
+	}
+	return d
 }
 
 // landingAlong is how far exit e is past the landing threshold of
@@ -288,7 +302,7 @@ func (x exitReach) firmRollout(exitKts float64) float64 {
 		at = exitLightTouchdownMeters
 	}
 	v0, v1 := td*knot, math.Min(exitKts, td)*knot
-	return at + (v0*v0-v1*v1)/(2*decel)
+	return x.shortOr(at + (v0*v0-v1*v1)/(2*decel))
 }
 
 // makes reports whether the aircraft makes exit e off runwayEnd at its
@@ -497,6 +511,15 @@ type ArrivalOptions struct {
 	// endTurn: Exit is the exit back of a roll to the end planned already
 	// (ArrivalPlan.EndTurn, #1658), planned so again.
 	endTurn bool
+	// shortRun: its injected landing is the short-field one, down to its
+	// exit speed this far past the landing threshold (shortFieldRun); 0
+	// its usual one.
+	shortRun float64
+}
+
+// reach is the aircraft o plans its exit for (exitReach).
+func (o ArrivalOptions) reach() exitReach {
+	return exitReach{o.TouchdownKts, o.BrakeDecel, o.shortRun}
 }
 
 // ArrivalPlan is a complete arrival for one aircraft.
@@ -621,7 +644,7 @@ func PlanArrival(g *airport.Graph, runwayEnd string, parking int, o ArrivalOptio
 		if o.endTurn {
 			turnM = endTurnMeters(rwy, rwy.Length-x.Along)
 			if g.TurnsBack(route) {
-				if tx, tr, m, ok := endTurnPlan(g, runwayEnd, parking, o, exitReach{o.TouchdownKts, o.BrakeDecel}); ok {
+				if tx, tr, m, ok := endTurnPlan(g, runwayEnd, parking, o, o.reach()); ok {
 					x, route, turnM = tx, tr, m
 					x.Along = rwy.Length - tx.Along
 				}
@@ -633,7 +656,7 @@ func PlanArrival(g *airport.Graph, runwayEnd string, parking int, o ArrivalOptio
 		// Never an exit the type only makes too fast (#1631: the last one
 		// ahead, mid-length, taken at 100 kt): out of its reach, the roll
 		// to the end and back to an exit, planned from the start.
-		reach := exitReach{o.TouchdownKts, o.BrakeDecel}
+		reach := o.reach()
 		x, route, err = bestExit(g, runwayEnd, parking, opts, reach)
 		if err != nil || !reach.makes(g, runwayEnd, x) {
 			// A crew rolling out to the end at taxi speed takes the taxiway

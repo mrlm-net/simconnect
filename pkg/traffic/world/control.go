@@ -4287,6 +4287,31 @@ func (it *controlled) tellGiveWay(other uint32) {
 	if parking || o.arr != nil && o.turningIn() {
 		return
 	}
+	// Short of the way off the runway an arrival keeps, landing or rolling
+	// out (#1719): "hold short of (taxiway)", or "hold position", always;
+	// "continue taxi" once it has vacated.
+	if o.arr != nil {
+		if st := o.arr.State(); st >= traffic.ArrivalApproaching && st <= traffic.ArrivalVacating {
+			it.mu.Lock()
+			now := it.cc.clock.Now()
+			still, told, hs := it.givingWay == other, it.toldWay == other, it.giveWayHoldShort
+			if still && !told {
+				it.toldWay, it.toldWayAt, it.heldShortOf = other, now, hs
+				if hs == "" {
+					it.heldShortOf = "position"
+				}
+			}
+			it.mu.Unlock()
+			switch {
+			case !still || told:
+			case hs != "":
+				it.say(traffic.HoldShort(it.Tail, hs))
+			default:
+				it.say(traffic.HoldPosition(it.Tail))
+			}
+			return
+		}
+	}
 	it.mu.Lock()
 	now := it.cc.clock.Now()
 	still, h, told := it.givingWay == other, it.view.Heading, it.toldWay == other || now.Sub(it.toldWayAt) < giveWayCallGap
